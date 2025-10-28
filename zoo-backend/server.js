@@ -28,18 +28,23 @@ app.use(
 app.use(
   cors({
     origin: function (origin, callback) {
+      console.log("CORS check - Origin:", origin);
+      console.log("CORS check - Allowed CLIENT_URL:", process.env.CLIENT_URL);
+
       // Allow all localhost ports in development
       if (!origin || /^http:\/\/localhost:\d+$/.test(origin)) {
         return callback(null, true);
       }
 
       // Check against whitelist
-      const allowedOrigins = [process.env.CLIENT_URL];
+      const allowedOrigins = [process.env.CLIENT_URL].filter(Boolean);
       if (allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
 
-      callback(new Error("Not allowed by CORS"));
+      // Log rejection but don't throw error - return false instead
+      console.error("CORS rejected origin:", origin);
+      callback(null, false);
     },
     credentials: true,
   })
