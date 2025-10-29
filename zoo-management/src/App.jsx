@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 
 // Components
@@ -38,6 +38,22 @@ import { Toaster } from "./components/ui/sonner";
 import { DataProvider } from "./data/DataContext";
 import { PricingProvider } from "./data/PricingContext";
 
+// Page titles mapping
+const PAGE_TITLES = {
+  home: "Home",
+  animals: "Animals",
+  attractions: "Exhibits",
+  shop: "Gift Shop",
+  food: "Food & Dining",
+  tickets: "Tickets & Pricing",
+  cart: "Shopping Cart",
+  "customer-dashboard": "My Dashboard",
+  "order-history": "Order History",
+  "staff-portal": "Staff Portal",
+  "admin-portal": "Admin Portal",
+  login: "Login",
+};
+
 export default function App() {
   const [currentPage, setCurrentPage] = useState("home");
   const [user, setUser] = useState(currentUser);
@@ -46,6 +62,12 @@ export default function App() {
 
   // Cart state
   const [cart, setCart] = useState([]);
+
+  // Update document title when page changes
+  useEffect(() => {
+    const pageTitle = PAGE_TITLES[currentPage] || currentPage;
+    document.title = `${pageTitle} | WildWood Zoo`;
+  }, [currentPage]);
 
   const handleLogin = (loggedInUser, type) => {
     setCurrentUser(loggedInUser, type);

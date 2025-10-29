@@ -9,6 +9,8 @@ import { Check, X } from "lucide-react";
 import { toast } from "sonner";
 import { currentUser } from "../data/mockData";
 import { usePricing } from "../data/PricingContext";
+import { ImageWithFallback } from "../components/figma/ImageWithFallback";
+import { useHeroImage } from "../utils/heroImages";
 
 const comparisonFeatures = [
   {
@@ -26,6 +28,7 @@ const comparisonFeatures = [
 
 export function TicketsPage({ onNavigate, addToCart, cart = [] }) {
   const { ticketPrices: prices, membershipPrice } = usePricing();
+  const heroImage = useHeroImage("tickets");
 
   // Define ticket pricing using context prices
   const ticketPrices = [
@@ -66,7 +69,7 @@ export function TicketsPage({ onNavigate, addToCart, cart = [] }) {
       }
     } else if (addToCart) {
       addToCart({
-        id: ticket.ticketId,  // Use the predefined ticket ID
+        id: ticket.ticketId, // Use the predefined ticket ID
         name: ticket.type,
         price: ticket.price,
         type: "ticket",
@@ -110,10 +113,29 @@ export function TicketsPage({ onNavigate, addToCart, cart = [] }) {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Hero Section */}
-      <section className="bg-gradient-to-br from-green-600 to-emerald-700 text-white py-16">
-        <div className="container mx-auto px-6">
-          <h1 className="text-4xl md:text-5xl mb-4">Tickets & Pricing</h1>
-          <p className="text-xl text-green-100 max-w-2xl">
+      <section className="relative bg-gradient-to-br from-green-600 to-emerald-700 text-white py-16 overflow-hidden">
+        {/* Background Image */}
+        <div className="absolute inset-0 z-0">
+          <ImageWithFallback
+            src={heroImage}
+            alt="Zoo Tickets and Pricing"
+            className="w-full h-full object-cover"
+          />
+          <div
+            className="absolute inset-0"
+            style={{
+              background:
+                "linear-gradient(to bottom right, rgba(20, 83, 45, 0.55), rgba(6, 78, 59, 0.55))",
+            }}
+          />
+        </div>
+
+        {/* Content */}
+        <div className="container mx-auto px-6 relative z-10">
+          <h1 className="text-4xl md:text-5xl mb-4 drop-shadow-lg">
+            Tickets & Pricing
+          </h1>
+          <p className="text-xl text-green-100 max-w-2xl drop-shadow-md">
             Choose the perfect ticket option for your visit. From single-day
             passes to annual memberships, we have something for everyone!
           </p>
@@ -203,7 +225,7 @@ export function TicketsPage({ onNavigate, addToCart, cart = [] }) {
                       item.dayPass ? (
                         <Check className="h-5 w-5 text-green-600 mx-auto" />
                       ) : (
-                        <X className="h-5 w-5 text-gray-400 mx-auto" />
+                        <X className="h-5 w-5 text-red-600 mx-auto" />
                       )
                     ) : (
                       <span className="text-gray-700">{item.dayPass}</span>
