@@ -29,7 +29,7 @@ export function Navigation({
             onClick={() => onNavigate("home")}
             className="flex items-center space-x-2 hover:opacity-80 transition-opacity cursor-pointer"
           >
-            <ZooLogo size={40} />
+            <ZooLogo size={60} />
             <span className="text-xl font-semibold text-green-800">
               WildWood Zoo
             </span>
