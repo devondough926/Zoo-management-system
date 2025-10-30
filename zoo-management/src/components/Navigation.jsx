@@ -21,7 +21,7 @@ export function Navigation({
   const isActive = (page) => currentPage === page;
 
   return (
-    <nav className="bg-white/95 backdrop-blur-md border-b border-green-100 sticky top-0 z-50">
+    <nav className="bg-white/95 backdrop-blur-md border-b border-green-100 sticky top-0 z-[100] shadow-sm">
       <div className="container mx-auto px-6">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}

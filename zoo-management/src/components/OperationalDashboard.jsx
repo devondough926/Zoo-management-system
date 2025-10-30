@@ -1,45 +1,37 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Clock, MapPin } from "lucide-react";
 import { ScrollArea } from "./ui/scroll-area";
 import { activitiesAPI, formatTime } from "../services/customerAPI";
+import { useOptimizedFetch } from "../hooks/useOptimizedFetch";
 
 export function OperationalDashboard() {
-  const [todaysSchedule, setTodaysSchedule] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  // Optimized data fetching with caching
+  const {
+    data: scheduleData,
+    loading,
+    error: fetchError,
+  } = useOptimizedFetch(
+    "todaysSchedule",
+    () => activitiesAPI.getTodaysSchedule(),
+    { cacheTime: 5 * 60 * 1000 } // Cache for 5 minutes
+  );
 
-  useEffect(() => {
-    const fetchSchedule = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        setTodaysSchedule([]); // Clear any existing data
+  // Memoize formatted schedule to avoid recalculating on every render
+  const todaysSchedule = useMemo(() => {
+    if (!scheduleData) return [];
 
-        const schedule = await activitiesAPI.getTodaysSchedule();
+    return scheduleData.map((item) => ({
+      time: formatTime(item.time),
+      activity: item.Activity_Name,
+      location: item.location,
+      description: item.Activity_Description,
+    }));
+  }, [scheduleData]);
 
-        // Format the schedule data
-        const formattedSchedule = schedule.map((item) => ({
-          time: formatTime(item.time),
-          activity: item.Activity_Name,
-          location: item.location,
-          description: item.Activity_Description,
-        }));
-
-        setTodaysSchedule(formattedSchedule);
-      } catch (err) {
-        console.error("Error fetching schedule:", err);
-        setTodaysSchedule([]); // Ensure no data is shown on error
-        setError(
-          "Unable to connect to the server. Please ensure the backend is running."
-        );
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchSchedule();
-  }, []);
+  const error = fetchError
+    ? "Unable to connect to the server. Please ensure the backend is running."
+    : null;
 
   return (
     <section className="py-16 bg-gray-100">

@@ -1,12 +1,14 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
+import { Stethoscope, Salad, Trees } from "lucide-react";
 import { animalsAPI, enclosuresAPI } from "../services/customerAPI";
 import { getAnimalImage } from "../utils/imageMapping";
 import { useOptimizedFetch } from "../hooks/useOptimizedFetch";
 import { AnimalCard } from "../components/AnimalCard";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { useHeroImage } from "../utils/heroImages";
+import { preloadImages } from "../utils/imagePreloader";
 
 export function AnimalsPage() {
   const [selectedHabitat, setSelectedHabitat] = useState("All Animals");
@@ -63,6 +65,29 @@ export function AnimalsPage() {
       imageUrl: getAnimalImage(animal),
     }));
   }, [animals, selectedHabitat]);
+
+  // Preload animal images for better performance
+  useEffect(() => {
+    if (displayedAnimals.length > 0) {
+      const imageUrls = displayedAnimals
+        .map((animal) => animal.imageUrl)
+        .filter((url) => url);
+
+      if (imageUrls.length > 0) {
+        // Preload first 12 images with high priority (above fold + first scroll)
+        const priorityImages = imageUrls.slice(0, 12);
+        const laterImages = imageUrls.slice(12);
+
+        // Use high priority for visible images
+        preloadImages(priorityImages, "high");
+
+        // Preload remaining images very quickly with normal priority
+        if (laterImages.length > 0) {
+          setTimeout(() => preloadImages(laterImages, "low"), 100);
+        }
+      }
+    }
+  }, [displayedAnimals]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -171,21 +196,27 @@ export function AnimalsPage() {
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div className="bg-white p-6 rounded-lg">
-                    <div className="text-2xl text-green-600 mb-2">🩺</div>
+                    <div className="flex justify-center text-green-600 mb-2">
+                      <Stethoscope size={32} />
+                    </div>
                     <p className="font-medium">Expert Veterinary Care</p>
                     <p className="text-sm text-gray-600">
                       24/7 medical monitoring
                     </p>
                   </div>
                   <div className="bg-white p-6 rounded-lg">
-                    <div className="text-2xl text-green-600 mb-2">🥗</div>
+                    <div className="flex justify-center text-green-600 mb-2">
+                      <Salad size={32} />
+                    </div>
                     <p className="font-medium">Specialized Diets</p>
                     <p className="text-sm text-gray-600">
                       Nutrition tailored to each species
                     </p>
                   </div>
                   <div className="bg-white p-6 rounded-lg">
-                    <div className="text-2xl text-green-600 mb-2">🌳</div>
+                    <div className="flex justify-center text-green-600 mb-2">
+                      <Trees size={32} />
+                    </div>
                     <p className="font-medium">Enrichment Programs</p>
                     <p className="text-sm text-gray-600">
                       Daily activities and stimulation

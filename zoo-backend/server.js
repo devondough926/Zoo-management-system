@@ -88,20 +88,20 @@ const startServer = async () => {
     const dbConnected = await testConnection();
 
     if (!dbConnected) {
-      console.error("⚠️  Server starting without database connection");
+      console.error("[WARNING] Server starting without database connection");
     }
 
     // Check Azure configuration
     if (isAzureConfigured()) {
-      console.log("✅ Azure Blob Storage is configured");
+      console.log("[SUCCESS] Azure Blob Storage is configured");
     } else {
       console.error(
-        "⚠️  Azure Blob Storage is NOT configured - image uploads will fail"
+        "[WARNING] Azure Blob Storage is NOT configured - image uploads will fail"
       );
     }
 
     app.listen(PORT, () => {
-      console.log(`\n🚀 Server is running on port ${PORT}`);
+      console.log(`\n[SERVER] Running on port ${PORT}`);
       console.log(`Environment: ${process.env.NODE_ENV || "development"}`);
       console.log(`Health check: http://localhost:${PORT}/health`);
       console.log(
