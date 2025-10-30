@@ -11,6 +11,7 @@ import {
   RefreshCw,
   Wifi,
   WifiOff,
+  Check,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Crown } from "lucide-react";
@@ -373,11 +374,11 @@ export function CustomerDashboard({ user, onNavigate }) {
             Quick Actions
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <Card className="shadow-lg border-2 border-gray-100 bg-gradient-to-br from-white to-green-50/30">
+            <Card className="shadow-lg border-none bg-white">
               <CardContent className="pt-6 text-center">
                 <button
                   onClick={() => onNavigate && onNavigate("tickets")}
-                  className="w-20 h-20 bg-gradient-to-br from-green-100 to-green-200 rounded-2xl flex items-center justify-center mx-auto mb-4 hover:from-green-600 hover:to-green-700 hover:scale-110 transition-all duration-300 shadow-lg cursor-pointer group"
+                  className="w-20 h-20 bg-gradient-to-br from-green-100 to-green-200 rounded-2xl flex items-center justify-center mx-auto mb-4 hover:from-green-600 hover:to-green-700 hover:scale-110 transition-all duration-300 shadow-lg cursor-pointer group rounded-xl"
                 >
                   <Ticket className="h-10 w-10 text-green-600 group-hover:text-white transition-colors" />
                 </button>
@@ -390,11 +391,11 @@ export function CustomerDashboard({ user, onNavigate }) {
               </CardContent>
             </Card>
 
-            <Card className="shadow-lg border-2 border-gray-100 bg-gradient-to-br from-white to-emerald-50/30">
+            <Card className="shadow-lg border-none bg-white">
               <CardContent className="pt-6 text-center">
                 <button
                   onClick={() => onNavigate && onNavigate("shop")}
-                  className="w-20 h-20 bg-gradient-to-br from-green-100 to-green-200 rounded-2xl flex items-center justify-center mx-auto mb-4 hover:from-green-600 hover:to-green-700 hover:scale-110 transition-all duration-300 shadow-lg cursor-pointer group"
+                  className="w-20 h-20 bg-gradient-to-br from-green-100 to-green-200 rounded-2xl flex items-center justify-center mx-auto mb-4 hover:from-green-600 hover:to-green-700 hover:scale-110 transition-all duration-300 shadow-lg cursor-pointer group rounded-xl"
                 >
                   <ShoppingBag className="h-10 w-10 text-emerald-600 group-hover:text-white transition-colors" />
                 </button>
@@ -408,10 +409,10 @@ export function CustomerDashboard({ user, onNavigate }) {
             </Card>
 
             <Dialog open={orderHistoryOpen} onOpenChange={setOrderHistoryOpen}>
-              <Card className="shadow-lg border-2 border-gray-100 bg-gradient-to-br from-white to-blue-50/30">
+              <Card className="shadow-lg border-none bg-white">
                 <CardContent className="pt-6 text-center">
                   <DialogTrigger asChild>
-                    <button className="w-20 h-20 bg-gradient-to-br from-green-100 to-green-200 rounded-2xl flex items-center justify-center mx-auto mb-4 hover:from-green-600 hover:to-green-700 hover:scale-110 transition-all duration-300 shadow-lg cursor-pointer group">
+                    <button className="w-20 h-20 bg-gradient-to-br from-green-100 to-green-200 rounded-2xl flex items-center justify-center mx-auto mb-4 hover:from-green-600 hover:to-green-700 hover:scale-110 transition-all duration-300 shadow-lg cursor-pointer group rounded-xl">
                       <Receipt className="h-10 w-10 text-blue-600 group-hover:text-white transition-colors" />
                     </button>
                   </DialogTrigger>
@@ -490,14 +491,14 @@ export function CustomerDashboard({ user, onNavigate }) {
             Recent Purchases
           </h2>
           <div className="max-w-4xl">
-            <Card className="shadow-xl border-2 border-gray-100 bg-gradient-to-br from-white via-green-50/30 to-emerald-50/40">
+            <Card className="shadow-xl border-none bg-white">
               <CardContent className="p-6">
                 {recentPurchases.length > 0 ? (
                   <div className="space-y-4">
                     {recentPurchases.map((purchase) => (
                       <div
                         key={purchase.Purchase_ID}
-                        className="flex items-center justify-between p-5 rounded-xl bg-gradient-to-r from-gray-50 to-green-50 hover:from-green-50 hover:to-emerald-50 hover:shadow-lg transition-all duration-300 cursor-pointer border-2 border-transparent hover:border-green-300"
+                        className="flex items-center justify-between p-5 bg-white transition-all duration-200 cursor-pointer hover:rounded-xl hover:shadow-md hover:border hover:border-green-400"
                         onClick={() => setSelectedPurchase(purchase)}
                       >
                         <div className="flex-1">
@@ -555,8 +556,8 @@ export function CustomerDashboard({ user, onNavigate }) {
           <h2 className="text-3xl font-bold mb-8 text-gray-800">My Account</h2>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Profile Information Card */}
-            <Card className="shadow-xl border-2 border-gray-100 hover:shadow-2xl transition-shadow bg-gradient-to-br from-white via-green-50/30 to-emerald-50/40">
-              <CardHeader className="bg-gradient-to-r from-green-50 to-emerald-50 border-b-2 border-green-100">
+            <Card className="shadow-xl border border-gray-200 hover:shadow-2xl transition-shadow overflow-hidden">
+              <CardHeader className="bg-gradient-to-r from-green-50 to-emerald-50 border-b border-gray-200">
                 <CardTitle className="text-2xl text-gray-800">
                   Profile Information
                 </CardTitle>
@@ -693,8 +694,8 @@ export function CustomerDashboard({ user, onNavigate }) {
             </Card>
 
             {/* Account Statistics Card */}
-            <Card className="shadow-xl border-2 border-gray-100 hover:shadow-2xl transition-shadow bg-gradient-to-br from-white via-purple-50/30 to-pink-50/40">
-              <CardHeader className="bg-gradient-to-r from-purple-50 to-pink-50 border-b-2 border-purple-100">
+            <Card className="shadow-xl border border-gray-200 hover:shadow-2xl transition-shadow overflow-hidden">
+              <CardHeader className="bg-gradient-to-r from-purple-50 to-pink-50 border-b border-gray-200">
                 <CardTitle className="text-2xl text-gray-800">
                   Account Details
                 </CardTitle>
@@ -750,8 +751,8 @@ export function CustomerDashboard({ user, onNavigate }) {
                           <p className="text-gray-600 font-medium">
                             Discount Benefits
                           </p>
-                          <p className="font-semibold text-green-600">
-                            Applied ✓
+                          <p className="font-semibold text-green-600 flex items-center gap-1">
+                            Applied <Check size={16} />
                           </p>
                         </div>
                       </div>
@@ -779,7 +780,7 @@ export function CustomerDashboard({ user, onNavigate }) {
 
                   {/* Purchase Statistics */}
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="p-4 bg-white rounded-lg border border-green-200 border-l-4 border-l-green-500">
+                    <div className="p-4 bg-white rounded-lg">
                       <p className="text-sm text-gray-600 mb-1 font-medium">
                         Total Purchases
                       </p>
@@ -787,7 +788,7 @@ export function CustomerDashboard({ user, onNavigate }) {
                         {customerPurchases.length}
                       </p>
                     </div>
-                    <div className="p-4 bg-white rounded-lg border border-blue-200 border-l-4 border-l-blue-500">
+                    <div className="p-4 bg-white rounded-lg">
                       <p className="text-sm text-gray-600 mb-1 font-medium">
                         Total Spent
                       </p>
@@ -807,8 +808,8 @@ export function CustomerDashboard({ user, onNavigate }) {
             </Card>
 
             {/* Password & Security Card */}
-            <Card className="shadow-xl border-2 border-gray-100 hover:shadow-2xl transition-shadow bg-gradient-to-br from-white via-blue-50/30 to-cyan-50/40">
-              <CardHeader className="bg-gradient-to-r from-blue-50 to-cyan-50 border-b-2 border-blue-100">
+            <Card className="shadow-xl border border-gray-200 hover:shadow-2xl transition-shadow overflow-hidden">
+              <CardHeader className="bg-gradient-to-r from-blue-50 to-cyan-50 border-b border-gray-200">
                 <CardTitle className="text-2xl text-gray-800">
                   Password & Security
                 </CardTitle>

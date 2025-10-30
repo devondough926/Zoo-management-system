@@ -55,7 +55,20 @@ const PAGE_TITLES = {
 };
 
 export default function App() {
-  const [currentPage, setCurrentPage] = useState("home");
+  // Initialize currentPage from localStorage or default to "home"
+  const [currentPage, setCurrentPage] = useState(() => {
+    const savedPage = localStorage.getItem("currentPage");
+    // If no user is logged in and the saved page is a protected portal, redirect to home
+    if (
+      !currentUser &&
+      (savedPage === "admin-portal" ||
+        savedPage === "staff-portal" ||
+        savedPage === "customer-dashboard")
+    ) {
+      return "home";
+    }
+    return savedPage || "home";
+  });
   const [user, setUser] = useState(currentUser);
   const [userType, setUserType] = useState(currentUserType);
   const [pageKey, setPageKey] = useState(0);
@@ -63,11 +76,30 @@ export default function App() {
   // Cart state
   const [cart, setCart] = useState([]);
 
+  // Save currentPage to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem("currentPage", currentPage);
+  }, [currentPage]);
+
   // Update document title when page changes
   useEffect(() => {
     const pageTitle = PAGE_TITLES[currentPage] || currentPage;
     document.title = `${pageTitle} | WildWood Zoo`;
   }, [currentPage]);
+
+  // Validate current page when user state changes
+  useEffect(() => {
+    // If no user is logged in and we're on a protected page, redirect to home
+    if (
+      !user &&
+      (currentPage === "admin-portal" ||
+        currentPage === "staff-portal" ||
+        currentPage === "customer-dashboard" ||
+        currentPage === "order-history")
+    ) {
+      setCurrentPage("home");
+    }
+  }, [user, currentPage]);
 
   const handleLogin = (loggedInUser, type) => {
     setCurrentUser(loggedInUser, type);
