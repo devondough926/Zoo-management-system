@@ -12,7 +12,6 @@ import { clearAllCache } from "../hooks/useOptimizedFetch";
  */
 export function invalidateAllCaches() {
   clearAllCache();
-  console.log("✅ All caches cleared");
 }
 
 /**
@@ -21,7 +20,6 @@ export function invalidateAllCaches() {
 export function invalidateCache(key) {
   try {
     localStorage.removeItem(`cache_${key}`);
-    console.log(`✅ Cache cleared: ${key}`);
   } catch (err) {
     console.warn(`Failed to clear cache: ${key}`, err);
   }

@@ -73,12 +73,18 @@ import {
   Plus,
   PawPrint,
   X,
+  BarChart3,
+  TrendingUp,
+  CreditCard,
+  Map,
+  Building2,
 } from "lucide-react";
 import { useData } from "../data/DataContext";
 import { toast } from "sonner";
 import { ZooLogo } from "../components/ZooLogo";
 import { EditExhibitDialog } from "../components/ExhibitDialogs";
 import { usePricing } from "../data/PricingContext";
+import { clearSpecificCache } from "../hooks/useOptimizedFetch";
 import {
   employeeAPI,
   locationAPI,
@@ -700,6 +706,9 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
       const exhibitsData = await exhibitAPI.getAll();
       setAllExhibitsDB(exhibitsData);
 
+      // Clear exhibits and activities cache (activities are tied to exhibits)
+      clearSpecificCache("exhibits", "activities", "todaysSchedule");
+
       setEditingExhibit(null);
       toast.success(`Successfully updated exhibit: ${formData.name}!`);
     } catch (error) {
@@ -719,6 +728,9 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
       // Reload exhibits to get fresh data
       const exhibitsData = await exhibitAPI.getAll();
       setAllExhibitsDB(exhibitsData);
+
+      // Clear exhibits and activities cache (activities are tied to exhibits)
+      clearSpecificCache("exhibits", "activities", "todaysSchedule");
 
       toast.success("Image removed successfully!");
     } catch (error) {
@@ -800,6 +812,9 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
           (e) => e.Enclosure_ID === newAnimal.Enclosure_ID
         ),
       });
+
+      // Clear only animals and enclosures cache
+      clearSpecificCache("animals", "enclosures");
 
       setIsAddAnimalOpen(false);
       toast.success(
@@ -894,6 +909,9 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
       const animalsData = await animalAPI.getAll();
       setAllAnimalsDB(animalsData);
 
+      // Clear only animals and enclosures cache
+      clearSpecificCache("animals", "enclosures");
+
       setEditingAnimal(null);
       toast.success(
         `Successfully updated ${formData.name || editingAnimal.Animal_Name}!`
@@ -916,6 +934,9 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
       const animalsData = await animalAPI.getAll();
       setAllAnimalsDB(animalsData);
 
+      // Clear only animals and enclosures cache
+      clearSpecificCache("animals", "enclosures");
+
       toast.success("Image removed successfully!");
     } catch (error) {
       console.error("Error removing animal image:", error);
@@ -937,6 +958,9 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
 
       // Also delete from context
       deleteAnimal(animal.Animal_ID);
+
+      // Clear only animals and enclosures cache
+      clearSpecificCache("animals", "enclosures");
 
       setDeleteConfirmAnimal(null);
       toast.success(`Successfully removed ${animal.Animal_Name} from the zoo.`);
@@ -1054,7 +1078,9 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
         {/* Revenue Range Filter */}
         <section>
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl">📊 Overview Statistics</h2>
+            <h2 className="text-2xl flex items-center gap-2">
+              <BarChart3 className="h-6 w-6" /> Overview Statistics
+            </h2>
             <div className="flex items-center space-x-3">
               <span className="text-sm text-gray-600 italic">
                 Last Updated: {formatLastUpdated()}
@@ -1149,7 +1175,9 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
 
         {/* Revenue Breakdown */}
         <section id="revenue">
-          <h2 className="text-2xl mb-6">💰 Revenue Breakdown</h2>
+          <h2 className="text-2xl mb-6 flex items-center gap-2">
+            <DollarSign className="h-6 w-6" /> Revenue Breakdown
+          </h2>
           <Card>
             <CardContent className="pt-6">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1188,7 +1216,9 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
 
         {/* Ticket Sales */}
         <section id="tickets">
-          <h2 className="text-2xl mb-6">🎫 Ticket Sales</h2>
+          <h2 className="text-2xl mb-6 flex items-center gap-2">
+            <Ticket className="h-6 w-6" /> Ticket Sales
+          </h2>
           <Card>
             <CardContent className="pt-6">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -1211,13 +1241,15 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
         {/* Pricing Management */}
         <section id="pricing">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl">💳 Pricing Management</h2>
+            <h2 className="text-2xl flex items-center gap-2">
+              <CreditCard className="h-6 w-6" /> Pricing Management
+            </h2>
             <Button
               className="bg-purple-600 hover:bg-purple-700 cursor-pointer"
               onClick={() => handlePricingDialogOpen(true)}
             >
               <Edit className="h-4 w-4 mr-2" />
-              Edit Prices
+              Manage Prices
             </Button>
           </div>
 
@@ -1364,7 +1396,9 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
 
         {/* Revenue Analytics Charts */}
         <section id="analytics">
-          <h2 className="text-2xl mb-6">📈 Analytics</h2>
+          <h2 className="text-2xl mb-6 flex items-center gap-2">
+            <TrendingUp className="h-6 w-6" /> Analytics
+          </h2>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Bar Chart - Ticket Stats */}
             <Card>
@@ -1431,7 +1465,9 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
         {/* Zone Overview */}
         <section>
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl">🗺️ Zone Overview</h2>
+            <h2 className="text-2xl flex items-center gap-2">
+              <Map className="h-6 w-6" /> Zone Overview
+            </h2>
           </div>
           <Card>
             <CardContent className="pt-6">
@@ -1553,7 +1589,9 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
         {/* Salary Management */}
         <section id="salary">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl">💵 Salary Management</h2>
+            <h2 className="text-2xl flex items-center gap-2">
+              <DollarSign className="h-6 w-6" /> Salary Management
+            </h2>
             <Button
               className="bg-blue-600 hover:bg-blue-700 cursor-pointer"
               onClick={() => handleSalaryDialogOpen(true)}
@@ -1657,7 +1695,9 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
         {/* Employee Management */}
         <section id="employees">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl">👥 Staff Management</h2>
+            <h2 className="text-2xl flex items-center gap-2">
+              <Users className="h-6 w-6" /> Staff Management
+            </h2>
             <AddEmployeeDialog
               isOpen={isAddEmployeeOpen}
               onOpenChange={setIsAddEmployeeOpen}
@@ -1755,7 +1795,9 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
         {/* Exhibit Management */}
         <section id="exhibits">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl">🏛️ Exhibit Management</h2>
+            <h2 className="text-2xl flex items-center gap-2">
+              <Building2 className="h-6 w-6" /> Exhibit Management
+            </h2>
           </div>
           <Card>
             <CardContent className="pt-6">
@@ -1814,7 +1856,17 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
         {/* Animal Management */}
         <section id="animals">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl">🐾 Animal Management</h2>
+            <div>
+              <h2 className="text-2xl flex items-center gap-2">
+                <PawPrint className="h-6 w-6" /> Animal Management
+              </h2>
+              <p className="text-sm text-gray-600 mt-1">
+                Total animals:{" "}
+                <span className="font-semibold text-green-700">
+                  {totalAnimals}
+                </span>
+              </p>
+            </div>
             <AddAnimalDialog
               isOpen={isAddAnimalOpen}
               onOpenChange={setIsAddAnimalOpen}
@@ -2158,7 +2210,7 @@ function AddEmployeeDialog({
       <DialogTrigger asChild>
         <Button className="bg-green-600 hover:bg-green-700 cursor-pointer">
           <UserPlus className="h-4 w-4 mr-2" />
-          Add Employee
+          Employee
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-2xl max-h-[90vh]">
@@ -2718,7 +2770,7 @@ function AddAnimalDialog({
       <DialogTrigger asChild>
         <Button className="bg-teal-600 hover:bg-teal-700 cursor-pointer">
           <Plus className="h-4 w-4 mr-2" />
-          Add Animal
+          Animal
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-2xl">

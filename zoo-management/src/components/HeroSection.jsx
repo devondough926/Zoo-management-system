@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ImageWithFallback } from "./figma/ImageWithFallback";
+import { preloadImages } from "../utils/imagePreloader";
 
 // Dynamically import all background images from the backgrounds folder
 const backgroundImages = Object.entries(
@@ -24,29 +26,27 @@ export function HeroSection() {
     backgroundImages[0], // Clone of first image
   ];
 
-  const handleNext = () => {
-    console.log(
-      "Next button clicked, current index:",
-      currentImageIndex,
-      "transitioning:",
-      isTransitioning
-    );
-    if (!isTransitioning) return;
+  // Preload background images on mount
+  useEffect(() => {
+    const imageUrls = backgroundImages.map((img) => img.src).filter(Boolean);
+    if (imageUrls.length > 0) {
+      // Preload first 3 images immediately, rest after a delay
+      preloadImages(imageUrls.slice(0, 3));
+      setTimeout(() => {
+        preloadImages(imageUrls.slice(3));
+      }, 1000);
+    }
+  }, []);
 
+  const handleNext = () => {
+    if (!isTransitioning) return;
     setIsTransitioning(true);
     setCurrentImageIndex((prev) => prev + 1);
     setLastInteraction(Date.now());
   };
 
   const handlePrevious = () => {
-    console.log(
-      "Previous button clicked, current index:",
-      currentImageIndex,
-      "transitioning:",
-      isTransitioning
-    );
     if (!isTransitioning) return;
-
     setIsTransitioning(true);
     setCurrentImageIndex((prev) => prev - 1);
     setLastInteraction(Date.now());
@@ -70,13 +70,6 @@ export function HeroSection() {
       }, 750);
     }
   }, [currentImageIndex]);
-
-  console.log("HeroSection render - currentImageIndex:", currentImageIndex);
-  console.log("Total images loaded:", backgroundImages.length);
-  console.log(
-    "Image paths:",
-    backgroundImages.map((img, i) => `${i}: ${img.path}`)
-  );
 
   // Auto-advance carousel every 5 seconds (resets when buttons are clicked)
   useEffect(() => {
@@ -109,16 +102,11 @@ export function HeroSection() {
               className="w-full h-full flex-shrink-0"
               style={{ minWidth: "100%" }}
             >
-              <img
+              <ImageWithFallback
                 src={image.src}
                 alt={image.alt}
                 className="w-full h-full object-cover"
-                onLoad={() =>
-                  console.log(`✓ Image ${index} loaded successfully`)
-                }
-                onError={(e) =>
-                  console.error(`✗ Image ${index} failed to load:`, e)
-                }
+                priority={index <= 2} // High priority for first 3 images
               />
             </div>
           ))}
