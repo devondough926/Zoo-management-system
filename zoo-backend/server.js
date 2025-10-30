@@ -9,6 +9,10 @@ import { testConnection } from "./config/database.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import customerRoutes from "./routes/customerRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
+import foodRoutes from "./routes/foodRoutes.js";
+import giftRoutes from "./routes/giftRoutes.js";
+import vetRoutes from "./routes/vetRoutes.js";
+import zookeeperRoutes from "./routes/zookeeperRoutes.js";
 import { isAzureConfigured } from "./middleware/azureUpload.js";
 
 dotenv.config();
@@ -22,18 +26,16 @@ const PORT = process.env.PORT || 5000;
 // Middleware
 app.use(
   helmet({
-    crossOriginResourcePolicy: { policy: "cross-origin" }, // Allow cross-origin images
+    crossOriginResourcePolicy: { policy: "cross-origin" },
   })
 );
 app.use(
   cors({
     origin: function (origin, callback) {
-      // Allow all localhost ports in development
       if (!origin || /^http:\/\/localhost:\d+$/.test(origin)) {
         return callback(null, true);
       }
 
-      // Check against whitelist
       const allowedOrigins = [process.env.CLIENT_URL];
       if (allowedOrigins.includes(origin)) {
         return callback(null, true);
@@ -49,9 +51,6 @@ app.use(morgan("dev"));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Note: Image uploads are stored in Azure Blob Storage, not locally
-// Images are served directly from Azure CDN URLs stored in the database
-
 // Health check
 app.get("/health", (req, res) => {
   res.status(200).json({
@@ -61,10 +60,14 @@ app.get("/health", (req, res) => {
   });
 });
 
-// Add all routes here
+// ✅ Mount all routes here
 app.use("/api/admin", adminRoutes);
 app.use("/api/customer", customerRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/food", foodRoutes);
+app.use("/api/gifts", giftRoutes);
+app.use("/api/vets", vetRoutes);
+app.use("/api/zookeepers", zookeeperRoutes);
 
 // 404 handler
 app.use((req, res) => {
@@ -88,15 +91,14 @@ const startServer = async () => {
     const dbConnected = await testConnection();
 
     if (!dbConnected) {
-      console.error("⚠️  Server starting without database connection");
+      console.error("⚠️ Server starting without database connection");
     }
 
-    // Check Azure configuration
     if (isAzureConfigured()) {
       console.log("✅ Azure Blob Storage is configured");
     } else {
       console.error(
-        "⚠️  Azure Blob Storage is NOT configured - image uploads will fail"
+        "⚠️ Azure Blob Storage is NOT configured - image uploads will fail"
       );
     }
 

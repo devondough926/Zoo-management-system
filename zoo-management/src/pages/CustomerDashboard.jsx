@@ -72,6 +72,7 @@ export function CustomerDashboard({ user, onNavigate }) {
 
   // Backend connection state
   const [isBackendConnected, setIsBackendConnected] = useState(null);
+  const USE_MOCK = import.meta.env.VITE_USE_MOCK === "true";
   const [isLoading, setIsLoading] = useState(false);
 
   // Check backend connection on mount
@@ -184,7 +185,14 @@ export function CustomerDashboard({ user, onNavigate }) {
 
         toast.success("Password changed successfully!");
       } catch (error) {
-        // Fallback: Validate and update locally if backend fails
+        // Fallback: only allow local update in dev/mock mode
+        if (!USE_MOCK) {
+          toast.error(error.message || "Failed to change password");
+          setIsLoading(false);
+          return;
+        }
+
+        // Validate against mock-stored plaintext password when in mock mode
         if (
           user.Customer_Password &&
           user.Customer_Password !== passwordData.currentPassword
@@ -194,12 +202,12 @@ export function CustomerDashboard({ user, onNavigate }) {
           return;
         }
 
-        // Update locally
+        // Update locally (mock)
         if (user.Customer_Password) {
           user.Customer_Password = passwordData.newPassword;
         }
 
-        toast.success("Password changed successfully!");
+        toast.success("Password changed successfully! (mock)");
       }
 
       setPasswordData({

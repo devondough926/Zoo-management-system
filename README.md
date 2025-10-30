@@ -148,3 +148,27 @@ To build the project:
 g++ -std=c++17 src/*.cpp -o zoo
 ./zoo
 ```
+
+## ☁️ Azure Blob Storage & Dev Mock configuration
+
+This project supports image uploads to Azure Blob Storage for production. During development you can enable local/mock behavior with an environment flag.
+
+Required Azure environment variables (backend):
+
+- AZURE_STORAGE_CONNECTION_STRING - connection string for the Azure Storage account
+- AZURE_STORAGE_CONTAINER_NAME - name of the container where images are stored
+
+If the Azure variables are not set, image upload API endpoints will return an error. For local development you can either set up a local storage emulator or provide the Azure variables.
+
+Frontend dev mock flag (Vite):
+
+- VITE_USE_MOCK=true - when set, the frontend will fall back to local mock data for login/profile/password flows and staff demo pages. This MUST NOT be enabled in production.
+
+How to set Vite dev flags (example):
+
+```powershell
+# Windows PowerShell - create a .env.local at the frontend root (zoo-management)
+Set-Content -Path .\zoo-management\.env.local -Value 'VITE_USE_MOCK=true'
+```
+
+Security note: Password handling was upgraded to use bcrypt hashing on the backend. Existing plaintext passwords in a live database are supported during login once (the first successful plaintext login will re-hash the password into a bcrypt hash). This is a one-time migration convenience; ensure users reset passwords or enforce a password reset flow as needed.

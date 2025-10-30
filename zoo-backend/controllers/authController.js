@@ -1,4 +1,7 @@
 import db from "../config/database.js";
+import bcrypt from "bcryptjs";
+
+const SALT_ROUNDS = 10;
 
 // ============================================
 // CUSTOMER AUTHENTICATION
@@ -26,11 +29,14 @@ export const registerCustomer = async (req, res) => {
       return res.status(409).json({ error: "Email already registered" });
     }
 
-    // Insert new customer
+    // Hash password before storing
+    const hashed = await bcrypt.hash(password, SALT_ROUNDS);
+
+    // Insert new customer (store hashed password)
     const [result] = await db.query(
       `INSERT INTO Customer (First_Name, Last_Name, Email, Customer_Password, Phone)
        VALUES (?, ?, ?, ?, ?)`,
-      [firstName, lastName, email, password, phone || null]
+      [firstName, lastName, email, hashed, phone || null]
     );
 
     // Fetch the newly created customer
@@ -78,8 +84,33 @@ export const loginCustomer = async (req, res) => {
 
     const customer = customers[0];
 
-    // Check password (in production, this should use bcrypt)
-    if (customer.Customer_Password !== password) {
+    // Check password using bcrypt. For migrating databases that may have
+    // plaintext passwords, accept plaintext match and re-hash it to the DB.
+    const stored = customer.Customer_Password;
+    let passwordMatches = false;
+
+    try {
+      passwordMatches = await bcrypt.compare(password, stored);
+    } catch (err) {
+      // bcrypt.compare might throw if stored is not a valid hash
+      passwordMatches = false;
+    }
+
+    // Fallback: if stored password matches plaintext (migration case), accept and re-hash
+    if (!passwordMatches && stored === password) {
+      passwordMatches = true;
+      try {
+        const newHash = await bcrypt.hash(password, SALT_ROUNDS);
+        await db.query("UPDATE Customer SET Customer_Password = ? WHERE Customer_ID = ?", [
+          newHash,
+          customer.Customer_ID,
+        ]);
+      } catch (err) {
+        console.error("Failed to re-hash migrated plaintext password:", err);
+      }
+    }
+
+    if (!passwordMatches) {
       return res.status(401).json({ error: "Invalid email or password" });
     }
 
@@ -198,15 +229,31 @@ export const changeCustomerPassword = async (req, res) => {
       return res.status(404).json({ error: "Customer not found" });
     }
 
-    // Verify current password
-    if (customers[0].Customer_Password !== currentPassword) {
+
+    const stored = customers[0].Customer_Password;
+
+    // Verify current password using bcrypt, but allow plaintext match for migration
+    let currentMatches = false;
+    try {
+      currentMatches = await bcrypt.compare(currentPassword, stored);
+    } catch (err) {
+      currentMatches = false;
+    }
+
+    if (!currentMatches && stored === currentPassword) {
+      // Accept plaintext match (migration case)
+      currentMatches = true;
+    }
+
+    if (!currentMatches) {
       return res.status(401).json({ error: "Current password is incorrect" });
     }
 
-    // Update password
+    // Hash new password and update
+    const newHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
     await db.query(
       "UPDATE Customer SET Customer_Password = ? WHERE Customer_ID = ?",
-      [newPassword, customerId]
+      [newHash, customerId]
     );
 
     res.json({ message: "Password changed successfully" });
