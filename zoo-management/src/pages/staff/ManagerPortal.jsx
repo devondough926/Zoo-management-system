@@ -42,45 +42,6 @@ const zoneAssets = [
 ];
 
 export function ManagerPortal({ user, onLogout }) {
-  const USE_MOCK = import.meta.env.VITE_USE_MOCK === "true";
-  if (!USE_MOCK) {
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <header className="bg-white border-b sticky top-0 z-50">
-          <div className="container mx-auto px-6 py-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-4">
-                <ZooLogo size={40} />
-                <div>
-                  <h1 className="font-semibold text-xl">Staff Portal</h1>
-                  <p className="text-sm text-gray-600">Manager Dashboard (Demo disabled)</p>
-                </div>
-              </div>
-              <div className="flex items-center space-x-4">
-                <Button variant="outline" onClick={onLogout} className="border-green-600 text-green-600">
-                  Logout
-                </Button>
-              </div>
-            </div>
-          </div>
-        </header>
-
-        <div className="container mx-auto px-6 py-12">
-          <div className="max-w-2xl mx-auto">
-            <Card>
-              <CardContent>
-                <h2 className="text-lg font-semibold mb-2">Demo data disabled</h2>
-                <p className="text-sm text-gray-600">
-                  This staff portal uses mock/demo data for local development. To enable the demo UI set <code>VITE_USE_MOCK=true</code> in your frontend environment (.env.local) and restart the dev server.
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   const myLocation = locations[0]; // In real app, would be based on employee location
   const myZone = `Zone ${myLocation.Zone}`;
   const employeeCount = zoneEmployees.length;

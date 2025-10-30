@@ -22,7 +22,6 @@ export function LoginPage({ onLogin, onBack }) {
   const [loginType, setLoginType] = useState("customer"); // 'employee' or 'customer'
   const [showSignup, setShowSignup] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const USE_MOCK = import.meta.env.VITE_USE_MOCK === "true";
 
   // Signup form state
   const [signupData, setSignupData] = useState({
@@ -59,15 +58,11 @@ export function LoginPage({ onLogin, onBack }) {
           onLogin(response.customer, "customer");
           toast.success("Logged in successfully!");
         } catch (error) {
-          // Only fall back to mock data when explicitly enabled via VITE_USE_MOCK
-          if (USE_MOCK) {
-            const customer = customers.find((cust) => cust.Email === email);
-            if (customer && customer.Customer_Password === password) {
-              onLogin(customer, "customer");
-              toast.success("Logged in successfully (mock)");
-            } else {
-              toast.error(error.message || "Invalid email or password");
-            }
+          // If backend fails, fall back to mock data
+          const customer = customers.find((cust) => cust.Email === email);
+          if (customer && customer.Customer_Password === password) {
+            onLogin(customer, "customer");
+            toast.success("Logged in successfully");
           } else {
             toast.error(error.message || "Invalid email or password");
           }
