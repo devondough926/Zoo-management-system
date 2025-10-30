@@ -3,8 +3,6 @@ import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 import dotenv from "dotenv";
-import path from "path";
-import { fileURLToPath } from "url";
 import { testConnection } from "./config/database.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import customerRoutes from "./routes/customerRoutes.js";
@@ -12,9 +10,6 @@ import authRoutes from "./routes/authRoutes.js";
 import { isAzureConfigured } from "./middleware/azureUpload.js";
 
 dotenv.config();
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -28,18 +23,23 @@ app.use(
 app.use(
   cors({
     origin: function (origin, callback) {
+      // console.log("CORS check - Origin:", origin);
+      // console.log("CORS check - Allowed CLIENT_URL:", process.env.CLIENT_URL);
+
       // Allow all localhost ports in development
       if (!origin || /^http:\/\/localhost:\d+$/.test(origin)) {
         return callback(null, true);
       }
 
       // Check against whitelist
-      const allowedOrigins = [process.env.CLIENT_URL];
+      const allowedOrigins = [process.env.CLIENT_URL].filter(Boolean);
       if (allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
 
-      callback(new Error("Not allowed by CORS"));
+      // Log rejection but don't throw error - return false instead
+      console.error("CORS rejected origin:", origin);
+      callback(null, false);
     },
     credentials: true,
   })
@@ -88,20 +88,20 @@ const startServer = async () => {
     const dbConnected = await testConnection();
 
     if (!dbConnected) {
-      console.error("⚠️  Server starting without database connection");
+      console.error("[WARNING] Server starting without database connection");
     }
 
     // Check Azure configuration
     if (isAzureConfigured()) {
-      console.log("✅ Azure Blob Storage is configured");
+      console.log("[SUCCESS] Azure Blob Storage is configured");
     } else {
       console.error(
-        "⚠️  Azure Blob Storage is NOT configured - image uploads will fail"
+        "[WARNING] Azure Blob Storage is NOT configured - image uploads will fail"
       );
     }
 
     app.listen(PORT, () => {
-      console.log(`\n🚀 Server is running on port ${PORT}`);
+      console.log(`\n[SERVER] Running on port ${PORT}`);
       console.log(`Environment: ${process.env.NODE_ENV || "development"}`);
       console.log(`Health check: http://localhost:${PORT}/health`);
       console.log(

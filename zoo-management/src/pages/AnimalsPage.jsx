@@ -1,92 +1,120 @@
-import { useState, useEffect } from "react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "../components/ui/card";
+import { useState, useMemo, useEffect } from "react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import { Heart } from "lucide-react";
+import { Stethoscope, Salad, Trees } from "lucide-react";
 import { animalsAPI, enclosuresAPI } from "../services/customerAPI";
-import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { getAnimalImage } from "../utils/imageMapping";
+import { useOptimizedFetch } from "../hooks/useOptimizedFetch";
+import { AnimalCard } from "../components/AnimalCard";
+import { ImageWithFallback } from "../components/figma/ImageWithFallback";
+import { useHeroImage } from "../utils/heroImages";
+import { preloadImages } from "../utils/imagePreloader";
 
 export function AnimalsPage() {
-  const [animals, setAnimals] = useState([]);
-  const [enclosures, setEnclosures] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [selectedHabitat, setSelectedHabitat] = useState("All Animals");
+  const heroImage = useHeroImage("animals");
 
+  // Optimized data fetching with caching
+  const {
+    data: animalsData,
+    loading: animalsLoading,
+    error: animalsError,
+  } = useOptimizedFetch(
+    "animals",
+    () => animalsAPI.getAll(),
+    { cacheTime: 5 * 60 * 1000 } // Cache for 5 minutes
+  );
+
+  const {
+    data: enclosuresData,
+    loading: enclosuresLoading,
+    error: enclosuresError,
+  } = useOptimizedFetch("enclosures", () => enclosuresAPI.getAll(), {
+    cacheTime: 5 * 60 * 1000,
+  });
+
+  // Ensure we always have arrays (handle null/undefined from cache)
+  const animals = animalsData || [];
+  const enclosures = enclosuresData || [];
+
+  const loading = animalsLoading || enclosuresLoading;
+  const error = animalsError || enclosuresError;
+
+  // Memoize habitats list - only recalculate when enclosures change
+  const habitats = useMemo(() => {
+    return ["All Animals", ...enclosures.map((enc) => enc.Enclosure_Name)];
+  }, [enclosures]);
+
+  // Memoize displayed animals - only recalculate when animals, selectedHabitat changes
+  const displayedAnimals = useMemo(() => {
+    const filteredAnimals =
+      selectedHabitat === "All Animals"
+        ? animals
+        : animals.filter((animal) => animal.Enclosure_Name === selectedHabitat);
+
+    return filteredAnimals.map((animal) => ({
+      name: animal.Animal_Name,
+      species: animal.Species,
+      gender:
+        animal.Gender === "M"
+          ? "Male"
+          : animal.Gender === "F"
+          ? "Female"
+          : "Unknown",
+      habitat: animal.Enclosure_Name || "Unknown",
+      imageUrl: getAnimalImage(animal),
+    }));
+  }, [animals, selectedHabitat]);
+
+  // Preload animal images for better performance
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        setError(null);
+    if (displayedAnimals.length > 0) {
+      const imageUrls = displayedAnimals
+        .map((animal) => animal.imageUrl)
+        .filter((url) => url);
 
-        const [animalsData, enclosuresData] = await Promise.all([
-          animalsAPI.getAll(),
-          enclosuresAPI.getAll(),
-        ]);
+      if (imageUrls.length > 0) {
+        // Preload first 12 images with high priority (above fold + first scroll)
+        const priorityImages = imageUrls.slice(0, 12);
+        const laterImages = imageUrls.slice(12);
 
-        setAnimals(animalsData);
-        setEnclosures(enclosuresData);
-      } catch (err) {
-        console.error("Error fetching data:", err);
-        setError(
-          "Unable to connect to the server. Please ensure the backend is running."
-        );
-      } finally {
-        setLoading(false);
+        // Use high priority for visible images
+        preloadImages(priorityImages, "high");
+
+        // Preload remaining images very quickly with normal priority
+        if (laterImages.length > 0) {
+          setTimeout(() => preloadImages(laterImages, "low"), 100);
+        }
       }
-    };
-
-    fetchData();
-  }, []);
-
-  const habitats = [
-    "All Animals",
-    ...enclosures.map((enc) => enc.Enclosure_Name),
-  ];
-
-  // Get animals with their habitat information
-  const displayedAnimals =
-    selectedHabitat === "All Animals"
-      ? animals.map((animal) => ({
-          name: animal.Animal_Name,
-          species: animal.Species,
-          gender:
-            animal.Gender === "M"
-              ? "Male"
-              : animal.Gender === "F"
-              ? "Female"
-              : "Unknown",
-          habitat: animal.Enclosure_Name || "Unknown",
-          imageUrl: getAnimalImage(animal),
-        }))
-      : animals
-          .filter((animal) => animal.Enclosure_Name === selectedHabitat)
-          .map((animal) => ({
-            name: animal.Animal_Name,
-            species: animal.Species,
-            gender:
-              animal.Gender === "M"
-                ? "Male"
-                : animal.Gender === "F"
-                ? "Female"
-                : "Unknown",
-            habitat: animal.Enclosure_Name || "Unknown",
-            imageUrl: getAnimalImage(animal),
-          }));
+    }
+  }, [displayedAnimals]);
 
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Hero Section */}
-      <section className="bg-gradient-to-br from-green-600 to-emerald-700 text-white py-16">
-        <div className="container mx-auto px-6">
-          <h1 className="text-4xl md:text-5xl mb-4">Our Animals</h1>
-          <p className="text-xl text-green-100 max-w-2xl">
+      <section className="relative bg-gradient-to-br from-green-600 to-emerald-700 text-white py-16 overflow-hidden">
+        {/* Background Image */}
+        <div className="absolute inset-0 z-0">
+          <ImageWithFallback
+            src={heroImage}
+            alt="Zoo Animals"
+            className="w-full h-full object-cover"
+          />
+          <div
+            className="absolute inset-0"
+            style={{
+              background:
+                "linear-gradient(to bottom right, rgba(20, 83, 45, 0.55), rgba(6, 78, 59, 0.55))",
+            }}
+          />
+        </div>
+
+        {/* Content */}
+        <div className="container mx-auto px-6 relative z-10">
+          <h1 className="text-4xl md:text-5xl mb-4 drop-shadow-lg">
+            Our Animals
+          </h1>
+          <p className="text-xl text-green-100 max-w-2xl drop-shadow-md">
             Meet the amazing residents of WildWood Zoo! We care for{" "}
             {animals.length} animals across {enclosures.length} unique habitats.
           </p>
@@ -149,48 +177,7 @@ export function AnimalsPage() {
               </h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {displayedAnimals.map((animal, index) => (
-                  <Card
-                    key={`${animal.name}-${index}`}
-                    className="hover:shadow-lg transition-shadow"
-                  >
-                    <div className="aspect-square w-full overflow-hidden bg-gradient-to-br from-green-50 to-emerald-100 flex items-center justify-center">
-                      {animal.imageUrl ? (
-                        <ImageWithFallback
-                          src={animal.imageUrl}
-                          alt={animal.name}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <Heart className="h-24 w-24 text-green-300" />
-                      )}
-                    </div>
-                    <CardHeader>
-                      <div className="flex items-start justify-between mb-2">
-                        <CardTitle className="text-lg">{animal.name}</CardTitle>
-                        <Badge
-                          variant="outline"
-                          className={`${
-                            animal.gender === "Male"
-                              ? "bg-teal-100 text-teal-800 border-teal-300"
-                              : animal.gender === "Female"
-                              ? "bg-teal-100 text-teal-800 border-teal-300"
-                              : "bg-gray-100 text-gray-800 border-gray-300"
-                          }`}
-                        >
-                          {animal.gender}
-                        </Badge>
-                      </div>
-                      <p className="text-gray-600">{animal.species}</p>
-                    </CardHeader>
-                    <CardContent>
-                      <Badge
-                        variant="secondary"
-                        className="bg-green-100 text-green-800"
-                      >
-                        {animal.habitat}
-                      </Badge>
-                    </CardContent>
-                  </Card>
+                  <AnimalCard key={`${animal.name}-${index}`} animal={animal} />
                 ))}
               </div>
             </div>
@@ -209,21 +196,27 @@ export function AnimalsPage() {
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div className="bg-white p-6 rounded-lg">
-                    <div className="text-2xl text-green-600 mb-2">🩺</div>
+                    <div className="flex justify-center text-green-600 mb-2">
+                      <Stethoscope size={32} />
+                    </div>
                     <p className="font-medium">Expert Veterinary Care</p>
                     <p className="text-sm text-gray-600">
                       24/7 medical monitoring
                     </p>
                   </div>
                   <div className="bg-white p-6 rounded-lg">
-                    <div className="text-2xl text-green-600 mb-2">🥗</div>
+                    <div className="flex justify-center text-green-600 mb-2">
+                      <Salad size={32} />
+                    </div>
                     <p className="font-medium">Specialized Diets</p>
                     <p className="text-sm text-gray-600">
                       Nutrition tailored to each species
                     </p>
                   </div>
                   <div className="bg-white p-6 rounded-lg">
-                    <div className="text-2xl text-green-600 mb-2">🌳</div>
+                    <div className="flex justify-center text-green-600 mb-2">
+                      <Trees size={32} />
+                    </div>
                     <p className="font-medium">Enrichment Programs</p>
                     <p className="text-sm text-gray-600">
                       Daily activities and stimulation
