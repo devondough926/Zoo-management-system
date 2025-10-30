@@ -16,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
-import { Save } from "lucide-react";
+import { Save, X } from "lucide-react";
 
 // Edit Exhibit Dialog Component
 export function EditExhibitDialog({
@@ -24,6 +24,7 @@ export function EditExhibitDialog({
   isOpen,
   onOpenChange,
   onUpdate,
+  onRemoveImage,
   locations,
   isSaving,
 }) {
@@ -34,6 +35,7 @@ export function EditExhibitDialog({
     displayTime: exhibit?.Display_Time || "",
     locationId: exhibit?.Location_ID?.toString() || "",
     imageFile: null,
+    removeImage: false,
   });
   const [imagePreview, setImagePreview] = useState(null);
   const [originalData, setOriginalData] = useState({});
@@ -48,6 +50,7 @@ export function EditExhibitDialog({
         displayTime: exhibit.Display_Time || "",
         locationId: exhibit.Location_ID?.toString() || "",
         imageFile: null,
+        removeImage: false,
       };
       setFormData(data);
       setOriginalData(data);
@@ -58,7 +61,7 @@ export function EditExhibitDialog({
   const handleImageChange = (e) => {
     const file = e.target.files?.[0];
     if (file) {
-      setFormData({ ...formData, imageFile: file });
+      setFormData({ ...formData, imageFile: file, removeImage: false });
       // Create preview
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -66,6 +69,14 @@ export function EditExhibitDialog({
       };
       reader.readAsDataURL(file);
     }
+  };
+
+  const handleRemoveCurrentImage = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Mark image for removal - will be removed when user saves
+    setFormData({ ...formData, removeImage: true, imageFile: null });
+    setImagePreview(null);
   };
 
   const handleSubmit = (e) => {
@@ -81,7 +92,8 @@ export function EditExhibitDialog({
       formData.capacity !== originalData.capacity ||
       formData.displayTime !== originalData.displayTime ||
       formData.locationId !== originalData.locationId ||
-      formData.imageFile !== null
+      formData.imageFile !== null ||
+      formData.removeImage
     );
   }, [formData, originalData]);
 
@@ -163,14 +175,27 @@ export function EditExhibitDialog({
               </SelectContent>
             </Select>
           </div>
-          {exhibit?.Image_URL && !imagePreview && (
+          {exhibit?.Image_URL && !imagePreview && !formData.removeImage && (
             <div>
               <Label>Current Image</Label>
-              <img
-                src={exhibit.Image_URL}
-                alt={exhibit.exhibit_Name}
-                className="mt-2 h-32 w-32 object-cover rounded"
-              />
+              <div className="flex items-center gap-3 mt-2">
+                <img
+                  src={exhibit.Image_URL}
+                  alt={exhibit.exhibit_Name}
+                  className="h-32 w-32 object-cover rounded border"
+                />
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  className="h-8 w-8 rounded-full p-0"
+                  onClick={handleRemoveCurrentImage}
+                  title="Remove image"
+                  disabled={isSaving}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           )}
           <div>
@@ -185,11 +210,32 @@ export function EditExhibitDialog({
               className="cursor-pointer"
             />
             {imagePreview && (
-              <img
-                src={imagePreview}
-                alt="Preview"
-                className="mt-2 h-32 w-32 object-cover rounded"
-              />
+              <div className="flex items-center gap-3 mt-2">
+                <img
+                  src={imagePreview}
+                  alt="Preview"
+                  className="h-32 w-32 object-cover rounded"
+                />
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  className="h-8 w-8 rounded-full p-0"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setImagePreview(null);
+                    setFormData({ ...formData, imageFile: null });
+                    // Clear the file input
+                    const fileInput =
+                      document.getElementById("editExhibitImage");
+                    if (fileInput) fileInput.value = "";
+                  }}
+                  title="Remove image"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
             )}
           </div>
           <Button
