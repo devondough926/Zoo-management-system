@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
 import {
@@ -11,8 +11,6 @@ import {
 import { exhibitsAPI, activitiesAPI } from "../services/customerAPI";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { getExhibitImage } from "../utils/imageMapping";
-import { useOptimizedFetch } from "../hooks/useOptimizedFetch";
-import { preloadImages } from "../utils/imagePreloader";
 
 const membershipBenefits = [
   "Unlimited zoo admission",
@@ -22,51 +20,44 @@ const membershipBenefits = [
 ];
 
 export function CustomerHighlights({ onNavigate }) {
+  const [exhibits, setExhibits] = useState([]);
+  const [activities, setActivities] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [eventsIndex, setEventsIndex] = useState(0);
   const [exhibitsIndex, setExhibitsIndex] = useState(0);
 
   const itemsPerPage = 3;
 
-  // Optimized data fetching with caching
-  const {
-    data: exhibitsData,
-    loading: exhibitsLoading,
-    error: exhibitsError,
-  } = useOptimizedFetch(
-    "exhibits",
-    () => exhibitsAPI.getAll(),
-    { cacheTime: 5 * 60 * 1000 } // Cache for 5 minutes
-  );
-
-  const {
-    data: activitiesData,
-    loading: activitiesLoading,
-    error: activitiesError,
-  } = useOptimizedFetch(
-    "activities",
-    () => activitiesAPI.getAll(),
-    { cacheTime: 5 * 60 * 1000 } // Cache for 5 minutes
-  );
-
-  // Ensure we always have arrays (handle null/undefined from cache)
-  const exhibits = exhibitsData || [];
-  const activities = activitiesData || [];
-
-  const loading = exhibitsLoading || activitiesLoading;
-  const error = exhibitsError || activitiesError;
-
-  // Preload exhibit images for better performance
   useEffect(() => {
-    if (exhibits.length > 0) {
-      const imageUrls = exhibits
-        .map((exhibit) => getExhibitImage(exhibit))
-        .filter(Boolean);
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        setExhibits([]); // Clear any existing data
+        setActivities([]); // Clear any existing data
 
-      if (imageUrls.length > 0) {
-        preloadImages(imageUrls.slice(0, 6)); // Preload first 6 exhibits
+        const [exhibitsData, activitiesData] = await Promise.all([
+          exhibitsAPI.getAll(),
+          activitiesAPI.getAll(),
+        ]);
+
+        setExhibits(exhibitsData);
+        setActivities(activitiesData);
+      } catch (err) {
+        console.error("Error fetching data:", err);
+        setExhibits([]); // Ensure no data is shown on error
+        setActivities([]); // Ensure no data is shown on error
+        setError(
+          "Unable to connect to the server. Please ensure the backend is running."
+        );
+      } finally {
+        setLoading(false);
       }
-    }
-  }, [exhibits]);
+    };
+
+    fetchData();
+  }, []);
 
   const handleMembershipClick = () => {
     if (onNavigate) {
@@ -83,79 +74,12 @@ export function CustomerHighlights({ onNavigate }) {
     }
   };
 
-  // Get visible items (3 consecutive items, wrapping around if needed)
-  const getVisibleItems = (array, startIndex) => {
-    const items = [];
-    for (let i = 0; i < itemsPerPage; i++) {
-      items.push(array[(startIndex + i) % array.length]);
-    }
-    return items;
-  };
-
-  // Generate next 7 days of events - one random activity per exhibit per day
-  const generateNext7DaysEvents = () => {
-    if (!exhibits.length || !activities.length) return [];
-
-    const next7Days = [];
-    const today = new Date();
-
-    // Group activities by exhibit
-    const activitiesByExhibit = exhibits.reduce((acc, exhibit) => {
-      const exhibitActivities = activities.filter(
-        (activity) => activity.Exhibit_ID === exhibit.Exhibit_ID
-      );
-      if (exhibitActivities.length > 0) {
-        acc[exhibit.Exhibit_ID] = exhibitActivities;
-      }
-      return acc;
-    }, {});
-
-    // Generate one event for each of the next 7 days
-    for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
-      const eventDate = new Date(today);
-      eventDate.setDate(today.getDate() + dayOffset);
-
-      // Get exhibits that have activities
-      const exhibitsWithActivities = Object.keys(activitiesByExhibit);
-
-      if (exhibitsWithActivities.length > 0) {
-        // Pick a random exhibit for this day using date as seed for consistency
-        const exhibitIndex =
-          (eventDate.getDate() + dayOffset) % exhibitsWithActivities.length;
-        const selectedExhibitId = exhibitsWithActivities[exhibitIndex];
-        const exhibitActivities = activitiesByExhibit[selectedExhibitId];
-
-        // Pick a random activity from this exhibit
-        const activityIndex = eventDate.getDate() % exhibitActivities.length;
-        const selectedActivity = exhibitActivities[activityIndex];
-
-        next7Days.push({
-          ...selectedActivity,
-          displayDate: eventDate,
-          dateString: eventDate.toLocaleDateString("en-US", {
-            weekday: "short",
-            month: "numeric",
-            day: "numeric",
-          }),
-        });
-      }
-    }
-
-    return next7Days;
-  };
-
-  const upcomingEvents = generateNext7DaysEvents();
-  const visibleEvents = getVisibleItems(upcomingEvents, eventsIndex);
-  const visibleExhibits = getVisibleItems(exhibits, exhibitsIndex);
-
   const nextEvents = () => {
-    const totalEvents = upcomingEvents.length || 1;
-    setEventsIndex((eventsIndex + 1) % totalEvents);
+    setEventsIndex((eventsIndex + 1) % activities.length);
   };
 
   const prevEvents = () => {
-    const totalEvents = upcomingEvents.length || 1;
-    setEventsIndex(eventsIndex === 0 ? totalEvents - 1 : eventsIndex - 1);
+    setEventsIndex(eventsIndex === 0 ? activities.length - 1 : eventsIndex - 1);
   };
 
   const nextExhibits = () => {
@@ -167,6 +91,18 @@ export function CustomerHighlights({ onNavigate }) {
       exhibitsIndex === 0 ? exhibits.length - 1 : exhibitsIndex - 1
     );
   };
+
+  // Get visible items (3 consecutive items, wrapping around if needed)
+  const getVisibleItems = (array, startIndex) => {
+    const items = [];
+    for (let i = 0; i < itemsPerPage; i++) {
+      items.push(array[(startIndex + i) % array.length]);
+    }
+    return items;
+  };
+
+  const visibleEvents = getVisibleItems(activities, eventsIndex);
+  const visibleExhibits = getVisibleItems(exhibits, exhibitsIndex);
 
   // Format time from 24-hour to 12-hour
   const formatTime = (time) => {
@@ -254,31 +190,25 @@ export function CustomerHighlights({ onNavigate }) {
               {visibleEvents.map((event, index) => (
                 <Card
                   key={`${eventsIndex}-${index}`}
-                  className="hover:shadow-lg transition-shadow bg-gradient-to-br from-green-50 to-emerald-50 border-green-200"
+                  className="overflow-hidden hover:shadow-lg transition-shadow"
                 >
-                  <CardHeader className="text-center">
-                    <div className="mb-4 flex justify-center">
-                      <div className="bg-green-600 text-white rounded-full p-4">
-                        <Calendar className="h-8 w-8" />
-                      </div>
-                    </div>
-                    <CardTitle className="text-xl mb-3 text-gray-900">
+                  <div className="relative h-48 bg-gradient-to-br from-green-100 to-emerald-100 flex items-center justify-center">
+                    <Calendar className="h-24 w-24 text-green-300" />
+                  </div>
+                  <CardHeader>
+                    <CardTitle className="text-xl">
                       {event.Activity_Name}
                     </CardTitle>
-                    <div className="flex items-center justify-center text-gray-700 text-sm mb-2 font-medium">
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center text-gray-600 mb-2">
                       <Calendar className="h-4 w-4 mr-2" />
-                      {event.dateString} at {formatTime(event.Display_Time)}
+                      Daily at {formatTime(event.Display_Time)}
                     </div>
-                    <div className="flex items-center justify-center text-sm text-green-700 font-medium">
+                    <div className="flex items-center text-sm text-green-600">
                       <MapPin className="h-4 w-4 mr-1" />
                       {event.exhibit_Name}
                     </div>
-                  </CardHeader>
-                  <CardContent className="text-center">
-                    <p className="text-gray-600 text-sm leading-relaxed">
-                      {event.Activity_Description ||
-                        "Join us for this exciting activity and get up close with amazing animals!"}
-                    </p>
                   </CardContent>
                 </Card>
               ))}

@@ -73,18 +73,12 @@ import {
   Plus,
   PawPrint,
   X,
-  BarChart3,
-  TrendingUp,
-  CreditCard,
-  Map,
-  Building2,
 } from "lucide-react";
 import { useData } from "../data/DataContext";
 import { toast } from "sonner";
 import { ZooLogo } from "../components/ZooLogo";
 import { EditExhibitDialog } from "../components/ExhibitDialogs";
 import { usePricing } from "../data/PricingContext";
-import { clearSpecificCache } from "../hooks/useOptimizedFetch";
 import {
   employeeAPI,
   locationAPI,
@@ -96,10 +90,6 @@ import {
   pricingAPI,
   getDateRange,
 } from "../services/adminAPI";
-
-// API Base URL for direct fetch calls (for image uploads)
-const API_BASE_URL =
-  import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
 export function AdminPortal({ user, onLogout, onNavigate }) {
   const {
@@ -679,7 +669,7 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
         imageFormData.append("image", formData.imageFile);
 
         const imageResponse = await fetch(
-          `${API_BASE_URL}/admin/exhibits/${editingExhibit.Exhibit_ID}/upload-image`,
+          `http://localhost:5000/api/admin/exhibits/${editingExhibit.Exhibit_ID}/upload-image`,
           {
             method: "POST",
             body: imageFormData,
@@ -706,9 +696,6 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
       const exhibitsData = await exhibitAPI.getAll();
       setAllExhibitsDB(exhibitsData);
 
-      // Clear exhibits and activities cache (activities are tied to exhibits)
-      clearSpecificCache("exhibits", "activities", "todaysSchedule");
-
       setEditingExhibit(null);
       toast.success(`Successfully updated exhibit: ${formData.name}!`);
     } catch (error) {
@@ -728,9 +715,6 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
       // Reload exhibits to get fresh data
       const exhibitsData = await exhibitAPI.getAll();
       setAllExhibitsDB(exhibitsData);
-
-      // Clear exhibits and activities cache (activities are tied to exhibits)
-      clearSpecificCache("exhibits", "activities", "todaysSchedule");
 
       toast.success("Image removed successfully!");
     } catch (error) {
@@ -768,7 +752,7 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
         imageFormData.append("image", formData.imageFile);
 
         const imageResponse = await fetch(
-          `${API_BASE_URL}/admin/animals/${newAnimal.Animal_ID}/upload-image`,
+          `http://localhost:5000/api/admin/animals/${newAnimal.Animal_ID}/upload-image`,
           {
             method: "POST",
             body: imageFormData,
@@ -812,9 +796,6 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
           (e) => e.Enclosure_ID === newAnimal.Enclosure_ID
         ),
       });
-
-      // Clear only animals and enclosures cache
-      clearSpecificCache("animals", "enclosures");
 
       setIsAddAnimalOpen(false);
       toast.success(
@@ -882,7 +863,7 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
         imageFormData.append("image", formData.imageFile);
 
         const imageResponse = await fetch(
-          `${API_BASE_URL}/admin/animals/${editingAnimal.Animal_ID}/upload-image`,
+          `http://localhost:5000/api/admin/animals/${editingAnimal.Animal_ID}/upload-image`,
           {
             method: "POST",
             body: imageFormData,
@@ -909,9 +890,6 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
       const animalsData = await animalAPI.getAll();
       setAllAnimalsDB(animalsData);
 
-      // Clear only animals and enclosures cache
-      clearSpecificCache("animals", "enclosures");
-
       setEditingAnimal(null);
       toast.success(
         `Successfully updated ${formData.name || editingAnimal.Animal_Name}!`
@@ -934,9 +912,6 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
       const animalsData = await animalAPI.getAll();
       setAllAnimalsDB(animalsData);
 
-      // Clear only animals and enclosures cache
-      clearSpecificCache("animals", "enclosures");
-
       toast.success("Image removed successfully!");
     } catch (error) {
       console.error("Error removing animal image:", error);
@@ -958,9 +933,6 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
 
       // Also delete from context
       deleteAnimal(animal.Animal_ID);
-
-      // Clear only animals and enclosures cache
-      clearSpecificCache("animals", "enclosures");
 
       setDeleteConfirmAnimal(null);
       toast.success(`Successfully removed ${animal.Animal_Name} from the zoo.`);
@@ -1078,9 +1050,7 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
         {/* Revenue Range Filter */}
         <section>
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl flex items-center gap-2">
-              <BarChart3 className="h-6 w-6" /> Overview Statistics
-            </h2>
+            <h2 className="text-2xl">📊 Overview Statistics</h2>
             <div className="flex items-center space-x-3">
               <span className="text-sm text-gray-600 italic">
                 Last Updated: {formatLastUpdated()}
@@ -1175,9 +1145,7 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
 
         {/* Revenue Breakdown */}
         <section id="revenue">
-          <h2 className="text-2xl mb-6 flex items-center gap-2">
-            <DollarSign className="h-6 w-6" /> Revenue Breakdown
-          </h2>
+          <h2 className="text-2xl mb-6">💰 Revenue Breakdown</h2>
           <Card>
             <CardContent className="pt-6">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1216,9 +1184,7 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
 
         {/* Ticket Sales */}
         <section id="tickets">
-          <h2 className="text-2xl mb-6 flex items-center gap-2">
-            <Ticket className="h-6 w-6" /> Ticket Sales
-          </h2>
+          <h2 className="text-2xl mb-6">🎫 Ticket Sales</h2>
           <Card>
             <CardContent className="pt-6">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -1241,15 +1207,13 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
         {/* Pricing Management */}
         <section id="pricing">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl flex items-center gap-2">
-              <CreditCard className="h-6 w-6" /> Pricing Management
-            </h2>
+            <h2 className="text-2xl">💳 Pricing Management</h2>
             <Button
               className="bg-purple-600 hover:bg-purple-700 cursor-pointer"
               onClick={() => handlePricingDialogOpen(true)}
             >
               <Edit className="h-4 w-4 mr-2" />
-              Manage Prices
+              Edit Prices
             </Button>
           </div>
 
@@ -1396,9 +1360,7 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
 
         {/* Revenue Analytics Charts */}
         <section id="analytics">
-          <h2 className="text-2xl mb-6 flex items-center gap-2">
-            <TrendingUp className="h-6 w-6" /> Analytics
-          </h2>
+          <h2 className="text-2xl mb-6">📈 Analytics</h2>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Bar Chart - Ticket Stats */}
             <Card>
@@ -1465,9 +1427,7 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
         {/* Zone Overview */}
         <section>
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl flex items-center gap-2">
-              <Map className="h-6 w-6" /> Zone Overview
-            </h2>
+            <h2 className="text-2xl">🗺️ Zone Overview</h2>
           </div>
           <Card>
             <CardContent className="pt-6">
@@ -1589,9 +1549,7 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
         {/* Salary Management */}
         <section id="salary">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl flex items-center gap-2">
-              <DollarSign className="h-6 w-6" /> Salary Management
-            </h2>
+            <h2 className="text-2xl">💵 Salary Management</h2>
             <Button
               className="bg-blue-600 hover:bg-blue-700 cursor-pointer"
               onClick={() => handleSalaryDialogOpen(true)}
@@ -1695,9 +1653,7 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
         {/* Employee Management */}
         <section id="employees">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl flex items-center gap-2">
-              <Users className="h-6 w-6" /> Staff Management
-            </h2>
+            <h2 className="text-2xl">👥 Staff Management</h2>
             <AddEmployeeDialog
               isOpen={isAddEmployeeOpen}
               onOpenChange={setIsAddEmployeeOpen}
@@ -1795,9 +1751,7 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
         {/* Exhibit Management */}
         <section id="exhibits">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl flex items-center gap-2">
-              <Building2 className="h-6 w-6" /> Exhibit Management
-            </h2>
+            <h2 className="text-2xl">🏛️ Exhibit Management</h2>
           </div>
           <Card>
             <CardContent className="pt-6">
@@ -1856,17 +1810,7 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
         {/* Animal Management */}
         <section id="animals">
           <div className="flex items-center justify-between mb-6">
-            <div>
-              <h2 className="text-2xl flex items-center gap-2">
-                <PawPrint className="h-6 w-6" /> Animal Management
-              </h2>
-              <p className="text-sm text-gray-600 mt-1">
-                Total animals:{" "}
-                <span className="font-semibold text-green-700">
-                  {totalAnimals}
-                </span>
-              </p>
-            </div>
+            <h2 className="text-2xl">🐾 Animal Management</h2>
             <AddAnimalDialog
               isOpen={isAddAnimalOpen}
               onOpenChange={setIsAddAnimalOpen}
@@ -2210,7 +2154,7 @@ function AddEmployeeDialog({
       <DialogTrigger asChild>
         <Button className="bg-green-600 hover:bg-green-700 cursor-pointer">
           <UserPlus className="h-4 w-4 mr-2" />
-          Employee
+          Add Employee
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-2xl max-h-[90vh]">
@@ -2770,7 +2714,7 @@ function AddAnimalDialog({
       <DialogTrigger asChild>
         <Button className="bg-teal-600 hover:bg-teal-700 cursor-pointer">
           <Plus className="h-4 w-4 mr-2" />
-          Animal
+          Add Animal
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-2xl">
@@ -2960,7 +2904,7 @@ function EditAnimalDialog({
     imageFile: null,
     removeImage: false, // Track if image should be removed
   });
-  const [imagePreview, setImagePreview] = useState(null);
+  const [imagePreview, setImagePreview] = useState(animal?.Image_URL || null);
   const [originalData, setOriginalData] = useState(null);
 
   // Check if any field has changed
@@ -2996,7 +2940,7 @@ function EditAnimalDialog({
       };
       setFormData(initialData);
       setOriginalData(initialData);
-      setImagePreview(null);
+      setImagePreview(animal.Image_URL || null);
     }
   }, [animal]);
 
@@ -3013,10 +2957,7 @@ function EditAnimalDialog({
     }
   };
 
-  const handleRemoveCurrentImage = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    // Mark image for removal - will be removed when user saves
+  const handleRemoveCurrentImage = () => {
     setFormData({ ...formData, removeImage: true, imageFile: null });
     setImagePreview(null);
   };
@@ -3138,7 +3079,7 @@ function EditAnimalDialog({
           {animal?.Image_URL && !imagePreview && !formData.removeImage && (
             <div>
               <Label>Current Image</Label>
-              <div className="flex items-center gap-3 mt-2">
+              <div className="relative inline-block mt-2">
                 <img
                   src={animal.Image_URL}
                   alt={animal.Animal_Name}
@@ -3146,15 +3087,31 @@ function EditAnimalDialog({
                 />
                 <Button
                   type="button"
-                  variant="destructive"
+                  variant="outline"
                   size="sm"
-                  className="h-8 w-8 rounded-full p-0"
+                  className="absolute -top-2 -right-2 h-7 w-7 rounded-full p-0 bg-white hover:bg-red-50 border-2 border-red-500 text-red-600 hover:text-red-700 shadow-md"
                   onClick={handleRemoveCurrentImage}
                   title="Remove image"
                 >
                   <X className="h-4 w-4" />
                 </Button>
               </div>
+            </div>
+          )}
+          {formData.removeImage && (
+            <div className="p-3 bg-orange-50 border border-orange-200 rounded-md">
+              <p className="text-sm text-orange-800">
+                ⚠️ Image will be removed when you save changes.{" "}
+                <button
+                  type="button"
+                  onClick={() =>
+                    setFormData({ ...formData, removeImage: false })
+                  }
+                  className="underline hover:no-underline font-medium"
+                >
+                  Undo
+                </button>
+              </p>
             </div>
           )}
           <div>
@@ -3176,7 +3133,7 @@ function EditAnimalDialog({
                 : ""}
             </p>
             {imagePreview && (
-              <div className="flex items-center gap-3 mt-2">
+              <div className="relative inline-block mt-2">
                 <img
                   src={imagePreview}
                   alt="Preview"
@@ -3186,10 +3143,8 @@ function EditAnimalDialog({
                   type="button"
                   variant="destructive"
                   size="sm"
-                  className="h-8 w-8 rounded-full p-0"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
+                  className="absolute -top-2 -right-2 h-6 w-6 rounded-full p-0"
+                  onClick={() => {
                     setImagePreview(null);
                     setFormData({ ...formData, imageFile: null });
                     // Clear the file input
@@ -3199,7 +3154,7 @@ function EditAnimalDialog({
                   }}
                   title="Remove image"
                 >
-                  <X className="h-4 w-4" />
+                  <X className="h-3 w-3" />
                 </Button>
               </div>
             )}

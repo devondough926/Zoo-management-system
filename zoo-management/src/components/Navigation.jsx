@@ -21,7 +21,7 @@ export function Navigation({
   const isActive = (page) => currentPage === page;
 
   return (
-    <nav className="bg-white/95 backdrop-blur-md border-b border-green-100 sticky top-0 z-[100] shadow-sm">
+    <nav className="bg-white/95 backdrop-blur-md border-b border-green-100 sticky top-0 z-50">
       <div className="container mx-auto px-6">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
@@ -29,7 +29,7 @@ export function Navigation({
             onClick={() => onNavigate("home")}
             className="flex items-center space-x-2 hover:opacity-80 transition-opacity cursor-pointer"
           >
-            <ZooLogo size={60} />
+            <ZooLogo size={40} />
             <span className="text-xl font-semibold text-green-800">
               WildWood Zoo
             </span>

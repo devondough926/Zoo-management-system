@@ -1,7 +1,6 @@
 import { BlobServiceClient } from "@azure/storage-blob";
 import multer from "multer";
 import path from "path";
-import { optimizeImage, validateImage } from "./imageOptimizer.js";
 
 // Initialize Azure Blob Service
 let blobServiceClient;
@@ -14,23 +13,23 @@ try {
     if (!process.env.AZURE_STORAGE_CONTAINER_NAME) {
       azureConfigError =
         "AZURE_STORAGE_CONTAINER_NAME not found in environment variables";
-      console.error("[ERROR] Azure Blob Storage Error:", azureConfigError);
+      console.error("❌ Azure Blob Storage Error:", azureConfigError);
     } else {
       blobServiceClient = BlobServiceClient.fromConnectionString(
         process.env.AZURE_STORAGE_CONNECTION_STRING
       );
       console.log(
-        `[SUCCESS] Azure Blob Storage initialized (Container: ${process.env.AZURE_STORAGE_CONTAINER_NAME})`
+        `✅ Azure Blob Storage initialized (Container: ${process.env.AZURE_STORAGE_CONTAINER_NAME})`
       );
     }
   } else {
     azureConfigError =
       "AZURE_STORAGE_CONNECTION_STRING not found in environment variables";
-    console.error("[ERROR] Azure Blob Storage Error:", azureConfigError);
+    console.error("❌ Azure Blob Storage Error:", azureConfigError);
   }
 } catch (error) {
   azureConfigError = error.message;
-  console.error("[ERROR] Failed to initialize Azure Blob Storage:", error);
+  console.error("❌ Failed to initialize Azure Blob Storage:", error);
 }
 
 // Use memory storage instead of disk storage
@@ -55,7 +54,7 @@ const fileFilter = (req, file, cb) => {
 const multerUpload = multer({
   storage: storage,
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB max file size (we'll optimize it down)
+    fileSize: 5 * 1024 * 1024, // 5MB max file size
   },
   fileFilter: fileFilter,
 });
@@ -73,6 +72,7 @@ export const upload = {
 
         // If no file was uploaded, continue
         if (!req.file) {
+          console.log("No file uploaded");
           return next();
         }
 
@@ -80,7 +80,7 @@ export const upload = {
         if (!blobServiceClient) {
           const errorMsg =
             azureConfigError || "Azure Blob Storage not configured";
-          console.error("[ERROR] Azure Error:", errorMsg);
+          console.error("❌ Azure Error:", errorMsg);
           return res.status(500).json({
             error: "Image upload service is not configured",
             details:
@@ -90,47 +90,18 @@ export const upload = {
         }
 
         try {
-          // Validate image
-          const isValid = await validateImage(req.file.buffer);
-          if (!isValid) {
-            return res.status(400).json({
-              error: "Invalid image file",
-              details:
-                "The uploaded file is not a valid image or dimensions are too large",
-            });
-          }
+          console.log("Processing file upload:", req.file.originalname);
 
-          // Determine folder and image type
-          const isAnimal = req.path.includes("animal");
-          const folder = isAnimal ? "animals" : "exhibits";
-          const imageType = isAnimal ? "animal" : "exhibit";
-
-          // Optimize image before uploading
-          const maxWidth = imageType === "animal" ? 800 : 1200;
-          const optimized = await optimizeImage(req.file.buffer, {
-            maxWidth,
-            format: "webp",
-            quality: 85,
-          });
-
-          // Update file buffer with optimized version
-          req.file.buffer = optimized.buffer;
-          req.file.mimetype = "image/webp";
-          req.file.originalname = req.file.originalname.replace(
-            /\.[^.]+$/,
-            ".webp"
-          );
+          // Determine folder based on the route
+          const folder = req.path.includes("animal") ? "animals" : "exhibits";
+          console.log("Uploading to folder:", folder);
 
           // Upload to Azure and get the URL
           const imageUrl = await uploadToAzure(req.file, folder);
+          console.log("Upload successful, URL:", imageUrl);
 
-          // Attach the URL and optimization info to req.file
+          // Attach the URL to req.file for use in the route handler
           req.file.url = imageUrl;
-          req.file.optimization = {
-            originalSize: optimized.originalSize,
-            optimizedSize: optimized.optimizedSize,
-            compressionRatio: optimized.compressionRatio,
-          };
 
           next();
         } catch (error) {
@@ -153,33 +124,36 @@ export const uploadToAzure = async (file, folder = "animals") => {
   }
 
   try {
+    console.log("Starting Azure upload...");
+    console.log("Container name:", process.env.AZURE_STORAGE_CONTAINER_NAME);
+
     const containerClient = blobServiceClient.getContainerClient(
       process.env.AZURE_STORAGE_CONTAINER_NAME
     );
 
-    // Ensure container exists
+    // Ensure container exists (private - public access not permitted on this storage account)
+    console.log("Checking if container exists...");
     await containerClient.createIfNotExists();
+    console.log("Container ready");
 
     // Generate unique filename
     const fileExtension = path.extname(file.originalname);
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
     const fileName = `${folder}/${folder}-${uniqueSuffix}${fileExtension}`;
+    console.log("Uploading as:", fileName);
 
     const blockBlobClient = containerClient.getBlockBlobClient(fileName);
 
     // Upload the file
+    console.log("Uploading file buffer, size:", file.buffer.length);
     await blockBlobClient.upload(file.buffer, file.buffer.length, {
       blobHTTPHeaders: {
         blobContentType: file.mimetype,
-        blobCacheControl: "public, max-age=31536000, immutable", // 1 year cache, immutable
-        // Do NOT set content-encoding - the images are already optimized, not compressed
-      },
-      metadata: {
-        originalName: file.originalname,
-        uploadedAt: new Date().toISOString(),
+        blobCacheControl: "public, max-age=31536000", // 1 year cache
       },
     });
 
+    console.log("Upload complete, URL:", blockBlobClient.url);
     return blockBlobClient.url;
   } catch (error) {
     console.error("Error uploading to Azure:", error);
@@ -221,6 +195,8 @@ export const deleteFromAzure = async (imageUrl) => {
 
     const blockBlobClient = containerClient.getBlockBlobClient(blobName);
     await blockBlobClient.deleteIfExists();
+
+    console.log(`Deleted blob: ${blobName}`);
   } catch (error) {
     console.error("Error deleting from Azure:", error);
     // Don't throw error, just log it

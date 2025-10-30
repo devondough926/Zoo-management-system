@@ -29,8 +29,6 @@ import { Badge } from "../components/ui/badge";
 import { toast } from "sonner";
 import { useData } from "../data/DataContext";
 import { usePricing } from "../data/PricingContext";
-import { ImageWithFallback } from "../components/figma/ImageWithFallback";
-import { useHeroImage } from "../utils/heroImages";
 
 export function CartPage({
   cart,
@@ -51,7 +49,6 @@ export function CartPage({
     updateMembership,
   } = useData();
   const { membershipPrice } = usePricing();
-  const heroImage = useHeroImage("cart");
   const [itemToRemove, setItemToRemove] = useState(null);
   const [showClearDialog, setShowClearDialog] = useState(false);
   const [showCheckoutDialog, setShowCheckoutDialog] = useState(false);
@@ -274,31 +271,10 @@ export function CartPage({
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Hero Section */}
-      <section className="relative bg-gradient-to-br from-green-600 to-emerald-700 text-white py-16 overflow-hidden">
-        {/* Background Image */}
-        <div className="absolute inset-0 z-0">
-          <ImageWithFallback
-            src={heroImage}
-            alt="Shopping Cart"
-            className="w-full h-full object-cover"
-            priority={true}
-          />
-          <div
-            className="absolute inset-0"
-            style={{
-              background:
-                "linear-gradient(to bottom right, rgba(20, 83, 45, 0.55), rgba(6, 78, 59, 0.55))",
-            }}
-          />
-        </div>
-
-        {/* Content */}
-        <div className="container mx-auto px-6 relative z-10">
-          <h1 className="text-4xl md:text-5xl mb-4 drop-shadow-lg">
-            Shopping Cart
-          </h1>
-          <p className="text-xl text-green-100 drop-shadow-md">
+      <section className="bg-gradient-to-br from-green-600 to-emerald-700 text-white py-16">
+        <div className="container mx-auto px-6">
+          <h1 className="text-4xl md:text-5xl mb-4">Shopping Cart</h1>
+          <p className="text-xl text-green-100">
             Review your items and proceed to checkout
           </p>
         </div>

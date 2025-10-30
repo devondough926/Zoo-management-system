@@ -11,7 +11,6 @@ import {
   RefreshCw,
   Wifi,
   WifiOff,
-  Check,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Crown } from "lucide-react";
@@ -39,8 +38,6 @@ import { Label } from "../components/ui/label";
 // Removed type-only imports; use runtime values from context instead
 import { useData } from "../data/DataContext";
 import { authAPI } from "../services/customerAPI";
-import { ImageWithFallback } from "../components/figma/ImageWithFallback";
-import { useHeroImage } from "../utils/heroImages";
 
 // Helper function to format numbers with commas
 const formatNumber = (num) => {
@@ -60,7 +57,6 @@ export function CustomerDashboard({ user, onNavigate }) {
     items,
     concessionItems,
   } = useData();
-  const heroImage = useHeroImage("customer"); // You can change this to a different hero image
   const customerPurchases = purchases
     .filter((p) => p.Customer_ID === user.Customer_ID)
     .sort(
@@ -255,81 +251,53 @@ export function CustomerDashboard({ user, onNavigate }) {
     : "No Membership";
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-gray-50">
       {/* Backend Connection Status */}
       {isBackendConnected !== null && !isBackendConnected && (
-        <Alert className="m-6 bg-amber-50 border-amber-300 shadow-md">
+        <Alert className="m-6 bg-amber-50 border-amber-200">
           <div className="flex items-center gap-2">
             <WifiOff className="h-4 w-4 text-amber-600" />
-            <AlertDescription className="text-amber-800 font-medium">
-              Server not connected - Using offline mode
+            <AlertDescription className="text-amber-800">
+              Backend not connected - Profile and password changes will only be
+              saved locally
             </AlertDescription>
           </div>
         </Alert>
       )}
 
       {/* Hero Section */}
-      <section className="relative bg-gradient-to-br from-green-600 to-emerald-700 text-white py-16 overflow-hidden">
-        {/* Background Image */}
-        <div className="absolute inset-0 z-0">
-          <ImageWithFallback
-            src={heroImage}
-            alt="Customer Dashboard"
-            className="w-full h-full object-cover"
-          />
-          <div
-            className="absolute inset-0"
-            style={{
-              background:
-                "linear-gradient(to bottom right, rgba(20, 83, 45, 0.55), rgba(6, 78, 59, 0.55))",
-            }}
-          />
-        </div>
-
-        {/* Content */}
-        <div className="container mx-auto px-6 relative z-10">
-          <h1 className="text-5xl md:text-6xl font-bold mb-3 drop-shadow-lg italic">
-            Welcome back, {user.First_Name}!
+      <section className="bg-gradient-to-br from-green-600 to-emerald-700 text-white py-16">
+        <div className="container mx-auto px-6">
+          <h1 className="text-4xl md:text-5xl mb-2">
+            Welcome, {user.First_Name}!
           </h1>
-          <p className="text-xl text-green-50 mb-6 drop-shadow-md">
-            Your personal zoo experience dashboard
-          </p>
 
           {/* Membership Status and Renewal */}
-          <div className="mt-8 space-y-3 bg-white/10 backdrop-blur-sm rounded-xl p-6">
+          <div className="mt-6 space-y-3">
             <div className="flex items-center space-x-3">
-              <Crown className="h-5 w-5 text-yellow-300" />
-              <span className="text-green-50 font-medium">
-                Membership Status:
-              </span>
+              <span className="text-green-100">Membership Status:</span>
               {membership ? (
                 <Badge
                   className={`${
                     isMembershipExpired
-                      ? "bg-red-500 hover:bg-red-600"
-                      : "bg-gradient-to-r from-yellow-400 to-yellow-500 text-yellow-900 font-semibold"
-                  } shadow-md`}
+                      ? "bg-red-500"
+                      : "bg-white text-green-700"
+                  }`}
                 >
                   {membershipStatus}
                 </Badge>
               ) : (
-                <Badge className="bg-gray-500 text-white shadow-md">
-                  No Membership
-                </Badge>
+                <Badge className="bg-gray-400 text-white">No Membership</Badge>
               )}
             </div>
 
             {membership && (
               <>
                 <div className="flex items-center space-x-3">
-                  <span className="text-green-50 font-medium">
-                    Valid Until:
-                  </span>
+                  <span className="text-green-100">Valid Until:</span>
                   <span
-                    className={`font-semibold ${
-                      isMembershipExpired
-                        ? "text-red-200"
-                        : "text-white text-lg"
+                    className={`font-medium ${
+                      isMembershipExpired ? "text-red-200" : "text-white"
                     }`}
                   >
                     {new Date(membership.End_Date).toLocaleDateString()}
@@ -338,7 +306,7 @@ export function CustomerDashboard({ user, onNavigate }) {
 
                 <Button
                   onClick={handleRenewMembership}
-                  className="bg-white text-green-700 hover:bg-green-50 hover:scale-105 transition-transform shadow-lg font-semibold"
+                  className="bg-white text-green-700 hover:bg-green-50 mt-2"
                 >
                   <RefreshCw className="h-4 w-4 mr-2" />
                   {isMembershipExpired
@@ -349,59 +317,43 @@ export function CustomerDashboard({ user, onNavigate }) {
             )}
 
             {!membership && (
-              <div className="flex flex-col gap-3">
-                <p className="text-green-50 text-sm">
-                  Become a member to enjoy exclusive benefits and unlimited
-                  access!
-                </p>
-                <Button
-                  onClick={() => onNavigate && onNavigate("tickets")}
-                  className="bg-yellow-400 text-yellow-900 hover:bg-yellow-300 hover:scale-105 transition-transform shadow-lg font-semibold w-fit"
-                >
-                  <Crown className="h-4 w-4 mr-2" />
-                  Get Membership Now
-                </Button>
-              </div>
+              <p className="text-green-100 text-sm">
+                Become a member to enjoy exclusive benefits!
+              </p>
             )}
           </div>
         </div>
       </section>
 
       {/* Quick Actions */}
-      <section className="py-12 bg-gray-100">
+      <section className="py-12">
         <div className="container mx-auto px-6">
-          <h2 className="text-3xl font-bold mb-8 text-gray-800">
-            Quick Actions
-          </h2>
+          <h2 className="text-2xl mb-6">Quick Actions</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <Card className="shadow-lg border-none bg-white">
+            <Card
+              className="hover:shadow-lg transition-shadow cursor-pointer group"
+              onClick={() => onNavigate && onNavigate("tickets")}
+            >
               <CardContent className="pt-6 text-center">
-                <button
-                  onClick={() => onNavigate && onNavigate("tickets")}
-                  className="w-20 h-20 bg-gradient-to-br from-green-100 to-green-200 rounded-2xl flex items-center justify-center mx-auto mb-4 hover:from-green-600 hover:to-green-700 hover:scale-110 transition-all duration-300 shadow-lg cursor-pointer group rounded-xl"
-                >
-                  <Ticket className="h-10 w-10 text-green-600 group-hover:text-white transition-colors" />
-                </button>
-                <h3 className="mb-2 text-xl font-semibold text-gray-800">
-                  Buy Tickets
-                </h3>
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:bg-green-600 transition-colors">
+                  <Ticket className="h-8 w-8 text-green-600 group-hover:text-white" />
+                </div>
+                <h3 className="mb-2">Buy Tickets</h3>
                 <p className="text-sm text-gray-600">
-                  Purchase day passes or membership
+                  Purchase day passes or special event tickets
                 </p>
               </CardContent>
             </Card>
 
-            <Card className="shadow-lg border-none bg-white">
+            <Card
+              className="hover:shadow-lg transition-shadow cursor-pointer group"
+              onClick={() => onNavigate && onNavigate("shop")}
+            >
               <CardContent className="pt-6 text-center">
-                <button
-                  onClick={() => onNavigate && onNavigate("shop")}
-                  className="w-20 h-20 bg-gradient-to-br from-green-100 to-green-200 rounded-2xl flex items-center justify-center mx-auto mb-4 hover:from-green-600 hover:to-green-700 hover:scale-110 transition-all duration-300 shadow-lg cursor-pointer group rounded-xl"
-                >
-                  <ShoppingBag className="h-10 w-10 text-emerald-600 group-hover:text-white transition-colors" />
-                </button>
-                <h3 className="mb-2 text-xl font-semibold text-gray-800">
-                  Gift Shop
-                </h3>
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:bg-green-600 transition-colors">
+                  <ShoppingBag className="h-8 w-8 text-green-600 group-hover:text-white" />
+                </div>
+                <h3 className="mb-2">Gift Shop</h3>
                 <p className="text-sm text-gray-600">
                   Browse and buy gift shop items online
                 </p>
@@ -409,21 +361,19 @@ export function CustomerDashboard({ user, onNavigate }) {
             </Card>
 
             <Dialog open={orderHistoryOpen} onOpenChange={setOrderHistoryOpen}>
-              <Card className="shadow-lg border-none bg-white">
-                <CardContent className="pt-6 text-center">
-                  <DialogTrigger asChild>
-                    <button className="w-20 h-20 bg-gradient-to-br from-green-100 to-green-200 rounded-2xl flex items-center justify-center mx-auto mb-4 hover:from-green-600 hover:to-green-700 hover:scale-110 transition-all duration-300 shadow-lg cursor-pointer group rounded-xl">
-                      <Receipt className="h-10 w-10 text-blue-600 group-hover:text-white transition-colors" />
-                    </button>
-                  </DialogTrigger>
-                  <h3 className="mb-2 text-xl font-semibold text-gray-800">
-                    Order History
-                  </h3>
-                  <p className="text-sm text-gray-600">
-                    View all past purchases and receipts
-                  </p>
-                </CardContent>
-              </Card>
+              <DialogTrigger asChild>
+                <Card className="hover:shadow-lg transition-shadow cursor-pointer group">
+                  <CardContent className="pt-6 text-center">
+                    <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:bg-green-600 transition-colors">
+                      <Receipt className="h-8 w-8 text-green-600 group-hover:text-white" />
+                    </div>
+                    <h3 className="mb-2">Order History</h3>
+                    <p className="text-sm text-gray-600">
+                      View all past purchases and receipts
+                    </p>
+                  </CardContent>
+                </Card>
+              </DialogTrigger>
               <DialogContent className="max-w-3xl max-h-[80vh]">
                 <DialogHeader>
                   <DialogTitle>Order History</DialogTitle>
@@ -485,43 +435,38 @@ export function CustomerDashboard({ user, onNavigate }) {
       </section>
 
       {/* Recent Purchases */}
-      <section className="py-12 bg-gray-100">
+      <section className="py-12 bg-white">
         <div className="container mx-auto px-6">
-          <h2 className="text-3xl font-bold mb-8 text-gray-800">
-            Recent Purchases
-          </h2>
+          <h2 className="text-2xl mb-6">Recent Purchases</h2>
           <div className="max-w-4xl">
-            <Card className="shadow-xl border-none bg-white">
+            <Card>
               <CardContent className="p-6">
                 {recentPurchases.length > 0 ? (
                   <div className="space-y-4">
                     {recentPurchases.map((purchase) => (
                       <div
                         key={purchase.Purchase_ID}
-                        className="flex items-center justify-between p-5 bg-white transition-all duration-200 cursor-pointer hover:rounded-xl hover:shadow-md hover:border hover:border-green-400"
+                        className="flex items-center justify-between p-4 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer"
                         onClick={() => setSelectedPurchase(purchase)}
                       >
                         <div className="flex-1">
                           <div className="flex items-center space-x-3 mb-2">
-                            <Badge
-                              variant="secondary"
-                              className="bg-green-100 text-green-700 font-semibold"
-                            >
+                            <Badge variant="secondary">
                               {purchase.Payment_Method}
                             </Badge>
-                            <span className="text-sm text-gray-600 font-medium">
+                            <span className="text-sm text-gray-600">
                               {new Date(
                                 purchase.Purchase_Date
                               ).toLocaleDateString()}
                             </span>
                           </div>
-                          <p className="text-sm text-gray-700 font-medium">
+                          <p className="text-sm text-gray-700">
                             Order #
                             {getCustomerPurchaseNumber(purchase.Purchase_ID)}
                           </p>
                         </div>
                         <div className="text-right ml-6">
-                          <p className="text-3xl text-green-600 font-bold">
+                          <p className="text-2xl text-green-600 font-semibold">
                             ${purchase.Total_Amount.toFixed(2)}
                           </p>
                         </div>
@@ -529,15 +474,11 @@ export function CustomerDashboard({ user, onNavigate }) {
                     ))}
                   </div>
                 ) : (
-                  <div className="text-center py-16">
-                    <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <ShoppingCart className="h-12 w-12 text-gray-300" />
-                    </div>
-                    <p className="text-gray-600 text-lg mb-4">
-                      No recent purchases
-                    </p>
+                  <div className="text-center py-12">
+                    <ShoppingCart className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+                    <p className="text-gray-600">No recent purchases</p>
                     <Button
-                      className="bg-green-600 hover:bg-green-700 text-white cursor-pointer font-semibold"
+                      className="mt-4 bg-green-600 hover:bg-green-700 cursor-pointer"
                       onClick={() => onNavigate && onNavigate("shop")}
                     >
                       Start Shopping
@@ -551,16 +492,14 @@ export function CustomerDashboard({ user, onNavigate }) {
       </section>
 
       {/* Account Settings */}
-      <section className="py-12 bg-gray-100">
+      <section className="py-12">
         <div className="container mx-auto px-6">
-          <h2 className="text-3xl font-bold mb-8 text-gray-800">My Account</h2>
+          <h2 className="text-2xl mb-6">My Account</h2>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Profile Information Card */}
-            <Card className="shadow-xl border border-gray-200 hover:shadow-2xl transition-shadow overflow-hidden">
-              <CardHeader className="bg-gradient-to-r from-green-50 to-emerald-50 border-b border-gray-200">
-                <CardTitle className="text-2xl text-gray-800">
-                  Profile Information
-                </CardTitle>
+            <Card>
+              <CardHeader>
+                <CardTitle>Profile Information</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-6">
@@ -597,7 +536,7 @@ export function CustomerDashboard({ user, onNavigate }) {
                         <Button
                           variant="outline"
                           onClick={() => setIsEditingProfile(true)}
-                          className="cursor-pointer hover:bg-green-50 hover:border-green-400 transition-colors font-semibold"
+                          className="cursor-pointer"
                         >
                           Edit Profile
                         </Button>
@@ -616,7 +555,6 @@ export function CustomerDashboard({ user, onNavigate }) {
                               firstName: e.target.value,
                             })
                           }
-                          className="border-2 border-gray-300 focus:border-green-500"
                         />
                       </div>
                       <div>
@@ -630,7 +568,6 @@ export function CustomerDashboard({ user, onNavigate }) {
                               lastName: e.target.value,
                             })
                           }
-                          className="border-2 border-gray-300 focus:border-green-500"
                         />
                       </div>
                       <div>
@@ -645,7 +582,6 @@ export function CustomerDashboard({ user, onNavigate }) {
                               email: e.target.value,
                             })
                           }
-                          className="border-2 border-gray-300 focus:border-green-500"
                         />
                       </div>
                       <div>
@@ -659,13 +595,12 @@ export function CustomerDashboard({ user, onNavigate }) {
                               phone: e.target.value,
                             })
                           }
-                          className="border-2 border-gray-300 focus:border-green-500"
                         />
                       </div>
                       <div className="flex space-x-2 pt-4">
                         <Button
                           onClick={handleSaveProfile}
-                          className="bg-green-600 hover:bg-green-700 text-white cursor-pointer font-semibold"
+                          className="bg-green-600 hover:bg-green-700 cursor-pointer"
                           disabled={isLoading}
                         >
                           {isLoading ? "Saving..." : "Save Changes"}
@@ -681,7 +616,7 @@ export function CustomerDashboard({ user, onNavigate }) {
                               phone: user.Phone,
                             });
                           }}
-                          className="cursor-pointer hover:bg-gray-100"
+                          className="cursor-pointer"
                           disabled={isLoading}
                         >
                           Cancel
@@ -694,83 +629,61 @@ export function CustomerDashboard({ user, onNavigate }) {
             </Card>
 
             {/* Account Statistics Card */}
-            <Card className="shadow-xl border border-gray-200 hover:shadow-2xl transition-shadow overflow-hidden">
-              <CardHeader className="bg-gradient-to-r from-purple-50 to-pink-50 border-b border-gray-200">
-                <CardTitle className="text-2xl text-gray-800">
-                  Account Details
-                </CardTitle>
+            <Card>
+              <CardHeader>
+                <CardTitle>Account Details</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
                   {/* Membership Info */}
                   {membership ? (
-                    <div className="p-5 bg-purple-50 rounded-lg">
+                    <div className="p-4 bg-gradient-to-r from-purple-50 to-purple-100 rounded-lg border border-purple-200">
                       <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-2">
-                          <Crown className="h-5 w-5 text-purple-600" />
-                          <p className="font-semibold text-gray-800">
-                            Active Membership
-                          </p>
-                        </div>
+                        <p className="font-medium text-purple-900">
+                          Active Membership
+                        </p>
                         <Badge
                           className={`${
-                            isMembershipExpired
-                              ? "bg-red-500 hover:bg-red-600"
-                              : "bg-green-600 hover:bg-green-700"
-                          } text-white font-medium`}
+                            isMembershipExpired ? "bg-red-500" : "bg-green-600"
+                          }`}
                         >
                           {membershipStatus}
                         </Badge>
                       </div>
                       <div className="grid grid-cols-2 gap-3 text-sm">
-                        <div className="bg-purple-50 p-3 rounded-lg">
-                          <p className="text-gray-600 font-medium">
-                            Start Date
-                          </p>
-                          <p className="font-semibold text-gray-800">
+                        <div>
+                          <p className="text-gray-600">Start Date</p>
+                          <p className="font-medium">
                             {new Date(
                               membership.Start_Date
                             ).toLocaleDateString()}
                           </p>
                         </div>
-                        <div className="bg-purple-50 p-3 rounded-lg">
-                          <p className="text-gray-600 font-medium">End Date</p>
-                          <p className="font-semibold text-gray-800">
+                        <div>
+                          <p className="text-gray-600">End Date</p>
+                          <p className="font-medium">
                             {new Date(membership.End_Date).toLocaleDateString()}
                           </p>
                         </div>
-                        <div className="bg-purple-50 p-3 rounded-lg">
-                          <p className="text-gray-600 font-medium">
-                            Membership ID
-                          </p>
-                          <p className="font-semibold text-gray-800">
+                        <div>
+                          <p className="text-gray-600">Membership ID</p>
+                          <p className="font-medium">
                             #{membership.Customer_ID}
                           </p>
                         </div>
-                        <div className="bg-purple-50 p-3 rounded-lg">
-                          <p className="text-gray-600 font-medium">
-                            Discount Benefits
-                          </p>
-                          <p className="font-semibold text-green-600 flex items-center gap-1">
-                            Applied <Check size={16} />
-                          </p>
+                        <div>
+                          <p className="text-gray-600">Discount Benefits</p>
+                          <p className="font-medium text-green-600">Applied</p>
                         </div>
                       </div>
                     </div>
                   ) : (
-                    <div className="p-6 bg-gray-50 rounded-lg border border-gray-200 text-center">
-                      <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                        <Crown className="h-8 w-8 text-purple-600" />
-                      </div>
-                      <p className="text-gray-700 font-semibold mb-2">
-                        No Active Membership
-                      </p>
-                      <p className="text-gray-600 text-sm mb-4">
-                        Join today and unlock exclusive benefits!
-                      </p>
+                    <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 text-center">
+                      <Crown className="h-12 w-12 text-gray-300 mx-auto mb-2" />
+                      <p className="text-gray-600 mb-3">No Active Membership</p>
                       <Button
                         size="sm"
-                        className="bg-purple-600 hover:bg-purple-700 text-white cursor-pointer font-semibold"
+                        className="bg-green-600 hover:bg-green-700 cursor-pointer"
                         onClick={() => onNavigate && onNavigate("tickets")}
                       >
                         Get Membership
@@ -780,19 +693,17 @@ export function CustomerDashboard({ user, onNavigate }) {
 
                   {/* Purchase Statistics */}
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="p-4 bg-white rounded-lg">
-                      <p className="text-sm text-gray-600 mb-1 font-medium">
+                    <div className="p-3 bg-green-50 rounded-lg border border-green-200">
+                      <p className="text-sm text-gray-600 mb-1">
                         Total Purchases
                       </p>
-                      <p className="text-3xl font-bold text-green-600">
+                      <p className="text-2xl font-semibold text-green-600">
                         {customerPurchases.length}
                       </p>
                     </div>
-                    <div className="p-4 bg-white rounded-lg">
-                      <p className="text-sm text-gray-600 mb-1 font-medium">
-                        Total Spent
-                      </p>
-                      <p className="text-3xl font-bold text-blue-600">
+                    <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                      <p className="text-sm text-gray-600 mb-1">Total Spent</p>
+                      <p className="text-2xl font-semibold text-blue-600">
                         $
                         {formatNumber(
                           customerPurchases.reduce(
@@ -808,11 +719,9 @@ export function CustomerDashboard({ user, onNavigate }) {
             </Card>
 
             {/* Password & Security Card */}
-            <Card className="shadow-xl border border-gray-200 hover:shadow-2xl transition-shadow overflow-hidden">
-              <CardHeader className="bg-gradient-to-r from-blue-50 to-cyan-50 border-b border-gray-200">
-                <CardTitle className="text-2xl text-gray-800">
-                  Password & Security
-                </CardTitle>
+            <Card>
+              <CardHeader>
+                <CardTitle>Password & Security</CardTitle>
               </CardHeader>
               <CardContent>
                 {!isChangingPassword ? (
@@ -840,7 +749,7 @@ export function CustomerDashboard({ user, onNavigate }) {
                     <Button
                       variant="outline"
                       onClick={() => setIsChangingPassword(true)}
-                      className="cursor-pointer hover:bg-blue-50 hover:border-blue-400 transition-colors font-semibold"
+                      className="cursor-pointer"
                     >
                       Change Password
                     </Button>
@@ -859,7 +768,6 @@ export function CustomerDashboard({ user, onNavigate }) {
                             currentPassword: e.target.value,
                           })
                         }
-                        className="border-2 border-gray-300 focus:border-blue-500"
                       />
                     </div>
                     <div>
@@ -874,7 +782,6 @@ export function CustomerDashboard({ user, onNavigate }) {
                             newPassword: e.target.value,
                           })
                         }
-                        className="border-2 border-gray-300 focus:border-blue-500"
                       />
                     </div>
                     <div>
@@ -891,13 +798,12 @@ export function CustomerDashboard({ user, onNavigate }) {
                             confirmPassword: e.target.value,
                           })
                         }
-                        className="border-2 border-gray-300 focus:border-blue-500"
                       />
                     </div>
                     <div className="flex space-x-2">
                       <Button
                         onClick={handleChangePassword}
-                        className="bg-blue-600 hover:bg-blue-700 text-white cursor-pointer font-semibold"
+                        className="bg-green-600 hover:bg-green-700 cursor-pointer"
                         disabled={isLoading}
                       >
                         {isLoading ? "Updating..." : "Update Password"}
@@ -912,7 +818,7 @@ export function CustomerDashboard({ user, onNavigate }) {
                             confirmPassword: "",
                           });
                         }}
-                        className="cursor-pointer hover:bg-gray-100"
+                        className="cursor-pointer"
                         disabled={isLoading}
                       >
                         Cancel
