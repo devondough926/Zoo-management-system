@@ -35,25 +35,13 @@ export const AnimalCard = React.memo(
             <CardTitle className="text-lg">{animal.name}</CardTitle>
             <Badge
               variant="outline"
-              style={
+              className={`${
                 animal.gender === "Male"
-                  ? {
-                      backgroundColor: "#dbeafe",
-                      color: "#1e40af",
-                      borderColor: "#93c5fd",
-                    }
+                  ? "bg-teal-100 text-teal-800 border-teal-300"
                   : animal.gender === "Female"
-                  ? {
-                      backgroundColor: "#fbcfe8",
-                      color: "#831843",
-                      borderColor: "#f9a8d4",
-                    }
-                  : {
-                      backgroundColor: "#f3f4f6",
-                      color: "#1f2937",
-                      borderColor: "#d1d5db",
-                    }
-              }
+                  ? "bg-teal-100 text-teal-800 border-teal-300"
+                  : "bg-gray-100 text-gray-800 border-gray-300"
+              }`}
             >
               {animal.gender}
             </Badge>

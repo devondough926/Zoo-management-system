@@ -7,13 +7,7 @@ import {
 } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
-import {
-  ShoppingCart,
-  ShoppingBag,
-  MapPin,
-  CreditCard,
-  Gift,
-} from "lucide-react";
+import { ShoppingCart, ShoppingBag } from "lucide-react";
 import { toast } from "sonner";
 import { currentUser } from "../data/mockData";
 import { useData } from "../data/DataContext";
@@ -351,23 +345,17 @@ export function ShopPage({ onNavigate, addToCart }) {
             </p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
               <div className="bg-white p-6 rounded-lg">
-                <div className="flex justify-center text-green-600 mb-2">
-                  <MapPin size={32} />
-                </div>
+                <div className="text-2xl text-green-600 mb-2">📍</div>
                 <p className="font-medium">Main Entrance</p>
                 <p className="text-sm text-gray-600">Easy to find</p>
               </div>
               <div className="bg-white p-6 rounded-lg">
-                <div className="flex justify-center text-green-600 mb-2">
-                  <CreditCard size={32} />
-                </div>
+                <div className="text-2xl text-green-600 mb-2">💳</div>
                 <p className="font-medium">All Payments</p>
                 <p className="text-sm text-gray-600">Cash & Card accepted</p>
               </div>
               <div className="bg-white p-6 rounded-lg">
-                <div className="flex justify-center text-green-600 mb-2">
-                  <Gift size={32} />
-                </div>
+                <div className="text-2xl text-green-600 mb-2">🎁</div>
                 <p className="font-medium">Gift Wrapping</p>
                 <p className="text-sm text-gray-600">Available upon request</p>
               </div>

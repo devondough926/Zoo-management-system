@@ -1,4 +1,4 @@
-import { useMemo, useEffect } from "react";
+import { useMemo } from "react";
 import {
   Card,
   CardContent,
@@ -6,23 +6,12 @@ import {
   CardTitle,
 } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
-import {
-  PawPrint,
-  Squirrel,
-  Rabbit,
-  Bird,
-  Utensils,
-  IceCream,
-  CupSoda,
-  Pizza,
-} from "lucide-react";
 import { exhibitsAPI, activitiesAPI } from "../services/customerAPI";
 import { getExhibitImage } from "../utils/imageMapping";
 import { useOptimizedFetch } from "../hooks/useOptimizedFetch";
 import { ExhibitCard } from "../components/ExhibitCard";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { useHeroImage } from "../utils/heroImages";
-import { preloadImages } from "../utils/imagePreloader";
 
 export function AttractionsPage() {
   const heroImage = useHeroImage("attractions");
@@ -77,28 +66,6 @@ export function AttractionsPage() {
       activities: activitiesByExhibit.get(exhibit.Exhibit_ID) || [],
     }));
   }, [exhibits, activitiesByExhibit]);
-
-  // Preload exhibit images
-  useEffect(() => {
-    if (exhibitsWithActivities.length > 0) {
-      const imageUrls = exhibitsWithActivities
-        .map((exhibit) => exhibit.imageUrl)
-        .filter(Boolean);
-
-      if (imageUrls.length > 0) {
-        // Preload first 8 images immediately (visible above fold)
-        const priorityImages = imageUrls.slice(0, 8);
-        const laterImages = imageUrls.slice(8);
-
-        preloadImages(priorityImages);
-
-        // Preload remaining images after a short delay
-        if (laterImages.length > 0) {
-          setTimeout(() => preloadImages(laterImages), 500);
-        }
-      }
-    }
-  }, [exhibitsWithActivities]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -175,58 +142,50 @@ export function AttractionsPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto">
                 <Card className="text-center">
                   <CardContent className="pt-6">
-                    <div className="flex justify-center text-orange-600 mb-2">
-                      <PawPrint size={36} />
-                    </div>
+                    <div className="text-3xl text-orange-600 mb-2">🦁</div>
                     <h3 className="text-xl font-semibold mb-2">Zone A</h3>
                     <p className="text-sm text-gray-600">African Savanna</p>
                     <p className="text-sm text-gray-600">Big Cat Territory</p>
-                    <div className="mt-4 text-xs text-gray-500 flex items-center justify-center gap-1">
-                      <Utensils size={14} /> Safari Grill
+                    <div className="mt-4 text-xs text-gray-500">
+                      🍔 Safari Grill
                     </div>
                   </CardContent>
                 </Card>
 
                 <Card className="text-center">
                   <CardContent className="pt-6">
-                    <div className="flex justify-center text-green-600 mb-2">
-                      <Squirrel size={36} />
-                    </div>
+                    <div className="text-3xl text-green-600 mb-2">🦍</div>
                     <h3 className="text-xl font-semibold mb-2">Zone B</h3>
                     <p className="text-sm text-gray-600">Primate Forest</p>
                     <p className="text-sm text-gray-600">Reptile House</p>
-                    <div className="mt-4 text-xs text-gray-500 flex items-center justify-center gap-1">
-                      <IceCream size={14} /> Polar Cafe
+                    <div className="mt-4 text-xs text-gray-500">
+                      🍦 Polar Cafe
                     </div>
                   </CardContent>
                 </Card>
 
                 <Card className="text-center">
                   <CardContent className="pt-6">
-                    <div className="flex justify-center text-yellow-600 mb-2">
-                      <Rabbit size={36} />
-                    </div>
+                    <div className="text-3xl text-yellow-600 mb-2">🦘</div>
                     <h3 className="text-xl font-semibold mb-2">Zone C</h3>
                     <p className="text-sm text-gray-600">Australian Outback</p>
                     <p className="text-sm text-gray-600">Tropical Rainforest</p>
-                    <div className="mt-4 text-xs text-gray-500 flex items-center justify-center gap-1">
-                      <CupSoda size={14} /> Rainforest Refreshments
+                    <div className="mt-4 text-xs text-gray-500">
+                      🥤 Rainforest Refreshments
                     </div>
                   </CardContent>
                 </Card>
 
                 <Card className="text-center">
                   <CardContent className="pt-6">
-                    <div className="flex justify-center text-blue-600 mb-2">
-                      <Bird size={36} />
-                    </div>
+                    <div className="text-3xl text-blue-600 mb-2">🦅</div>
                     <h3 className="text-xl font-semibold mb-2">Zone D</h3>
                     <p className="text-sm text-gray-600">Bird Sanctuary</p>
                     <p className="text-sm text-gray-600">
                       N. American Wilderness
                     </p>
-                    <div className="mt-4 text-xs text-gray-500 flex items-center justify-center gap-1">
-                      <Pizza size={14} /> Desert Diner
+                    <div className="mt-4 text-xs text-gray-500">
+                      🍕 Desert Diner
                     </div>
                   </CardContent>
                 </Card>

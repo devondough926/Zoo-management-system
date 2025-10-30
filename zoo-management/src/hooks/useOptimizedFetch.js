@@ -171,17 +171,6 @@ function clearCache(key) {
   }
 }
 
-// Utility to clear specific cache keys
-export function clearSpecificCache(...keys) {
-  try {
-    keys.forEach((key) => {
-      localStorage.removeItem(`cache_${key}`);
-    });
-  } catch (err) {
-    console.warn("Failed to clear specific cache:", err);
-  }
-}
-
 // Utility to clear all cached data (useful for logout or data updates)
 export function clearAllCache() {
   try {

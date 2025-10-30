@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
 import {
@@ -11,8 +11,6 @@ import {
 import { exhibitsAPI, activitiesAPI } from "../services/customerAPI";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { getExhibitImage } from "../utils/imageMapping";
-import { useOptimizedFetch } from "../hooks/useOptimizedFetch";
-import { preloadImages } from "../utils/imagePreloader";
 
 const membershipBenefits = [
   "Unlimited zoo admission",
@@ -22,51 +20,44 @@ const membershipBenefits = [
 ];
 
 export function CustomerHighlights({ onNavigate }) {
+  const [exhibits, setExhibits] = useState([]);
+  const [activities, setActivities] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [eventsIndex, setEventsIndex] = useState(0);
   const [exhibitsIndex, setExhibitsIndex] = useState(0);
 
   const itemsPerPage = 3;
 
-  // Optimized data fetching with caching
-  const {
-    data: exhibitsData,
-    loading: exhibitsLoading,
-    error: exhibitsError,
-  } = useOptimizedFetch(
-    "exhibits",
-    () => exhibitsAPI.getAll(),
-    { cacheTime: 5 * 60 * 1000 } // Cache for 5 minutes
-  );
-
-  const {
-    data: activitiesData,
-    loading: activitiesLoading,
-    error: activitiesError,
-  } = useOptimizedFetch(
-    "activities",
-    () => activitiesAPI.getAll(),
-    { cacheTime: 5 * 60 * 1000 } // Cache for 5 minutes
-  );
-
-  // Ensure we always have arrays (handle null/undefined from cache)
-  const exhibits = exhibitsData || [];
-  const activities = activitiesData || [];
-
-  const loading = exhibitsLoading || activitiesLoading;
-  const error = exhibitsError || activitiesError;
-
-  // Preload exhibit images for better performance
   useEffect(() => {
-    if (exhibits.length > 0) {
-      const imageUrls = exhibits
-        .map((exhibit) => getExhibitImage(exhibit))
-        .filter(Boolean);
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        setExhibits([]); // Clear any existing data
+        setActivities([]); // Clear any existing data
 
-      if (imageUrls.length > 0) {
-        preloadImages(imageUrls.slice(0, 6)); // Preload first 6 exhibits
+        const [exhibitsData, activitiesData] = await Promise.all([
+          exhibitsAPI.getAll(),
+          activitiesAPI.getAll(),
+        ]);
+
+        setExhibits(exhibitsData);
+        setActivities(activitiesData);
+      } catch (err) {
+        console.error("Error fetching data:", err);
+        setExhibits([]); // Ensure no data is shown on error
+        setActivities([]); // Ensure no data is shown on error
+        setError(
+          "Unable to connect to the server. Please ensure the backend is running."
+        );
+      } finally {
+        setLoading(false);
       }
-    }
-  }, [exhibits]);
+    };
+
+    fetchData();
+  }, []);
 
   const handleMembershipClick = () => {
     if (onNavigate) {
