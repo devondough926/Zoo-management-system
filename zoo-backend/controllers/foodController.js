@@ -1,81 +1,143 @@
 import db from "../config/database.js";
 
-// ============================================
-// FOOD - Concession Stand
-// ============================================
-
-// Get all food items
-export const getAllFood = async (req, res) => {
+// ==========================
+// 🍔 Get All Concession Items (with Stand Info)
+// ==========================
+export const getAllFoodItems = async (req, res) => {
   try {
-    const [foods] = await db.query(`
+    const [rows] = await db.query(`
       SELECT 
-        food_id,
-        item_name,
-        price,
-        quantity_available
-      FROM food
-      ORDER BY item_name
+        ci.Concession_Item_ID,
+        ci.Item_Name,
+        ci.Price,
+        ci.Image_URL,
+        cs.Stand_ID,
+        cs.Stand_Name,
+        cs.Stand_Type,
+        cs.Location_ID
+      FROM Concession_Item ci
+      LEFT JOIN Concession_Stand cs 
+        ON ci.Stand_ID = cs.Stand_ID
+      ORDER BY cs.Stand_Name, ci.Item_Name;
     `);
-    res.json(foods);
+
+    res.status(200).json(rows);
   } catch (error) {
-    console.error("Error fetching food:", error);
+    console.error("❌ Error fetching concession items:", error);
     res.status(500).json({ error: "Failed to fetch food items" });
   }
 };
 
-// Get a single food item
-export const getFoodById = async (req, res) => {
+// ==========================
+// 🏪 Get Food Items by Stand ID
+// ==========================
+export const getFoodItemsByStand = async (req, res) => {
+  const { standId } = req.params;
   try {
-    const { id } = req.params;
-    const [foods] = await db.query("SELECT * FROM food WHERE food_id = ?", [id]);
-    if (foods.length === 0) return res.status(404).json({ error: "Food not found" });
-    res.json(foods[0]);
+    const [rows] = await db.query(
+      `
+      SELECT 
+        Concession_Item_ID,
+        Item_Name,
+        Price,
+        Image_URL
+      FROM Concession_Item
+      WHERE Stand_ID = ?
+      ORDER BY Item_Name;
+    `,
+      [standId]
+    );
+    res.status(200).json(rows);
   } catch (error) {
-    console.error("Error fetching food by ID:", error);
-    res.status(500).json({ error: "Failed to fetch food item" });
+    console.error("❌ Error fetching food items by stand:", error);
+    res.status(500).json({ error: "Failed to fetch food items for this stand" });
   }
 };
 
-// Add a new food item
-export const addFood = async (req, res) => {
+// ==========================
+// ➕ Add New Food Item
+// ==========================
+export const createFoodItem = async (req, res) => {
+  const { Stand_ID, Item_Name, Price, Image_URL } = req.body;
+
+  if (!Stand_ID || !Item_Name || !Price) {
+    return res
+      .status(400)
+      .json({ error: "Stand_ID, Item_Name, and Price are required" });
+  }
+
   try {
-    const { item_name, price, quantity_available } = req.body;
     const [result] = await db.query(
-      "INSERT INTO food (item_name, price, quantity_available) VALUES (?, ?, ?)",
-      [item_name, price, quantity_available]
+      `
+      INSERT INTO Concession_Item (Stand_ID, Item_Name, Price, Image_URL)
+      VALUES (?, ?, ?, ?);
+    `,
+      [Stand_ID, Item_Name, Price, Image_URL || null]
     );
-    res.status(201).json({ message: "Food added successfully", id: result.insertId });
+
+    res.status(201).json({
+      message: "Food item created successfully",
+      newItemId: result.insertId,
+    });
   } catch (error) {
-    console.error("Error adding food:", error);
-    res.status(500).json({ error: "Failed to add food" });
+    console.error("❌ Error creating food item:", error);
+    res.status(500).json({ error: "Failed to create food item" });
   }
 };
 
-// Update a food item
-export const updateFood = async (req, res) => {
+// ==========================
+// ✏️ Update Food Item
+// ==========================
+export const updateFoodItem = async (req, res) => {
+  const { id } = req.params;
+  const { Item_Name, Price, Image_URL } = req.body;
+
+  if (!Item_Name && !Price && !Image_URL) {
+    return res.status(400).json({ error: "No fields provided to update" });
+  }
+
   try {
-    const { id } = req.params;
-    const { item_name, price, quantity_available } = req.body;
-    await db.query(
-      "UPDATE food SET item_name=?, price=?, quantity_available=? WHERE food_id=?",
-      [item_name, price, quantity_available, id]
+    const [result] = await db.query(
+      `
+      UPDATE Concession_Item
+      SET 
+        Item_Name = COALESCE(?, Item_Name),
+        Price = COALESCE(?, Price),
+        Image_URL = COALESCE(?, Image_URL)
+      WHERE Concession_Item_ID = ?;
+    `,
+      [Item_Name, Price, Image_URL, id]
     );
-    res.json({ message: "Food updated successfully" });
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: "Food item not found" });
+    }
+
+    res.json({ message: "Food item updated successfully" });
   } catch (error) {
-    console.error("Error updating food:", error);
-    res.status(500).json({ error: "Failed to update food" });
+    console.error("❌ Error updating food item:", error);
+    res.status(500).json({ error: "Failed to update food item" });
   }
 };
 
-// Delete a food item
-export const deleteFood = async (req, res) => {
+// ==========================
+// ❌ Delete Food Item
+// ==========================
+export const deleteFoodItem = async (req, res) => {
+  const { id } = req.params;
   try {
-    const { id } = req.params;
-    await db.query("DELETE FROM food WHERE food_id=?", [id]);
-    res.json({ message: "Food deleted successfully" });
+    const [result] = await db.query(
+      "DELETE FROM Concession_Item WHERE Concession_Item_ID = ?;",
+      [id]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: "Food item not found" });
+    }
+
+    res.json({ message: "Food item deleted successfully" });
   } catch (error) {
-    console.error("Error deleting food:", error);
-    res.status(500).json({ error: "Failed to delete food" });
+    console.error("❌ Error deleting food item:", error);
+    res.status(500).json({ error: "Failed to delete food item" });
   }
 };
-

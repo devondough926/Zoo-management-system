@@ -4,13 +4,13 @@ import helmet from "helmet";
 import morgan from "morgan";
 import dotenv from "dotenv";
 import { testConnection } from "./config/database.js";
+
+// ✅ Import only the routes you actually need
+import authRoutes from "./routes/authRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import customerRoutes from "./routes/customerRoutes.js";
-import authRoutes from "./routes/authRoutes.js";
 import foodRoutes from "./routes/foodRoutes.js";
-import giftRoutes from "./routes/giftRoutes.js";
-import vetRoutes from "./routes/vetRoutes.js";
-import zookeeperRoutes from "./routes/zookeeperRoutes.js";
+
 import { isAzureConfigured } from "./middleware/azureUpload.js";
 
 dotenv.config();
@@ -18,31 +18,28 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// ==========================
 // Middleware
+// ==========================
 app.use(
   helmet({
-    crossOriginResourcePolicy: { policy: "cross-origin" },
+    crossOriginResourcePolicy: { policy: "cross-origin" }, // Allow cross-origin images
   })
 );
 
 app.use(
   cors({
     origin: function (origin, callback) {
-      // console.log("CORS check - Origin:", origin);
-      // console.log("CORS check - Allowed CLIENT_URL:", process.env.CLIENT_URL);
-
-      // Allow all localhost ports in development
+      // Allow localhost during dev
       if (!origin || /^http:\/\/localhost:\d+$/.test(origin)) {
         return callback(null, true);
       }
 
-      // Check against whitelist
       const allowedOrigins = [process.env.CLIENT_URL].filter(Boolean);
       if (allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
 
-      // Log rejection but don't throw error - return false instead
       console.error("CORS rejected origin:", origin);
       callback(null, false);
     },
@@ -54,7 +51,9 @@ app.use(morgan("dev"));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Health check
+// ==========================
+// Health Check
+// ==========================
 app.get("/health", (req, res) => {
   res.status(200).json({
     status: "OK",
@@ -63,16 +62,17 @@ app.get("/health", (req, res) => {
   });
 });
 
-// ✅ Mount all routes here
+// ==========================
+// Mount Routes (only relevant ones)
+// ==========================
+app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/customer", customerRoutes);
-app.use("/api/auth", authRoutes);
-app.use("/api/food", foodRoutes);
-app.use("/api/gifts", giftRoutes);
-app.use("/api/vets", vetRoutes);
-app.use("/api/zookeepers", zookeeperRoutes);
+app.use("/api/food", foodRoutes); // ✅ Concession Stand Portal + Food Page
 
-// 404 handler
+// ==========================
+// 404 Handler
+// ==========================
 app.use((req, res) => {
   res.status(404).json({
     error: "Route not found",
@@ -80,7 +80,9 @@ app.use((req, res) => {
   });
 });
 
-// Error handler
+// ==========================
+// Global Error Handler
+// ==========================
 app.use((err, req, res, next) => {
   console.error("Error:", err);
   res.status(err.status || 500).json({
@@ -88,25 +90,25 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Start server
+// ==========================
+// Start Server
+// ==========================
 const startServer = async () => {
   try {
     const dbConnected = await testConnection();
 
     if (!dbConnected) {
-      console.error("[WARNING] Server starting without database connection");
+      console.error("⚠️  Server starting without database connection");
     }
 
     if (isAzureConfigured()) {
-      console.log("[SUCCESS] Azure Blob Storage is configured");
+      console.log("✅ Azure Blob Storage is configured");
     } else {
-      console.error(
-        "[WARNING] Azure Blob Storage is NOT configured - image uploads will fail"
-      );
+      console.warn("⚠️  Azure Blob Storage is NOT configured - image uploads may fail");
     }
 
     app.listen(PORT, () => {
-      console.log(`\n[SERVER] Running on port ${PORT}`);
+      console.log(`\n🚀 Server running on port ${PORT}`);
       console.log(`Environment: ${process.env.NODE_ENV || "development"}`);
       console.log(`Health check: http://localhost:${PORT}/health`);
       console.log(
