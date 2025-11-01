@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useNavigate, UNSAFE_NavigationContext } from "react-router-dom"; // optional if router exists
 import {
   Card,
   CardContent,
@@ -6,7 +7,6 @@ import {
   CardTitle,
 } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
-import { Badge } from "../../components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -34,7 +34,6 @@ import {
   Coffee,
   DollarSign,
   Edit2,
-  Upload,
   TrendingUp,
   Trash2,
 } from "lucide-react";
@@ -43,7 +42,17 @@ import { ZooLogo } from "../../components/ZooLogo";
 import { ImageWithFallback } from "../../components/figma/ImageWithFallback";
 import { useData } from "../../data/DataContext";
 
-export function ConcessionPortal({ user, onLogout, onNavigate }) {
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000/api";
+
+export function ConcessionPortal({ user, onLogout }) {
+  // ✅ Detect router context to avoid “useNavigate() outside Router” error
+  let navigate;
+  try {
+    navigate = useNavigate();
+  } catch {
+    navigate = null;
+  }
+
   const {
     concessionItems: menuItems,
     addConcessionItem,
@@ -52,20 +61,33 @@ export function ConcessionPortal({ user, onLogout, onNavigate }) {
     purchases,
     purchaseConcessionItems,
   } = useData();
-  // All concession stands under management (Concession Worker manages all 4 stands)
+
+  const [dbItems, setDbItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // ✅ Fetch from backend if available
+  useEffect(() => {
+    async function fetchFromBackend() {
+      try {
+        const res = await fetch(`${API_BASE}/food`);
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          setDbItems(data);
+        }
+      } catch (err) {
+        console.warn("⚠️ Backend not reachable, using mock data.");
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchFromBackend();
+  }, []);
+
   const allStands = concessionStands;
   const [showRevenueAllTime, setShowRevenueAllTime] = useState(false);
-
-  // Edit dialog state
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
-  const [editForm, setEditForm] = useState({
-    name: "",
-    price: "",
-    imageFile: null,
-  });
-
-  // Add dialog state
+  const [editForm, setEditForm] = useState({ name: "", price: "", imageFile: null });
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [addForm, setAddForm] = useState({
     name: "",
@@ -73,12 +95,10 @@ export function ConcessionPortal({ user, onLogout, onNavigate }) {
     standId: "1",
     imageFile: null,
   });
-
-  // Delete dialog state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState(null);
 
-  // Calculate revenue from actual purchases
+  // ✅ Revenue + Sales Stats
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -103,24 +123,22 @@ export function ConcessionPortal({ user, onLogout, onNavigate }) {
     0
   );
 
-  // Top selling items with mock quantities (top 3 only)
+  // ✅ Top & Bottom Items (Mock)
   const topItems = [
-    { item: menuItems[17], quantity: 189, rank: 1 }, // Spaghetti & Meatballs
-    { item: menuItems[0], quantity: 167, rank: 2 }, // Classic Cheeseburger
-    { item: menuItems[6], quantity: 154, rank: 3 }, // Chocolate Sundae
-  ].filter((t) => t.item); // Filter out any undefined items
+    { item: menuItems[17], quantity: 189, rank: 1 },
+    { item: menuItems[0], quantity: 167, rank: 2 },
+    { item: menuItems[6], quantity: 154, rank: 3 },
+  ].filter((t) => t.item);
 
-  // Get top selling item today
   const topSellingItemToday = topItems[0] || null;
-
-  // Bottom selling items with mock quantities (bottom 3 only)
   const totalItemCount = menuItems.length;
   const bottomItems = [
-    { item: menuItems[19], quantity: 23, rank: totalItemCount }, // Italian Sub - last place
-    { item: menuItems[13], quantity: 31, rank: totalItemCount - 1 }, // Green Smoothie - 2nd to last
-    { item: menuItems[8], quantity: 38, rank: totalItemCount - 2 }, // Frozen Lemonade - 3rd to last
-  ].filter((t) => t.item); // Filter out any undefined items
+    { item: menuItems[19], quantity: 23, rank: totalItemCount },
+    { item: menuItems[13], quantity: 31, rank: totalItemCount - 1 },
+    { item: menuItems[8], quantity: 38, rank: totalItemCount - 2 },
+  ].filter((t) => t.item);
 
+  // ✅ CRUD Handlers
   const handleEditClick = (item) => {
     setEditingItem(item);
     setEditForm({
@@ -133,13 +151,11 @@ export function ConcessionPortal({ user, onLogout, onNavigate }) {
 
   const handleEditSave = () => {
     if (!editingItem) return;
-
     if (!editForm.name || !editForm.price) {
       toast.error("Please fill in all required fields");
       return;
     }
 
-    // Create a URL for the image file if provided, otherwise keep existing image
     const imageUrl = editForm.imageFile
       ? URL.createObjectURL(editForm.imageFile)
       : editingItem.image;
@@ -160,7 +176,6 @@ export function ConcessionPortal({ user, onLogout, onNavigate }) {
       return;
     }
 
-    // Create a URL for the image file if provided
     const imageUrl = addForm.imageFile
       ? URL.createObjectURL(addForm.imageFile)
       : undefined;
@@ -187,59 +202,74 @@ export function ConcessionPortal({ user, onLogout, onNavigate }) {
 
   const handleDeleteConfirm = () => {
     if (!itemToDelete) return;
-
     deleteConcessionItem(itemToDelete.Concession_Item_ID);
     setDeleteDialogOpen(false);
     setItemToDelete(null);
     toast.success("Item removed successfully!");
   };
 
+  const allItems = dbItems.length > 0 ? dbItems : menuItems;
+  const getImageSrc = (item) =>
+    item.Image_URL
+      ? item.Image_URL
+      : item.image
+      ? item.image
+      : "/placeholder.png";
+
+  if (loading)
+    return (
+      <div className="flex items-center justify-center h-screen text-gray-600">
+        Loading concession data...
+      </div>
+    );
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white border-b sticky top-0 z-50">
-        <div className="container mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <ZooLogo size={40} />
-              <div>
-                <h1 className="font-semibold text-xl">Staff Portal</h1>
-                <p className="text-sm text-gray-600">
-                  Concession Stand Dashboard
-                </p>
-              </div>
+        <div className="container mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <ZooLogo size={40} />
+            <div>
+              <h1 className="font-semibold text-xl">Staff Portal</h1>
+              <p className="text-sm text-gray-600">Concession Stand Dashboard</p>
             </div>
-            <div className="flex items-center space-x-4">
-              <div className="text-right">
-                <p className="font-medium">
-                  Welcome, {user.First_Name} {user.Last_Name}
-                </p>
-                <p className="text-sm text-gray-600">Concession Worker</p>
-              </div>
-              <Button
-                variant="outline"
-                onClick={() => onNavigate("food")}
-                className="border-teal-600 text-teal-600 cursor-pointer"
-              >
-                <Coffee className="h-4 w-4 mr-2" />
-                View Food Menu
-              </Button>
-              <Button
-                variant="outline"
-                onClick={onLogout}
-                className="border-green-600 text-green-600 cursor-pointer"
-              >
-                <LogOut className="h-4 w-4 mr-2" />
-                Logout
-              </Button>
+          </div>
+          <div className="flex items-center space-x-4">
+            <div className="text-right">
+              <p className="font-medium">
+                Welcome, {user?.First_Name || "Concession"}{" "}
+                {user?.Last_Name || "Account"}
+              </p>
+              <p className="text-sm text-gray-600">Concession Worker</p>
             </div>
+
+            {/* ✅ Safe navigation (works with or without Router) */}
+            <Button
+              variant="outline"
+              onClick={() =>
+                navigate ? navigate("/food") : (window.location.href = "/food")
+              }
+              className="border-teal-600 text-teal-600 cursor-pointer"
+            >
+              <Coffee className="h-4 w-4 mr-2" />
+              View Food Menu
+            </Button>
+
+            <Button
+              variant="outline"
+              onClick={onLogout}
+              className="border-green-600 text-green-600 cursor-pointer"
+            >
+              <LogOut className="h-4 w-4 mr-2" />
+              Logout
+            </Button>
           </div>
         </div>
       </header>
 
-      {/* Main Content */}
+      {/* Dashboard Stats */}
       <div className="container mx-auto px-6 py-12">
-        {/* Stats Dashboard - Moved to Top */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <Card>
             <CardContent className="pt-6 text-center">
@@ -258,12 +288,8 @@ export function ConcessionPortal({ user, onLogout, onNavigate }) {
               <div className="text-3xl text-green-600 mb-2">
                 $
                 {showRevenueAllTime
-                  ? allTimeRevenue.toLocaleString("en-US", {
-                      minimumFractionDigits: 2,
-                    })
-                  : todayRevenue.toLocaleString("en-US", {
-                      minimumFractionDigits: 2,
-                    })}
+                  ? allTimeRevenue.toLocaleString("en-US", { minimumFractionDigits: 2 })
+                  : todayRevenue.toLocaleString("en-US", { minimumFractionDigits: 2 })}
               </div>
               <p className="text-gray-700">
                 {showRevenueAllTime ? "All-Time Revenue" : "Today's Revenue"}
@@ -273,9 +299,7 @@ export function ConcessionPortal({ user, onLogout, onNavigate }) {
 
           <Card>
             <CardContent className="pt-6 text-center">
-              <div className="text-3xl text-green-600 mb-2">
-                {itemsSoldToday}
-              </div>
+              <div className="text-3xl text-green-600 mb-2">{itemsSoldToday}</div>
               <p className="text-gray-700">Items Sold Today</p>
             </CardContent>
           </Card>
@@ -308,7 +332,7 @@ export function ConcessionPortal({ user, onLogout, onNavigate }) {
             <div className="flex items-center justify-between">
               <CardTitle className="flex items-center">
                 <Coffee className="h-5 w-5 mr-2 text-green-600" />
-                Current Menu ({menuItems.length} items)
+                Current Menu ({allItems.length} items)
               </CardTitle>
               <Button
                 className="bg-green-600 hover:bg-green-700 cursor-pointer"
@@ -321,22 +345,18 @@ export function ConcessionPortal({ user, onLogout, onNavigate }) {
           </CardHeader>
           <CardContent>
             <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2">
-              {menuItems.map((item) => (
+              {allItems.map((item) => (
                 <div
                   key={item.Concession_Item_ID}
                   className="flex items-center justify-between p-4 rounded-lg border hover:border-green-600 transition-colors"
                 >
                   <div className="flex items-center space-x-4 flex-1">
                     <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden">
-                      {item.image ? (
-                        <ImageWithFallback
-                          src={item.image}
-                          alt={item.Item_Name}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <Coffee className="h-8 w-8 text-gray-400" />
-                      )}
+                      <ImageWithFallback
+                        src={getImageSrc(item)}
+                        alt={item.Item_Name}
+                        className="w-full h-full object-cover"
+                      />
                     </div>
                     <div className="flex-1">
                       <h3 className="font-medium">{item.Item_Name}</h3>
@@ -350,7 +370,7 @@ export function ConcessionPortal({ user, onLogout, onNavigate }) {
                   <div className="flex items-center space-x-4">
                     <div className="text-right">
                       <p className="text-2xl font-semibold text-green-600">
-                        ${item.Price.toFixed(2)}
+                        ${parseFloat(item.Price).toFixed(2)}
                       </p>
                     </div>
                     <div className="flex space-x-2">
@@ -378,273 +398,7 @@ export function ConcessionPortal({ user, onLogout, onNavigate }) {
             </div>
           </CardContent>
         </Card>
-
-        {/* Selling Items Stats */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-8">
-          {/* Top Selling Items */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center">
-                  <TrendingUp className="h-5 w-5 mr-2 text-green-600" />
-                  Top 3 Selling Items
-                </CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {topItems.map((topItem) => (
-                  <div
-                    key={topItem.item.Concession_Item_ID}
-                    className="flex items-center justify-between p-4 rounded-lg border hover:border-green-600 transition-colors"
-                  >
-                    <div className="flex items-center space-x-4 flex-1">
-                      <div className="flex items-center justify-center w-10 h-10 rounded-full bg-green-100 text-green-600 font-bold">
-                        #{topItem.rank}
-                      </div>
-                      <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden">
-                        {topItem.item.image ? (
-                          <ImageWithFallback
-                            src={topItem.item.image}
-                            alt={topItem.item.Item_Name}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <Coffee className="h-8 w-8 text-gray-400" />
-                        )}
-                      </div>
-                      <div className="flex-1">
-                        <h3 className="font-medium">
-                          {topItem.item.Item_Name}
-                        </h3>
-                        <p className="text-sm text-gray-600">
-                          {topItem.quantity} sold
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Bottom Selling Items */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center">
-                  <TrendingUp className="h-5 w-5 mr-2 text-red-600 transform rotate-180" />
-                  Bottom 3 Selling Items
-                </CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {bottomItems.map((bottomItem) => (
-                  <div
-                    key={bottomItem.item.Concession_Item_ID}
-                    className="flex items-center justify-between p-4 rounded-lg border hover:border-red-600 transition-colors"
-                  >
-                    <div className="flex items-center space-x-4 flex-1">
-                      <div className="flex items-center justify-center w-10 h-10 rounded-full bg-red-100 text-red-600 font-bold">
-                        #{bottomItem.rank}
-                      </div>
-                      <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden">
-                        {bottomItem.item.image ? (
-                          <ImageWithFallback
-                            src={bottomItem.item.image}
-                            alt={bottomItem.item.Item_Name}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <Coffee className="h-8 w-8 text-gray-400" />
-                        )}
-                      </div>
-                      <div className="flex-1">
-                        <h3 className="font-medium">
-                          {bottomItem.item.Item_Name}
-                        </h3>
-                        <p className="text-sm text-gray-600">
-                          {bottomItem.quantity} sold
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
       </div>
-
-      {/* Edit Dialog */}
-      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>Edit Menu Item</DialogTitle>
-            <DialogDescription>
-              Update the details of this menu item.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-name">Item Name *</Label>
-              <Input
-                id="edit-name"
-                value={editForm.name}
-                onChange={(e) =>
-                  setEditForm({ ...editForm, name: e.target.value })
-                }
-                placeholder="Enter item name"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-price">Price *</Label>
-              <Input
-                id="edit-price"
-                type="number"
-                step="0.01"
-                value={editForm.price}
-                onChange={(e) =>
-                  setEditForm({ ...editForm, price: e.target.value })
-                }
-                placeholder="0.00"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-image">Image File (Optional)</Label>
-              <Input
-                id="edit-image"
-                type="file"
-                accept="image/*"
-                onChange={(e) => {
-                  const file = e.target.files?.[0] || null;
-                  setEditForm({ ...editForm, imageFile: file });
-                }}
-              />
-              <p className="text-sm text-gray-500">
-                Upload a new image to replace the current one (optional)
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleEditSave}
-              className="bg-green-600 hover:bg-green-700"
-            >
-              Save Changes
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Add New Item Dialog */}
-      <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>Add New Menu Item</DialogTitle>
-            <DialogDescription>
-              Add a new item to the concession stand menu.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="add-name">Item Name *</Label>
-              <Input
-                id="add-name"
-                value={addForm.name}
-                onChange={(e) =>
-                  setAddForm({ ...addForm, name: e.target.value })
-                }
-                placeholder="Enter item name"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="add-price">Price *</Label>
-              <Input
-                id="add-price"
-                type="number"
-                step="0.01"
-                value={addForm.price}
-                onChange={(e) =>
-                  setAddForm({ ...addForm, price: e.target.value })
-                }
-                placeholder="0.00"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="add-location">Location *</Label>
-              <select
-                id="add-location"
-                value={addForm.standId}
-                onChange={(e) =>
-                  setAddForm({ ...addForm, standId: e.target.value })
-                }
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-600"
-              >
-                {allStands.map((stand) => (
-                  <option key={stand.Stand_ID} value={stand.Stand_ID}>
-                    {stand.Stand_Name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="add-image">Image File (Optional)</Label>
-              <Input
-                id="add-image"
-                type="file"
-                accept="image/*"
-                onChange={(e) => {
-                  const file = e.target.files?.[0] || null;
-                  setAddForm({ ...addForm, imageFile: file });
-                }}
-              />
-              <p className="text-sm text-gray-500">
-                Upload an image for the item (optional)
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleAddItem}
-              className="bg-green-600 hover:bg-green-700"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Add Item
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Item</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete "{itemToDelete?.Item_Name}" from
-              the menu? This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteConfirm}
-              className="bg-red-600 hover:bg-red-700"
-            >
-              <Trash2 className="h-4 w-4 mr-2" />
-              Delete Item
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }

@@ -292,6 +292,41 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
     return `${month}/${day}/${year}`;
   };
 
+  // Helper function to format date for input[type="date"] - timezone-safe
+  // Fix: Use timezone-safe parsing to prevent date shifting
+  // When MySQL returns "2024-01-15", we want to display "2024-01-15", not "2024-01-14"
+  const formatDateForInput = (dateString) => {
+    if (!dateString) return "";
+    
+    // If it's already in YYYY-MM-DD format (from MySQL DATE type), use it directly
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+      return dateString;
+    }
+    
+    // For other formats, parse as local date to avoid timezone issues
+    // Split the date string and construct a local date (not UTC)
+    const dateMatch = dateString.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (dateMatch) {
+      const [, year, month, day] = dateMatch;
+      // Create date in local timezone (month is 0-indexed in JS Date)
+      const localDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+      // Format as YYYY-MM-DD using local date methods (not UTC)
+      const formattedYear = localDate.getFullYear();
+      const formattedMonth = String(localDate.getMonth() + 1).padStart(2, '0');
+      const formattedDay = String(localDate.getDate()).padStart(2, '0');
+      return `${formattedYear}-${formattedMonth}-${formattedDay}`;
+    }
+    
+    // Fallback for other date formats
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return "";
+    // Use local date components instead of toISOString() to avoid UTC conversion
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   // Helper function to format numbers with commas
   const formatNumber = (num) => {
     return num.toLocaleString("en-US");
@@ -851,11 +886,11 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
       if (formData.weight !== editingAnimal.Weight.toString()) {
         animalData.weight = parseFloat(formData.weight);
       }
-      // Compare formatted dates
-      const originalBirthday = new Date(editingAnimal.Birthday)
-        .toISOString()
-        .split("T")[0];
+      // Compare formatted dates using timezone-safe formatting
+      // Fix: Avoid toISOString() which converts to UTC and can shift dates
+      const originalBirthday = formatDateForInput(editingAnimal.Birthday);
       if (formData.birthday !== originalBirthday) {
+        // Send the date string directly as YYYY-MM-DD (no timezone conversion)
         animalData.birthday = formData.birthday;
       }
       if (formData.enclosureId !== editingAnimal.Enclosure_ID.toString()) {
@@ -2439,11 +2474,36 @@ function EditEmployeeDialog({
   isSaving,
 }) {
   // Helper function to format date for input[type="date"]
+  // Fix: Use timezone-safe parsing to prevent date shifting (same fix as EditAnimalForm)
   const formatDateForInput = (dateString) => {
     if (!dateString) return "";
+    
+    // If it's already in YYYY-MM-DD format (from MySQL DATE type), use it directly
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+      return dateString;
+    }
+    
+    // For other formats, parse as local date to avoid timezone issues
+    const dateMatch = dateString.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (dateMatch) {
+      const [, year, month, day] = dateMatch;
+      // Create date in local timezone (month is 0-indexed in JS Date)
+      const localDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+      // Format as YYYY-MM-DD using local date methods (not UTC)
+      const formattedYear = localDate.getFullYear();
+      const formattedMonth = String(localDate.getMonth() + 1).padStart(2, '0');
+      const formattedDay = String(localDate.getDate()).padStart(2, '0');
+      return `${formattedYear}-${formattedMonth}-${formattedDay}`;
+    }
+    
+    // Fallback for other date formats
     const date = new Date(dateString);
     if (isNaN(date.getTime())) return "";
-    return date.toISOString().split("T")[0];
+    // Use local date components instead of toISOString() to avoid UTC conversion
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   };
 
   const [formData, setFormData] = useState({
@@ -2941,13 +3001,38 @@ function EditAnimalDialog({
   isSaving,
 }) {
   // Helper function to format date for input[type="date"]
+  // Fix: Use timezone-safe parsing to prevent date shifting
+  // When MySQL returns "2024-01-15", we want to display "2024-01-15", not "2024-01-14"
   const formatDateForInput = (dateString) => {
     if (!dateString) return "";
-    // Handle both ISO format and MySQL date format
+    
+    // If it's already in YYYY-MM-DD format (from MySQL DATE type), use it directly
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+      return dateString;
+    }
+    
+    // For other formats, parse as local date to avoid timezone issues
+    // Split the date string and construct a local date (not UTC)
+    const dateMatch = dateString.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (dateMatch) {
+      const [, year, month, day] = dateMatch;
+      // Create date in local timezone (month is 0-indexed in JS Date)
+      const localDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+      // Format as YYYY-MM-DD using local date methods (not UTC)
+      const formattedYear = localDate.getFullYear();
+      const formattedMonth = String(localDate.getMonth() + 1).padStart(2, '0');
+      const formattedDay = String(localDate.getDate()).padStart(2, '0');
+      return `${formattedYear}-${formattedMonth}-${formattedDay}`;
+    }
+    
+    // Fallback for other date formats
     const date = new Date(dateString);
     if (isNaN(date.getTime())) return "";
-    // Return YYYY-MM-DD format
-    return date.toISOString().split("T")[0];
+    // Use local date components instead of toISOString() to avoid UTC conversion
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   };
 
   const [formData, setFormData] = useState({

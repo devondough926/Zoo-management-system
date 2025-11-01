@@ -1,0 +1,19 @@
+{
+    "sqltools.connections": [
+        {
+            "mysqlOptions": {
+                "authProtocol": "default",
+                "enableSsl": "Disabled"
+            },
+            "ssh": "Disabled",
+            "previewLimit": 50,
+            "server": "zoo-system.mysql.database.azure.com",
+            "port": 3306,
+            "driver": "MySQL",
+            "name": "Zoo Azure DB",
+            "database": "zoo-system",
+            "username": "dldo2",
+            "askForPassword": true
+        }
+    ]
+}
