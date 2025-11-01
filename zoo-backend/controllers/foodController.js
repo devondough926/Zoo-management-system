@@ -1,4 +1,5 @@
 import db from "../config/database.js";
+import { isAzureConfigured } from "../middleware/azureUpload.js";
 
 // ==========================
 // 🍔 Get All Concession Items (with Stand Info)
@@ -55,29 +56,44 @@ export const getFoodItemsByStand = async (req, res) => {
 };
 
 // ==========================
-// ➕ Add New Food Item
+// ➕ Add New Food Item (with optional image upload)
 // ==========================
 export const createFoodItem = async (req, res) => {
-  const { Stand_ID, Item_Name, Price, Image_URL } = req.body;
-
-  if (!Stand_ID || !Item_Name || !Price) {
-    return res
-      .status(400)
-      .json({ error: "Stand_ID, Item_Name, and Price are required" });
-  }
-
   try {
+    const { Stand_ID, Item_Name, Price } = req.body;
+
+    if (!Stand_ID || !Item_Name || !Price) {
+      return res
+        .status(400)
+        .json({ error: "Stand_ID, Item_Name, and Price are required" });
+    }
+
+    // Determine image URL source
+    let imageUrl = null;
+
+    if (req.file) {
+      // From upload middleware (Azure or local)
+      imageUrl =
+        req.file.url ||
+        (req.file.filename ? `/uploads/${req.file.filename}` : null);
+    } else if (req.body.Image_URL) {
+      // From frontend JSON body
+      imageUrl = req.body.Image_URL;
+    }
+
     const [result] = await db.query(
       `
       INSERT INTO Concession_Item (Stand_ID, Item_Name, Price, Image_URL)
       VALUES (?, ?, ?, ?);
     `,
-      [Stand_ID, Item_Name, Price, Image_URL || null]
+      [Stand_ID, Item_Name, Price, imageUrl]
     );
 
     res.status(201).json({
       message: "Food item created successfully",
       newItemId: result.insertId,
+      imageUrl,
+      storage: isAzureConfigured() ? "azure" : "local",
     });
   } catch (error) {
     console.error("❌ Error creating food item:", error);

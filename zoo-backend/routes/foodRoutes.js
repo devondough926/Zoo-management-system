@@ -6,19 +6,34 @@ import {
   deleteFoodItem,
 } from "../controllers/foodController.js";
 
+// ✅ Import upload middleware
+import {
+  upload as azureUpload,
+  isAzureConfigured,
+} from "../middleware/azureUpload.js";
+import { upload as localUpload } from "../middleware/upload.js";
+
 const router = express.Router();
 
-// GET all food items
+// ✅ Automatically use Azure upload if configured, else local uploads
+const useUpload = isAzureConfigured()
+  ? azureUpload.single("image")
+  : localUpload.single("image");
+
+// ==========================
+// Routes
+// ==========================
+
+// 🍔 GET all food items
 router.get("/", getAllFoodItems);
 
-// POST create food item
-router.post("/", createFoodItem);
+// ➕ POST create new food item (with optional image)
+router.post("/", useUpload, createFoodItem);
 
-// PUT update food item
+// ✏️ PUT update food item
 router.put("/:id", updateFoodItem);
 
-// DELETE food item
+// ❌ DELETE food item
 router.delete("/:id", deleteFoodItem);
 
 export default router;
-

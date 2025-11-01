@@ -486,7 +486,11 @@ export const addAnimal = async (req, res) => {
         species,
         gender,
         weight,
-        birthday,
+        // Fix: Ensure birthday is in YYYY-MM-DD format for MySQL DATE type
+        // MySQL DATE type expects YYYY-MM-DD format and doesn't handle timezone
+        typeof birthday === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(birthday)
+          ? birthday  // Already in correct format, use as-is
+          : new Date(birthday).toISOString().split('T')[0],  // Fallback: format other date formats
         healthStatus || "Good",
         isVaccinated ? 1 : 0,
         enclosureId,
@@ -553,7 +557,14 @@ export const updateAnimal = async (req, res) => {
     }
     if (birthday !== undefined) {
       updates.push("Birthday = ?");
-      values.push(birthday);
+      // Fix: Ensure birthday is in YYYY-MM-DD format for MySQL DATE type
+      // MySQL DATE type expects YYYY-MM-DD format and doesn't handle timezone
+      // The frontend sends dates as YYYY-MM-DD strings, so we use them directly
+      // No Date object conversion needed - MySQL stores DATE as date-only (no time/timezone)
+      const birthdayValue = typeof birthday === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(birthday)
+        ? birthday  // Already in correct format, use as-is
+        : new Date(birthday).toISOString().split('T')[0];  // Fallback: format other date formats
+      values.push(birthdayValue);
     }
     if (healthStatus !== undefined) {
       updates.push("Health_Status = ?");
