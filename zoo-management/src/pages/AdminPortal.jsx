@@ -84,7 +84,7 @@ import { toast } from "sonner";
 import { ZooLogo } from "../components/ZooLogo";
 import { EditExhibitDialog } from "../components/ExhibitDialogs";
 import { usePricing } from "../data/PricingContext";
-import { clearSpecificCache } from "../hooks/useOptimizedFetch";
+import { useLazyLoad } from "../hooks/useLazyLoad";
 import {
   employeeAPI,
   locationAPI,
@@ -97,7 +97,6 @@ import {
   getDateRange,
 } from "../services/adminAPI";
 
-// API Base URL for direct fetch calls (for image uploads)
 const API_BASE_URL =
   import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
@@ -144,45 +143,117 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
   const [deleteConfirmAnimal, setDeleteConfirmAnimal] = useState(null);
   const [editingAnimal, setEditingAnimal] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(new Date());
-
-  // Loading state for async save/update operations
   const [isSaving, setIsSaving] = useState(false);
 
-  // Salary state for each job type (5 shared login roles)
   const [salaries, setSalaries] = useState({
-    2: 72000, // Supervisor
-    3: 72000, // Veterinarian
-    4: 45000, // Zookeeper
-    5: 32000, // Concession Worker
-    6: 35000, // Gift Shop Worker
+    2: 72000,
+    3: 72000,
+    4: 45000,
+    5: 32000,
+    6: 35000,
   });
 
-  // Temporary salary state for editing
   const [tempSalaries, setTempSalaries] = useState({ ...salaries });
-
-  // Pricing state for tickets and memberships
   const [isPricingManagementOpen, setIsPricingManagementOpen] = useState(false);
   const [tempTicketPrices, setTempTicketPrices] = useState({ ...ticketPrices });
   const [tempMembershipPrice, setTempMembershipPrice] =
     useState(membershipPrice);
 
-  // Load all data from database on mount
+  const [employeesRef, employeesVisible] = useLazyLoad();
+  const [exhibitsRef, exhibitsVisible] = useLazyLoad();
+  const [animalsRef, animalsVisible] = useLazyLoad();
+
   useEffect(() => {
-    loadAllData();
+    loadInitialData();
   }, []);
 
-  // Reload revenue data when range changes
   useEffect(() => {
     if (!isLoading) {
       loadRevenueData();
     }
   }, [revenueRange]);
 
+  useEffect(() => {
+    if (employeesVisible && allEmployees.length === 0) {
+      loadEmployees();
+    }
+  }, [employeesVisible]);
+
+  useEffect(() => {
+    if (exhibitsVisible && allExhibitsDB.length === 0) {
+      loadExhibits();
+    }
+  }, [exhibitsVisible]);
+
+  useEffect(() => {
+    if (animalsVisible && allAnimalsDB.length === 0) {
+      loadAnimals();
+    }
+  }, [animalsVisible]);
+
+  const loadInitialData = async () => {
+    try {
+      setIsLoading(true);
+
+      const [locationsData, jobTitlesData, enclosuresData, membershipsData] =
+        await Promise.all([
+          locationAPI.getAll(),
+          referenceAPI.getJobTitles(),
+          referenceAPI.getEnclosures(),
+          transactionAPI.getMemberships(),
+        ]);
+
+      setAllLocations(locationsData);
+      setAllJobTitles(jobTitlesData);
+      setAllEnclosures(enclosuresData);
+      setAllMemberships(membershipsData);
+
+      await loadRevenueData();
+
+      setLastUpdated(new Date());
+      toast.success("Dashboard loaded successfully!");
+    } catch (error) {
+      console.error("Error loading data:", error);
+      toast.error("Failed to load data from database");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const loadEmployees = async () => {
+    try {
+      const employeesData = await employeeAPI.getAll();
+      setAllEmployees(employeesData);
+    } catch (error) {
+      console.error("Error loading employees:", error);
+      toast.error("Failed to load employees");
+    }
+  };
+
+  const loadExhibits = async () => {
+    try {
+      const exhibitsData = await exhibitAPI.getAll();
+      setAllExhibitsDB(exhibitsData);
+    } catch (error) {
+      console.error("Error loading exhibits:", error);
+      toast.error("Failed to load exhibits");
+    }
+  };
+
+  const loadAnimals = async () => {
+    try {
+      const animalsData = await animalAPI.getAll();
+      setAllAnimalsDB(animalsData);
+    } catch (error) {
+      console.error("Error loading animals:", error);
+      toast.error("Failed to load animals");
+    }
+  };
+
   const loadAllData = async () => {
     try {
       setIsLoading(true);
 
-      // Load all data in parallel
       const [
         employeesData,
         locationsData,
@@ -209,7 +280,6 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
       setAllEnclosures(enclosuresData);
       setAllMemberships(membershipsData);
 
-      // Load revenue data
       await loadRevenueData();
 
       setLastUpdated(new Date());
@@ -233,30 +303,25 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
     }
   };
 
-  // Update supervisor salaries on mount and when locations change
   useEffect(() => {
     setAllEmployees((prevEmployees) =>
       prevEmployees.map((emp) => {
-        // Check if this employee is a supervisor of any zone
         const isSupervisor = allLocations.some(
           (loc) => loc.Supervisor_ID === emp.Employee_ID
         );
 
         if (isSupervisor) {
-          // Employee is a supervisor, use supervisor salary
           return { ...emp, Salary: salaries[2] };
         }
         return emp;
       })
     );
-  }, []); // Only run on mount
+  }, []);
 
-  // Helper function to filter data by date range
   const filterByDateRange = (dateString) => {
     const date = new Date(dateString);
     const now = new Date();
 
-    // Reset time parts to compare just dates
     const dateOnly = new Date(
       date.getFullYear(),
       date.getMonth(),
@@ -283,21 +348,21 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
     }
   };
 
-  // Helper function to format date as MM/DD/YYYY
   const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    const year = date.getFullYear();
+    if (!dateString) return "N/A";
+
+    let dateStr = dateString.replace("T", " ").split(" ")[0];
+    const parts = dateStr.match(/(\d{4})-(\d{2})-(\d{2})/);
+    if (!parts) return "Invalid Date";
+
+    const [, year, month, day] = parts;
     return `${month}/${day}/${year}`;
   };
 
-  // Helper function to format numbers with commas
   const formatNumber = (num) => {
     return num.toLocaleString("en-US");
   };
 
-  // Helper function to format last updated time
   const formatLastUpdated = () => {
     const hours = lastUpdated.getHours();
     const minutes = String(lastUpdated.getMinutes()).padStart(2, "0");
@@ -306,12 +371,10 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
     return `${displayHours}:${minutes} ${ampm}`;
   };
 
-  // Helper function to check if employee is a supervisor
   const isSupervisor = (emp) => {
     return allLocations.some((loc) => loc.Supervisor_ID === emp.Employee_ID);
   };
 
-  // Helper function to get employee's display title (with Supervisor override)
   const getEmployeeTitle = (emp) => {
     if (isSupervisor(emp)) {
       return "Supervisor";
@@ -319,32 +382,17 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
     return emp.Title || "Unknown";
   };
 
-  // Helper function to get employee zone
   const getEmployeeZone = (emp) => {
-    // If employee has a direct zone assignment, show it
     if (emp.Zone) return `Zone ${emp.Zone}`;
 
-    // Check if employee is a supervisor of a zone
     const supervisedZone = allLocations.find(
       (loc) => loc.Supervisor_ID === emp.Employee_ID
     );
     if (supervisedZone) return `Zone ${supervisedZone.Zone}`;
 
-    // Otherwise, find zone by supervisor chain
-    const supervisor = allEmployees.find(
-      (e) => e.Employee_ID === emp.Supervisor_ID
-    );
-    if (supervisor) {
-      const supZone = allLocations.find(
-        (loc) => loc.Supervisor_ID === supervisor.Employee_ID
-      );
-      if (supZone) return `Zone ${supZone.Zone}`;
-    }
-
     return "Not Assigned";
   };
 
-  // Sort employees alphabetically by last name
   const sortedEmployees = useMemo(() => {
     return [...allEmployees].sort((a, b) =>
       a.Last_Name.localeCompare(b.Last_Name)
@@ -353,7 +401,6 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
 
   const displayAnimals = allAnimalsDB;
 
-  // Calculate statistics from database with revenue data from API
   const ticketRevenue = revenueData?.ticketRevenue || 0;
   const membershipRevenue = revenueData?.membershipRevenue || 0;
   const giftShopRevenue = revenueData?.giftShopRevenue || 0;
@@ -392,7 +439,6 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
     },
   ];
 
-  // Ticket stats from revenue data
   const ticketStats = useMemo(
     () => [
       {
@@ -421,7 +467,6 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
     try {
       await employeeAPI.delete(emp.Employee_ID);
 
-      // Reload employees and locations
       const [employeesData, locationsData] = await Promise.all([
         employeeAPI.getAll(),
         locationAPI.getAll(),
@@ -434,7 +479,6 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
     } catch (error) {
       console.error("Error deleting employee:", error);
 
-      // Show specific error message if available
       const errorMessage =
         error.response?.data?.error ||
         error.message ||
@@ -451,7 +495,6 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
     if (isSaving) return;
     setIsSaving(true);
     try {
-      // Find the location object for the selected zone
       const zoneLocation = allLocations.find(
         (loc) => loc.Zone === formData.zone
       );
@@ -465,7 +508,7 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
         salary: salaries[parseInt(formData.jobId)],
         email: formData.email,
         address: formData.address,
-        supervisorId: zoneLocation ? zoneLocation.Supervisor_ID : null,
+        locationId: zoneLocation ? zoneLocation.Location_ID : null,
       };
 
       await employeeAPI.update(employeeId, employeeData);
@@ -504,7 +547,7 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
         salary: salaries[parseInt(formData.jobId)],
         email: formData.email,
         address: formData.address,
-        supervisorId: zoneLocation ? zoneLocation.Supervisor_ID : null,
+        locationId: zoneLocation ? zoneLocation.Location_ID : null,
       };
 
       await employeeAPI.create(employeeData);
@@ -629,10 +672,6 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
     }
   };
 
-  // ============================================
-  // EXHIBIT HANDLERS
-  // ============================================
-
   const handleUpdateExhibit = async (formData) => {
     if (!editingExhibit || isSaving) return;
     setIsSaving(true);
@@ -707,8 +746,6 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
       setAllExhibitsDB(exhibitsData);
 
       // Clear exhibits and activities cache (activities are tied to exhibits)
-      clearSpecificCache("exhibits", "activities", "todaysSchedule");
-
       setEditingExhibit(null);
       toast.success(`Successfully updated exhibit: ${formData.name}!`);
     } catch (error) {
@@ -730,8 +767,6 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
       setAllExhibitsDB(exhibitsData);
 
       // Clear exhibits and activities cache (activities are tied to exhibits)
-      clearSpecificCache("exhibits", "activities", "todaysSchedule");
-
       toast.success("Image removed successfully!");
     } catch (error) {
       console.error("Error removing exhibit image:", error);
@@ -740,10 +775,6 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
       setIsSaving(false);
     }
   };
-
-  // ============================================
-  // ANIMAL HANDLERS
-  // ============================================
 
   const handleAddAnimal = async (formData) => {
     if (isSaving) return;
@@ -814,8 +845,6 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
       });
 
       // Clear only animals and enclosures cache
-      clearSpecificCache("animals", "enclosures");
-
       setIsAddAnimalOpen(false);
       toast.success(
         `Successfully added ${formData.name} to ${
@@ -910,8 +939,6 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
       setAllAnimalsDB(animalsData);
 
       // Clear only animals and enclosures cache
-      clearSpecificCache("animals", "enclosures");
-
       setEditingAnimal(null);
       toast.success(
         `Successfully updated ${formData.name || editingAnimal.Animal_Name}!`
@@ -935,8 +962,6 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
       setAllAnimalsDB(animalsData);
 
       // Clear only animals and enclosures cache
-      clearSpecificCache("animals", "enclosures");
-
       toast.success("Image removed successfully!");
     } catch (error) {
       console.error("Error removing animal image:", error);
@@ -960,8 +985,6 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
       deleteAnimal(animal.Animal_ID);
 
       // Clear only animals and enclosures cache
-      clearSpecificCache("animals", "enclosures");
-
       setDeleteConfirmAnimal(null);
       toast.success(`Successfully removed ${animal.Animal_Name} from the zoo.`);
     } catch (error) {
@@ -989,13 +1012,10 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
 
   // Get employees in a specific zone
   const getZoneEmployees = (location) => {
+    // Filter employees by their Zone from employee_location table
     return allEmployees.filter((emp) => {
-      if (location.Supervisor_ID === emp.Employee_ID) return true;
-      const supervisor = allEmployees.find(
-        (e) => e.Employee_ID === emp.Supervisor_ID
-      );
-      if (supervisor && location.Supervisor_ID === supervisor.Employee_ID)
-        return true;
+      // Employee is in this zone if their Zone matches
+      if (emp.Zone === location.Zone) return true;
       return false;
     });
   };
@@ -1693,7 +1713,7 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
         </section>
 
         {/* Employee Management */}
-        <section id="employees">
+        <section id="employees" ref={employeesRef}>
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-2xl flex items-center gap-2">
               <Users className="h-6 w-6" /> Staff Management
@@ -1709,91 +1729,101 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
           </div>
           <Card>
             <CardContent className="pt-6">
-              <p className="text-sm text-gray-600 mb-4">
-                Total Employees: {allEmployees.length}
-              </p>
-              <ScrollArea className="h-[600px] pr-4">
-                <div className="space-y-3">
-                  {sortedEmployees.map((emp) => (
-                    <div
-                      key={emp.Employee_ID}
-                      className="flex items-start justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors border border-gray-200"
-                    >
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-3 mb-2">
-                          <p className="font-medium text-lg">
-                            {emp.Last_Name}, {emp.First_Name}
-                          </p>
-                          <Badge
-                            className={
-                              isSupervisor(emp)
-                                ? "bg-purple-100 text-purple-800"
-                                : "bg-green-100 text-green-800"
-                            }
-                          >
-                            {getEmployeeTitle(emp)}
-                          </Badge>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 text-sm text-gray-600">
-                          <div>
-                            <span className="font-medium">Email:</span>{" "}
-                            {emp.Email}
-                          </div>
-                          <div>
-                            <span className="font-medium">Employee ID:</span>{" "}
-                            {emp.Employee_ID}
-                          </div>
-                          <div>
-                            <span className="font-medium">Zone:</span>{" "}
-                            {getEmployeeZone(emp)}
-                          </div>
-                          <div>
-                            <span className="font-medium">Birthdate:</span>{" "}
-                            {formatDate(emp.Birthdate)}
-                          </div>
-                          <div>
-                            <span className="font-medium">Sex:</span> {emp.Sex}
-                          </div>
-                          <div>
-                            <span className="font-medium">Salary:</span> $
-                            {emp.Salary.toLocaleString()}
-                          </div>
-                          <div className="md:col-span-2">
-                            <span className="font-medium">Address:</span>{" "}
-                            {emp.Address}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 ml-4">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setEditingEmployee(emp)}
-                          className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 cursor-pointer"
-                          disabled={isSaving}
+              {employeesVisible ? (
+                <>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Total Employees: {allEmployees.length}
+                  </p>
+                  <ScrollArea className="h-[600px] pr-4">
+                    <div className="space-y-3">
+                      {sortedEmployees.map((emp) => (
+                        <div
+                          key={emp.Employee_ID}
+                          className="flex items-start justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors border border-gray-200"
                         >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setDeleteConfirmEmployee(emp)}
-                          className="text-red-600 hover:text-red-700 hover:bg-red-50 cursor-pointer"
-                          disabled={isSaving}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
+                          <div className="flex-1">
+                            <div className="flex items-center space-x-3 mb-2">
+                              <p className="font-medium text-lg">
+                                {emp.Last_Name}, {emp.First_Name}
+                              </p>
+                              <Badge
+                                className={
+                                  isSupervisor(emp)
+                                    ? "bg-purple-100 text-purple-800"
+                                    : "bg-green-100 text-green-800"
+                                }
+                              >
+                                {getEmployeeTitle(emp)}
+                              </Badge>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 text-sm text-gray-600">
+                              <div>
+                                <span className="font-medium">Email:</span>{" "}
+                                {emp.Email}
+                              </div>
+                              <div>
+                                <span className="font-medium">
+                                  Employee ID:
+                                </span>{" "}
+                                {emp.Employee_ID}
+                              </div>
+                              <div>
+                                <span className="font-medium">Zone:</span>{" "}
+                                {getEmployeeZone(emp)}
+                              </div>
+                              <div>
+                                <span className="font-medium">Birthdate:</span>{" "}
+                                {formatDate(emp.Birthdate)}
+                              </div>
+                              <div>
+                                <span className="font-medium">Sex:</span>{" "}
+                                {emp.Sex}
+                              </div>
+                              <div>
+                                <span className="font-medium">Salary:</span> $
+                                {emp.Salary.toLocaleString()}
+                              </div>
+                              <div className="md:col-span-2">
+                                <span className="font-medium">Address:</span>{" "}
+                                {emp.Address}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 ml-4">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setEditingEmployee(emp)}
+                              className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 cursor-pointer"
+                              disabled={isSaving}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setDeleteConfirmEmployee(emp)}
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50 cursor-pointer"
+                              disabled={isSaving}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  </ScrollArea>
+                </>
+              ) : (
+                <div className="flex items-center justify-center py-8">
+                  <p className="text-gray-500">Loading employees...</p>
                 </div>
-              </ScrollArea>
+              )}
             </CardContent>
           </Card>
         </section>
 
-        {/* Exhibit Management */}
-        <section id="exhibits">
+        <section id="exhibits" ref={exhibitsRef}>
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-2xl flex items-center gap-2">
               <Building2 className="h-6 w-6" /> Exhibit Management
@@ -1801,60 +1831,70 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
           </div>
           <Card>
             <CardContent className="pt-6">
-              <p className="text-sm text-gray-600 mb-4">
-                Manage zoo exhibits and displays
-              </p>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                {allExhibitsDB.map((exhibit) => (
-                  <Card
-                    key={exhibit.Exhibit_ID}
-                    className="p-4 hover:shadow-md transition-shadow"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <h3 className="font-semibold text-lg">
-                            {exhibit.exhibit_Name}
-                          </h3>
-                          {exhibit.Location_Description && (
-                            <Badge variant="outline" className="text-xs">
-                              {exhibit.Zone}
-                            </Badge>
-                          )}
+              {exhibitsVisible ? (
+                <>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Manage zoo exhibits and displays
+                  </p>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                    {allExhibitsDB.map((exhibit) => (
+                      <Card
+                        key={exhibit.Exhibit_ID}
+                        className="p-4 hover:shadow-md transition-shadow"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <h3 className="font-semibold text-lg">
+                                {exhibit.exhibit_Name}
+                              </h3>
+                              {exhibit.Location_Description && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-xs bg-blue-50 text-blue-700 border-blue-200"
+                                >
+                                  {exhibit.Zone}
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-sm text-gray-600 mb-2">
+                              {exhibit.exhibit_Description || "No description"}
+                            </p>
+                            <div className="flex flex-wrap gap-2 text-xs text-gray-500">
+                              {exhibit.Capacity && (
+                                <span>Capacity: {exhibit.Capacity}</span>
+                              )}
+                              {exhibit.Display_Time && (
+                                <span>• {exhibit.Display_Time}</span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex gap-1 ml-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setEditingExhibit(exhibit)}
+                              className="cursor-pointer"
+                              disabled={isSaving}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </div>
-                        <p className="text-sm text-gray-600 mb-2">
-                          {exhibit.exhibit_Description || "No description"}
-                        </p>
-                        <div className="flex flex-wrap gap-2 text-xs text-gray-500">
-                          {exhibit.Capacity && (
-                            <span>Capacity: {exhibit.Capacity}</span>
-                          )}
-                          {exhibit.Display_Time && (
-                            <span>• {exhibit.Display_Time}</span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex gap-1 ml-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setEditingExhibit(exhibit)}
-                          className="cursor-pointer"
-                          disabled={isSaving}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  </Card>
-                ))}
-              </div>
+                      </Card>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="flex items-center justify-center py-8">
+                  <p className="text-gray-500">Loading exhibits...</p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </section>
 
-        {/* Animal Management */}
-        <section id="animals">
+        <section id="animals" ref={animalsRef}>
           <div className="flex items-center justify-between mb-6">
             <div>
               <h2 className="text-2xl flex items-center gap-2">
@@ -1877,68 +1917,79 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
           </div>
           <Card>
             <CardContent className="pt-6">
-              <p className="text-sm text-gray-600 mb-4">
-                Manage zoo animals and their habitats
-              </p>
-              <ScrollArea className="h-[400px]">
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                  {displayAnimals.map((animal, index) => {
-                    const enclosure = allEnclosures.find(
-                      (e) => e.Enclosure_ID === animal.Enclosure_ID
-                    );
-                    // Generate a mock date added (based on animal ID for consistency)
-                    const daysAgo = (animal.Animal_ID * 13) % 365; // Pseudo-random but consistent
-                    const dateAdded = new Date();
-                    dateAdded.setDate(dateAdded.getDate() - daysAgo);
-                    const dateAddedString = formatDate(
-                      dateAdded.toISOString().split("T")[0]
-                    );
+              {animalsVisible ? (
+                <>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Manage zoo animals and their habitats
+                  </p>
+                  <ScrollArea className="h-[400px]">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                      {displayAnimals.map((animal, index) => {
+                        const enclosure = allEnclosures.find(
+                          (e) => e.Enclosure_ID === animal.Enclosure_ID
+                        );
+                        // Generate a mock date added (based on animal ID for consistency)
+                        const daysAgo = (animal.Animal_ID * 13) % 365; // Pseudo-random but consistent
+                        const dateAdded = new Date();
+                        dateAdded.setDate(dateAdded.getDate() - daysAgo);
+                        const dateAddedString = formatDate(
+                          dateAdded.toISOString().split("T")[0]
+                        );
 
-                    return (
-                      <div
-                        key={animal.Animal_ID}
-                        className="p-4 bg-teal-50 rounded-lg border border-teal-200 flex items-center justify-between"
-                      >
-                        <div className="flex items-center space-x-4">
-                          <div className="flex items-center justify-center w-10 h-10 rounded-full bg-teal-600 text-white flex-shrink-0">
-                            <PawPrint className="h-5 w-5" />
+                        return (
+                          <div
+                            key={animal.Animal_ID}
+                            className="p-4 bg-teal-50 rounded-lg border border-teal-200 flex items-center justify-between"
+                          >
+                            <div className="flex items-center space-x-4">
+                              <div className="flex items-center justify-center w-10 h-10 rounded-full bg-teal-600 text-white flex-shrink-0">
+                                <PawPrint className="h-5 w-5" />
+                              </div>
+                              <div>
+                                <p className="font-medium">
+                                  {animal.Animal_Name}
+                                </p>
+                                <p className="text-sm text-gray-600">
+                                  {animal.Species} •{" "}
+                                  {animal.Gender === "M"
+                                    ? "Male"
+                                    : animal.Gender === "F"
+                                    ? "Female"
+                                    : "Unknown"}{" "}
+                                  • ID: {animal.Animal_ID}
+                                </p>
+                                <p className="text-xs text-gray-500">
+                                  Weight: {animal.Weight} lbs • Born:{" "}
+                                  {formatDate(animal.Birthday)}
+                                </p>
+                                <p className="text-xs text-gray-500">
+                                  Habitat:{" "}
+                                  {enclosure?.Enclosure_Name || "Unknown"} •
+                                  Added: {dateAddedString}
+                                </p>
+                              </div>
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="bg-blue-50 border-blue-300 text-blue-600 hover:bg-blue-100 cursor-pointer flex-shrink-0"
+                              onClick={() => setEditingAnimal(animal)}
+                              disabled={isSaving}
+                            >
+                              <Edit className="h-4 w-4 mr-2" />
+                              Edit
+                            </Button>
                           </div>
-                          <div>
-                            <p className="font-medium">{animal.Animal_Name}</p>
-                            <p className="text-sm text-gray-600">
-                              {animal.Species} •{" "}
-                              {animal.Gender === "M"
-                                ? "Male"
-                                : animal.Gender === "F"
-                                ? "Female"
-                                : "Unknown"}{" "}
-                              • ID: {animal.Animal_ID}
-                            </p>
-                            <p className="text-xs text-gray-500">
-                              Weight: {animal.Weight} lbs • Born:{" "}
-                              {formatDate(animal.Birthday)}
-                            </p>
-                            <p className="text-xs text-gray-500">
-                              Habitat: {enclosure?.Enclosure_Name || "Unknown"}{" "}
-                              • Added: {dateAddedString}
-                            </p>
-                          </div>
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="bg-blue-50 border-blue-300 text-blue-600 hover:bg-blue-100 cursor-pointer flex-shrink-0"
-                          onClick={() => setEditingAnimal(animal)}
-                          disabled={isSaving}
-                        >
-                          <Edit className="h-4 w-4 mr-2" />
-                          Edit
-                        </Button>
-                      </div>
-                    );
-                  })}
+                        );
+                      })}
+                    </div>
+                  </ScrollArea>
+                </>
+              ) : (
+                <div className="flex items-center justify-center py-8">
+                  <p className="text-gray-500">Loading animals...</p>
                 </div>
-              </ScrollArea>
+              )}
             </CardContent>
           </Card>
         </section>
@@ -2441,9 +2492,21 @@ function EditEmployeeDialog({
   // Helper function to format date for input[type="date"]
   const formatDateForInput = (dateString) => {
     if (!dateString) return "";
-    const date = new Date(dateString);
-    if (isNaN(date.getTime())) return "";
-    return date.toISOString().split("T")[0];
+
+    // Parse the date string manually to avoid timezone issues
+    // Remove 'T' and treat as local date (YYYY-MM-DD or YYYY-MM-DD HH:mm:ss)
+    let dateStr = dateString.replace("T", " ").split(" ")[0]; // Get just the date part
+
+    // If already in YYYY-MM-DD format, return as is
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      return dateStr;
+    }
+
+    // Otherwise parse manually to avoid UTC conversion
+    const parts = dateStr.match(/(\d{4})-(\d{2})-(\d{2})/);
+    if (!parts) return "";
+
+    return `${parts[1]}-${parts[2]}-${parts[3]}`;
   };
 
   const [formData, setFormData] = useState({
@@ -2943,11 +3006,21 @@ function EditAnimalDialog({
   // Helper function to format date for input[type="date"]
   const formatDateForInput = (dateString) => {
     if (!dateString) return "";
-    // Handle both ISO format and MySQL date format
-    const date = new Date(dateString);
-    if (isNaN(date.getTime())) return "";
-    // Return YYYY-MM-DD format
-    return date.toISOString().split("T")[0];
+
+    // Parse the date string manually to avoid timezone issues
+    // Remove 'T' and treat as local date (YYYY-MM-DD or YYYY-MM-DD HH:mm:ss)
+    let dateStr = dateString.replace("T", " ").split(" ")[0]; // Get just the date part
+
+    // If already in YYYY-MM-DD format, return as is
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      return dateStr;
+    }
+
+    // Otherwise parse manually to avoid UTC conversion
+    const parts = dateStr.match(/(\d{4})-(\d{2})-(\d{2})/);
+    if (!parts) return "";
+
+    return `${parts[1]}-${parts[2]}-${parts[3]}`;
   };
 
   const [formData, setFormData] = useState({

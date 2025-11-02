@@ -8,36 +8,30 @@ import adminRoutes from "./routes/adminRoutes.js";
 import customerRoutes from "./routes/customerRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
 import { isAzureConfigured } from "./middleware/azureUpload.js";
+import { cacheMiddleware } from "./middleware/cache.js";
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Middleware
 app.use(
   helmet({
-    crossOriginResourcePolicy: { policy: "cross-origin" }, // Allow cross-origin images
+    crossOriginResourcePolicy: { policy: "cross-origin" },
   })
 );
 app.use(
   cors({
     origin: function (origin, callback) {
-      // console.log("CORS check - Origin:", origin);
-      // console.log("CORS check - Allowed CLIENT_URL:", process.env.CLIENT_URL);
-
-      // Allow all localhost ports in development
       if (!origin || /^http:\/\/localhost:\d+$/.test(origin)) {
         return callback(null, true);
       }
 
-      // Check against whitelist
       const allowedOrigins = [process.env.CLIENT_URL].filter(Boolean);
       if (allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
 
-      // Log rejection but don't throw error - return false instead
       console.error("CORS rejected origin:", origin);
       callback(null, false);
     },
@@ -49,10 +43,8 @@ app.use(morgan("dev"));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Note: Image uploads are stored in Azure Blob Storage, not locally
-// Images are served directly from Azure CDN URLs stored in the database
+app.use(cacheMiddleware);
 
-// Health check
 app.get("/health", (req, res) => {
   res.status(200).json({
     status: "OK",

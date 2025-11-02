@@ -12,9 +12,9 @@ import {
   Wifi,
   WifiOff,
   Check,
+  Crown,
 } from "lucide-react";
 import { toast } from "sonner";
-import { Crown } from "lucide-react";
 import { useState, useEffect } from "react";
 import {
   Card,
@@ -38,7 +38,7 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 // Removed type-only imports; use runtime values from context instead
 import { useData } from "../data/DataContext";
-import { authAPI } from "../services/customerAPI";
+import { authAPI, purchasesAPI } from "../services/customerAPI";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { useHeroImage } from "../utils/heroImages";
 
@@ -47,6 +47,39 @@ const formatNumber = (num) => {
   return num.toLocaleString("en-US", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
+  });
+};
+
+// Helper function to format datetime
+const formatDateTime = (dateString) => {
+  if (!dateString) return "N/A";
+
+  // Remove 'T' and treat as MySQL datetime (local time, not UTC)
+  let dateStr = dateString.replace("T", " ");
+
+  // Parse the date string manually to avoid timezone issues
+  // MySQL format: YYYY-MM-DD HH:mm:ss
+  const parts = dateStr.match(
+    /(\d{4})-(\d{2})-(\d{2})\s(\d{2}):(\d{2}):(\d{2})/
+  );
+
+  if (!parts) return "Invalid Date";
+
+  const [, year, month, day, hour, minute, second] = parts;
+
+  // Create date in local timezone (not UTC)
+  const date = new Date(year, month - 1, day, hour, minute, second);
+
+  // Check if date is valid
+  if (isNaN(date.getTime())) return "Invalid Date";
+
+  return date.toLocaleString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
   });
 };
 
@@ -60,15 +93,7 @@ export function CustomerDashboard({ user, onNavigate }) {
     items,
     concessionItems,
   } = useData();
-  const heroImage = useHeroImage("customer"); // You can change this to a different hero image
-  const customerPurchases = purchases
-    .filter((p) => p.Customer_ID === user.Customer_ID)
-    .sort(
-      (a, b) =>
-        new Date(b.Purchase_Date).getTime() -
-        new Date(a.Purchase_Date).getTime()
-    );
-  const recentPurchases = customerPurchases.slice(0, 3);
+  const heroImage = useHeroImage("customer");
   const membership =
     memberships.find(
       (m) => m.Customer_ID === user.Customer_ID && m.Membership_Status
@@ -77,16 +102,47 @@ export function CustomerDashboard({ user, onNavigate }) {
   // Backend connection state
   const [isBackendConnected, setIsBackendConnected] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [backendPurchases, setBackendPurchases] = useState([]);
+  const [purchasesLoading, setPurchasesLoading] = useState(false);
 
   // Check backend connection on mount
   useEffect(() => {
     checkBackendConnection();
+    fetchPurchaseHistory();
   }, []);
 
   const checkBackendConnection = async () => {
     const connected = await authAPI.checkConnection();
     setIsBackendConnected(connected);
   };
+
+  const fetchPurchaseHistory = async () => {
+    if (!user || !user.Customer_ID) return;
+
+    setPurchasesLoading(true);
+    try {
+      const history = await purchasesAPI.getHistory(user.Customer_ID);
+      setBackendPurchases(history);
+    } catch (error) {
+      console.error("Error fetching purchase history:", error);
+      // Fall back to local data if backend fails
+      setBackendPurchases([]);
+    } finally {
+      setPurchasesLoading(false);
+    }
+  };
+
+  // Use backend purchases if available, otherwise use local purchases
+  const displayPurchases =
+    backendPurchases.length > 0
+      ? backendPurchases
+      : purchases.filter((p) => p.Customer_ID === user.Customer_ID);
+
+  const customerPurchases = displayPurchases.sort(
+    (a, b) =>
+      new Date(b.Purchase_Date).getTime() - new Date(a.Purchase_Date).getTime()
+  );
+  const recentPurchases = customerPurchases.slice(0, 3);
 
   // Helper function to get customer-specific purchase number
   // Sorted chronologically (oldest = #1, newest = highest number)
@@ -442,9 +498,7 @@ export function CustomerDashboard({ user, onNavigate }) {
                                   {purchase.Payment_Method}
                                 </Badge>
                                 <span className="text-sm text-gray-600">
-                                  {new Date(
-                                    purchase.Purchase_Date
-                                  ).toLocaleDateString()}
+                                  {formatDateTime(purchase.Purchase_Date)}
                                 </span>
                               </div>
                               <p className="text-sm text-gray-700">
@@ -456,7 +510,7 @@ export function CustomerDashboard({ user, onNavigate }) {
                             </div>
                             <div className="text-right ml-6">
                               <p className="text-2xl text-green-600 font-semibold">
-                                ${purchase.Total_Amount.toFixed(2)}
+                                ${Number(purchase.Total_Amount).toFixed(2)}
                               </p>
                             </div>
                           </div>
@@ -502,9 +556,7 @@ export function CustomerDashboard({ user, onNavigate }) {
                               {purchase.Payment_Method}
                             </Badge>
                             <span className="text-sm text-gray-600 font-medium">
-                              {new Date(
-                                purchase.Purchase_Date
-                              ).toLocaleDateString()}
+                              {formatDateTime(purchase.Purchase_Date)}
                             </span>
                           </div>
                           <p className="text-sm text-gray-700 font-medium">
@@ -514,7 +566,7 @@ export function CustomerDashboard({ user, onNavigate }) {
                         </div>
                         <div className="text-right ml-6">
                           <p className="text-3xl text-green-600 font-bold">
-                            ${purchase.Total_Amount.toFixed(2)}
+                            ${Number(purchase.Total_Amount).toFixed(2)}
                           </p>
                         </div>
                       </div>
@@ -932,7 +984,7 @@ export function CustomerDashboard({ user, onNavigate }) {
                 getCustomerPurchaseNumber(selectedPurchase.Purchase_ID)}{" "}
               -{" "}
               {selectedPurchase &&
-                new Date(selectedPurchase.Purchase_Date).toLocaleDateString()}
+                formatDateTime(selectedPurchase.Purchase_Date)}
             </DialogDescription>
           </DialogHeader>
           <ScrollArea className="max-h-[65vh] pr-4">
@@ -952,11 +1004,9 @@ export function CustomerDashboard({ user, onNavigate }) {
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-gray-600">Date:</span>
+                        <span className="text-gray-600">Date & Time:</span>
                         <span className="font-medium">
-                          {new Date(
-                            selectedPurchase.Purchase_Date
-                          ).toLocaleDateString()}
+                          {formatDateTime(selectedPurchase.Purchase_Date)}
                         </span>
                       </div>
                       <div className="flex justify-between">
@@ -970,7 +1020,7 @@ export function CustomerDashboard({ user, onNavigate }) {
                         <div className="flex justify-between">
                           <span className="font-medium">Total Amount:</span>
                           <span className="text-2xl font-semibold text-green-600">
-                            ${selectedPurchase.Total_Amount.toFixed(2)}
+                            ${Number(selectedPurchase.Total_Amount).toFixed(2)}
                           </span>
                         </div>
                       </div>
@@ -1068,13 +1118,16 @@ export function CustomerDashboard({ user, onNavigate }) {
                                     <p className="font-semibold text-green-600">
                                       $
                                       {(
-                                        purchaseItem.Unit_Price *
+                                        Number(purchaseItem.Unit_Price) *
                                         purchaseItem.Quantity
                                       ).toFixed(2)}
                                     </p>
                                     <p className="text-xs text-gray-500">
-                                      ${purchaseItem.Unit_Price.toFixed(2)} /
-                                      per
+                                      $
+                                      {Number(purchaseItem.Unit_Price).toFixed(
+                                        2
+                                      )}{" "}
+                                      / per
                                     </p>
                                   </div>
                                 </div>
@@ -1122,13 +1175,16 @@ export function CustomerDashboard({ user, onNavigate }) {
                                       <p className="font-semibold text-green-600">
                                         $
                                         {(
-                                          purchaseItem.Unit_Price *
+                                          Number(purchaseItem.Unit_Price) *
                                           purchaseItem.Quantity
                                         ).toFixed(2)}
                                       </p>
                                       <p className="text-xs text-gray-500">
-                                        ${purchaseItem.Unit_Price.toFixed(2)} /
-                                        per
+                                        $
+                                        {Number(
+                                          purchaseItem.Unit_Price
+                                        ).toFixed(2)}{" "}
+                                        / per
                                       </p>
                                     </div>
                                   </div>
@@ -1181,15 +1237,16 @@ export function CustomerDashboard({ user, onNavigate }) {
                                         <p className="font-semibold text-green-600">
                                           $
                                           {(
-                                            purchaseConcession.Unit_Price *
-                                            purchaseConcession.Quantity
+                                            Number(
+                                              purchaseConcession.Unit_Price
+                                            ) * purchaseConcession.Quantity
                                           ).toFixed(2)}
                                         </p>
                                         <p className="text-xs text-gray-500">
                                           $
-                                          {purchaseConcession.Unit_Price.toFixed(
-                                            2
-                                          )}{" "}
+                                          {Number(
+                                            purchaseConcession.Unit_Price
+                                          ).toFixed(2)}{" "}
                                           / per
                                         </p>
                                       </div>

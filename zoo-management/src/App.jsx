@@ -55,10 +55,8 @@ const PAGE_TITLES = {
 };
 
 export default function App() {
-  // Initialize currentPage from localStorage or default to "home"
   const [currentPage, setCurrentPage] = useState(() => {
     const savedPage = localStorage.getItem("currentPage");
-    // If no user is logged in and the saved page is a protected portal, redirect to home
     if (
       !currentUser &&
       (savedPage === "admin-portal" ||
@@ -69,17 +67,31 @@ export default function App() {
     }
     return savedPage || "home";
   });
+
   const [user, setUser] = useState(currentUser);
   const [userType, setUserType] = useState(currentUserType);
   const [pageKey, setPageKey] = useState(0);
 
-  // Cart state
-  const [cart, setCart] = useState([]);
+  const [cart, setCart] = useState(() => {
+    try {
+      const savedCart = localStorage.getItem("cart");
+      return savedCart ? JSON.parse(savedCart) : [];
+    } catch {
+      return [];
+    }
+  });
 
-  // Save currentPage to localStorage whenever it changes
   useEffect(() => {
     localStorage.setItem("currentPage", currentPage);
   }, [currentPage]);
+
+  useEffect(() => {
+    if (cart.length > 0) {
+      localStorage.setItem("cart", JSON.stringify(cart));
+    } else {
+      localStorage.removeItem("cart");
+    }
+  }, [cart]);
 
   // Update document title when page changes
   useEffect(() => {
@@ -124,7 +136,8 @@ export default function App() {
     setUser(null);
     setUserType(null);
     setCurrentPage("home");
-    setCart([]); // Clear cart on logout
+    setCart([]);
+    localStorage.removeItem("cart");
   };
 
   const handleNavigate = (page) => {
