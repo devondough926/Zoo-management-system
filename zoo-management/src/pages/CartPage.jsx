@@ -31,6 +31,7 @@ import { useData } from "../data/DataContext";
 import { usePricing } from "../data/PricingContext";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { useHeroImage } from "../utils/heroImages";
+import { purchasesAPI } from "../services/customerAPI";
 
 export function CartPage({
   cart,
@@ -117,7 +118,7 @@ export function CartPage({
     setShowCheckoutDialog(true);
   };
 
-  const confirmCheckout = () => {
+  const confirmCheckout = async () => {
     if (!currentUser || !("Customer_ID" in currentUser)) {
       toast.error("Please log in to complete your purchase");
       setShowCheckoutDialog(false);
@@ -125,151 +126,303 @@ export function CartPage({
     }
 
     const hasMembershipInCart = cart.some((item) => item.id === 9000);
-    const newPurchaseId =
-      Math.max(...(purchases?.map((p) => p.Purchase_ID) ?? [0]), 0) + 1;
-    const customerPurchases =
-      purchases?.filter((p) => p.Customer_ID === currentUser.Customer_ID) ?? [];
-    const customerPurchaseNumber = customerPurchases.length + 1;
 
-    let purchaseDateTime = new Date();
+    try {
+      // Prepare purchase data for backend
+      const purchaseData = {
+        customerId: currentUser.Customer_ID,
+        totalAmount: total,
+        paymentMethod: "Card",
+        tickets: [],
+        items: [],
+        concessionItems: [],
+        membership: null,
+      };
 
-    if (customerPurchases.length > 0) {
-      const mostRecentPurchase = customerPurchases.reduce((latest, current) => {
-        const latestTime = new Date(latest.Purchase_Date).getTime();
-        const currentTime = new Date(current.Purchase_Date).getTime();
-        return currentTime > latestTime ? current : latest;
+      // Process cart items
+      cart.forEach((item) => {
+        if (item.type === "ticket") {
+          const ticketType = item.name.split(" ")[0];
+          purchaseData.tickets.push({
+            ticketType: ticketType,
+            price: item.price,
+            quantity: item.quantity,
+          });
+        } else if (item.type === "item") {
+          if (item.id === 9000) {
+            // Handle membership
+            purchaseData.membership = {
+              price: membershipPrice,
+            };
+            purchaseData.items.push({
+              itemId: item.id,
+              quantity: item.quantity,
+              unitPrice: membershipPrice,
+            });
+          } else {
+            // Apply member discount to eligible gift shop items
+            const unitPrice = hasMembership ? item.price * 0.9 : item.price;
+            purchaseData.items.push({
+              itemId: item.id,
+              quantity: item.quantity,
+              unitPrice: unitPrice,
+            });
+          }
+        } else if (item.type === "food") {
+          // Apply member discount to eligible food items
+          const unitPrice = hasMembership ? item.price * 0.9 : item.price;
+          purchaseData.concessionItems.push({
+            concessionItemId: item.id,
+            quantity: item.quantity,
+            unitPrice: unitPrice,
+          });
+        }
       });
 
-      const mostRecentTime = new Date(
-        mostRecentPurchase.Purchase_Date
-      ).getTime();
-      const currentTime = purchaseDateTime.getTime();
+      // Call backend API to create purchase
+      const response = await purchasesAPI.create(purchaseData);
 
-      if (currentTime <= mostRecentTime) {
-        purchaseDateTime = new Date(mostRecentTime + 1000);
-      }
-    }
+      // Update local state as fallback
+      const customerPurchases =
+        purchases?.filter((p) => p.Customer_ID === currentUser.Customer_ID) ??
+        [];
+      const customerPurchaseNumber = customerPurchases.length + 1;
 
-    const formatDateTime = (date) => {
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, "0");
-      const day = String(date.getDate()).padStart(2, "0");
-      const hours = String(date.getHours()).padStart(2, "0");
-      const minutes = String(date.getMinutes()).padStart(2, "0");
-      const seconds = String(date.getSeconds()).padStart(2, "0");
-      return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-    };
+      // Add purchase to local state for immediate UI update
+      addPurchase({
+        Purchase_ID: response.purchaseId,
+        Customer_ID: currentUser.Customer_ID,
+        Purchase_Date: response.purchase.Purchase_Date,
+        Total_Amount: total,
+        Payment_Method: "Card",
+      });
 
-    const newPurchase = {
-      Purchase_ID: newPurchaseId,
-      Customer_ID: currentUser.Customer_ID,
-      Purchase_Date: formatDateTime(purchaseDateTime),
-      Total_Amount: total,
-      Payment_Method: "Card",
-    };
-
-    addPurchase(newPurchase);
-
-    // Prepare a starting Ticket_ID based on existing tickets so new tickets have unique IDs
-    let nextTicketId =
-      Math.max(0, ...(tickets?.map((t) => t.Ticket_ID) ?? [0])) + 1;
-
-    cart.forEach((item) => {
-      if (item.type === "ticket") {
-        // Create a single ticket record per ticket type with Quantity set
-        const ticketType = item.name.split(" ")[0];
-        addTicket({
-          Ticket_ID: nextTicketId++,
-          Purchase_ID: newPurchaseId,
-          Ticket_Type: ticketType,
-          Price: item.price,
-          Quantity: item.quantity,
-        });
-      } else if (item.type === "item") {
-        // For gift shop items (including membership item id 9000), store unit price
-        if (item.id === 9000) {
-          // Memberships should not be shown as gift shop items
-          addPurchaseItem({
-            Purchase_ID: newPurchaseId,
-            Item_ID: item.id,
+      // Add items to local state
+      cart.forEach((item) => {
+        if (item.type === "ticket") {
+          const ticketType = item.name.split(" ")[0];
+          addTicket({
+            Ticket_ID: Math.random(), // Backend creates actual IDs
+            Purchase_ID: response.purchaseId,
+            Ticket_Type: ticketType,
+            Price: item.price,
             Quantity: item.quantity,
-            Unit_Price: membershipPrice,
           });
-        } else {
-          // Apply member discount to eligible gift shop items
-          const unitPrice = hasMembership ? item.price * 0.9 : item.price;
+        } else if (item.type === "item") {
+          const unitPrice =
+            item.id === 9000
+              ? membershipPrice
+              : hasMembership
+              ? item.price * 0.9
+              : item.price;
           addPurchaseItem({
-            Purchase_ID: newPurchaseId,
+            Purchase_ID: response.purchaseId,
             Item_ID: item.id,
             Quantity: item.quantity,
             Unit_Price: unitPrice,
           });
+        } else if (item.type === "food") {
+          const unitPrice = hasMembership ? item.price * 0.9 : item.price;
+          addPurchaseConcessionItem({
+            Purchase_ID: response.purchaseId,
+            Concession_Item_ID: item.id,
+            Quantity: item.quantity,
+            Unit_Price: unitPrice,
+          });
         }
-      } else if (item.type === "food") {
-        // Concession purchase items use Concession_Item_ID in the data model
-        // Apply member discount to eligible food items
-        const concessionUnitPrice = hasMembership
-          ? item.price * 0.9
-          : item.price;
-        addPurchaseConcessionItem({
-          Purchase_ID: newPurchaseId,
-          Concession_Item_ID: item.id,
-          Quantity: item.quantity,
-          Unit_Price: concessionUnitPrice,
-        });
-      }
-    });
+      });
 
-    if (hasMembershipInCart) {
-      const existingMembership = memberships.find(
-        (m) => m.Customer_ID === currentUser.Customer_ID
-      );
+      // Update membership in local state if purchased
+      if (hasMembershipInCart) {
+        const existingMembership = memberships.find(
+          (m) => m.Customer_ID === currentUser.Customer_ID
+        );
 
-      // Compute end date by extending the later of (existing end date) or (purchase date)
-      const DAY_MS = 24 * 60 * 60 * 1000;
-      // Determine base date to extend from: if current membership end is in future, extend from that; otherwise extend from purchase time
-      let baseDate = purchaseDateTime;
-      if (existingMembership && existingMembership.End_Date) {
-        const existingEnd = new Date(existingMembership.End_Date);
-        if (
-          !isNaN(existingEnd.getTime()) &&
-          existingEnd.getTime() > purchaseDateTime.getTime()
-        ) {
-          baseDate = existingEnd;
+        const purchaseDate = new Date(response.purchase.Purchase_Date);
+        const DAY_MS = 24 * 60 * 60 * 1000;
+        let baseDate = purchaseDate;
+
+        if (existingMembership && existingMembership.End_Date) {
+          const existingEnd = new Date(existingMembership.End_Date);
+          if (
+            !isNaN(existingEnd.getTime()) &&
+            existingEnd.getTime() > purchaseDate.getTime()
+          ) {
+            baseDate = existingEnd;
+          }
+        }
+
+        const endDate = new Date(baseDate.getTime() + 365 * DAY_MS);
+        const endDateIso = endDate.toISOString().slice(0, 10);
+
+        if (existingMembership) {
+          updateMembership(existingMembership.Customer_ID, {
+            Membership_Status: true,
+            Start_Date:
+              existingMembership.Start_Date || response.purchase.Purchase_Date,
+            End_Date: endDateIso,
+            Price: membershipPrice,
+          });
+        } else {
+          addMembership({
+            Membership_ID:
+              Math.max(...memberships.map((m) => m.Membership_ID), 0) + 1,
+            Customer_ID: currentUser.Customer_ID,
+            Membership_Status: true,
+            Start_Date: response.purchase.Purchase_Date,
+            End_Date: endDateIso,
+            Price: membershipPrice,
+          });
         }
       }
 
-      const endDate = new Date(baseDate.getTime() + 365 * DAY_MS);
-      const endDateIso = endDate.toISOString().slice(0, 10);
+      clearCart();
+      setShowCheckoutDialog(false);
+      toast.success(`Purchase confirmed! Order #${customerPurchaseNumber}`);
+    } catch (error) {
+      console.error("Checkout error:", error);
 
-      if (existingMembership) {
-        // Preserve original Start_Date if present; otherwise set to purchase datetime
-        const startDateToUse =
-          existingMembership.Start_Date || formatDateTime(purchaseDateTime);
-        // DataContext.updateMembership expects the customerId as the first arg
-        updateMembership(existingMembership.Customer_ID, {
-          Membership_Status: true,
-          Start_Date: startDateToUse,
-          End_Date: endDateIso,
-          Price: membershipPrice,
-        });
-      } else {
-        const newMembershipId =
-          Math.max(...memberships.map((m) => m.Membership_ID), 0) + 1;
-        addMembership({
-          Membership_ID: newMembershipId,
-          Customer_ID: currentUser.Customer_ID,
-          Membership_Status: true,
-          Start_Date: formatDateTime(purchaseDateTime),
-          End_Date: endDateIso,
-          Price: membershipPrice,
-        });
+      // Fallback to local-only checkout if backend fails
+      toast.warning("Using offline mode for checkout");
+
+      const newPurchaseId =
+        Math.max(...(purchases?.map((p) => p.Purchase_ID) ?? [0]), 0) + 1;
+      const customerPurchases =
+        purchases?.filter((p) => p.Customer_ID === currentUser.Customer_ID) ??
+        [];
+      const customerPurchaseNumber = customerPurchases.length + 1;
+
+      let purchaseDateTime = new Date();
+
+      if (customerPurchases.length > 0) {
+        const mostRecentPurchase = customerPurchases.reduce(
+          (latest, current) => {
+            const latestTime = new Date(latest.Purchase_Date).getTime();
+            const currentTime = new Date(current.Purchase_Date).getTime();
+            return currentTime > latestTime ? current : latest;
+          }
+        );
+
+        const mostRecentTime = new Date(
+          mostRecentPurchase.Purchase_Date
+        ).getTime();
+        const currentTime = purchaseDateTime.getTime();
+
+        if (currentTime <= mostRecentTime) {
+          purchaseDateTime = new Date(mostRecentTime + 1000);
+        }
       }
+
+      const formatDateTime = (date) => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const day = String(date.getDate()).padStart(2, "0");
+        const hours = String(date.getHours()).padStart(2, "0");
+        const minutes = String(date.getMinutes()).padStart(2, "0");
+        const seconds = String(date.getSeconds()).padStart(2, "0");
+        return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+      };
+
+      const newPurchase = {
+        Purchase_ID: newPurchaseId,
+        Customer_ID: currentUser.Customer_ID,
+        Purchase_Date: formatDateTime(purchaseDateTime),
+        Total_Amount: total,
+        Payment_Method: "Card",
+      };
+
+      addPurchase(newPurchase);
+
+      let nextTicketId =
+        Math.max(0, ...(tickets?.map((t) => t.Ticket_ID) ?? [0])) + 1;
+
+      cart.forEach((item) => {
+        if (item.type === "ticket") {
+          const ticketType = item.name.split(" ")[0];
+          addTicket({
+            Ticket_ID: nextTicketId++,
+            Purchase_ID: newPurchaseId,
+            Ticket_Type: ticketType,
+            Price: item.price,
+            Quantity: item.quantity,
+          });
+        } else if (item.type === "item") {
+          if (item.id === 9000) {
+            addPurchaseItem({
+              Purchase_ID: newPurchaseId,
+              Item_ID: item.id,
+              Quantity: item.quantity,
+              Unit_Price: membershipPrice,
+            });
+          } else {
+            const unitPrice = hasMembership ? item.price * 0.9 : item.price;
+            addPurchaseItem({
+              Purchase_ID: newPurchaseId,
+              Item_ID: item.id,
+              Quantity: item.quantity,
+              Unit_Price: unitPrice,
+            });
+          }
+        } else if (item.type === "food") {
+          const concessionUnitPrice = hasMembership
+            ? item.price * 0.9
+            : item.price;
+          addPurchaseConcessionItem({
+            Purchase_ID: newPurchaseId,
+            Concession_Item_ID: item.id,
+            Quantity: item.quantity,
+            Unit_Price: concessionUnitPrice,
+          });
+        }
+      });
+
+      if (hasMembershipInCart) {
+        const existingMembership = memberships.find(
+          (m) => m.Customer_ID === currentUser.Customer_ID
+        );
+
+        const DAY_MS = 24 * 60 * 60 * 1000;
+        let baseDate = purchaseDateTime;
+        if (existingMembership && existingMembership.End_Date) {
+          const existingEnd = new Date(existingMembership.End_Date);
+          if (
+            !isNaN(existingEnd.getTime()) &&
+            existingEnd.getTime() > purchaseDateTime.getTime()
+          ) {
+            baseDate = existingEnd;
+          }
+        }
+
+        const endDate = new Date(baseDate.getTime() + 365 * DAY_MS);
+        const endDateIso = endDate.toISOString().slice(0, 10);
+
+        if (existingMembership) {
+          const startDateToUse =
+            existingMembership.Start_Date || formatDateTime(purchaseDateTime);
+          updateMembership(existingMembership.Customer_ID, {
+            Membership_Status: true,
+            Start_Date: startDateToUse,
+            End_Date: endDateIso,
+            Price: membershipPrice,
+          });
+        } else {
+          const newMembershipId =
+            Math.max(...memberships.map((m) => m.Membership_ID), 0) + 1;
+          addMembership({
+            Membership_ID: newMembershipId,
+            Customer_ID: currentUser.Customer_ID,
+            Membership_Status: true,
+            Start_Date: formatDateTime(purchaseDateTime),
+            End_Date: endDateIso,
+            Price: membershipPrice,
+          });
+        }
+      }
+
+      clearCart();
+      setShowCheckoutDialog(false);
+      toast.success(`Purchase confirmed! Order #${customerPurchaseNumber}`);
     }
-
-    clearCart();
-    setShowCheckoutDialog(false);
-    toast.success(`Purchase confirmed! Order #${customerPurchaseNumber}`);
   };
 
   return (

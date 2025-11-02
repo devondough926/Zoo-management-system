@@ -1,12 +1,34 @@
 // Mock data matching the MySQL database schema exactly
 
-// Current user state
-export let currentUser = null;
-export let currentUserType = null;
+// Current user state with localStorage persistence
+export let currentUser = (() => {
+  try {
+    const saved = localStorage.getItem("currentUser");
+    return saved ? JSON.parse(saved) : null;
+  } catch {
+    return null;
+  }
+})();
+
+export let currentUserType = (() => {
+  try {
+    return localStorage.getItem("currentUserType") || null;
+  } catch {
+    return null;
+  }
+})();
 
 export const setCurrentUser = (user, type) => {
   currentUser = user;
   currentUserType = type;
+
+  if (user && type) {
+    localStorage.setItem("currentUser", JSON.stringify(user));
+    localStorage.setItem("currentUserType", type);
+  } else {
+    localStorage.removeItem("currentUser");
+    localStorage.removeItem("currentUserType");
+  }
 };
 
 // Job Titles (matching database exactly)

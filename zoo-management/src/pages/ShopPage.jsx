@@ -267,7 +267,7 @@ export function ShopPage({ onNavigate, addToCart }) {
       </section>
 
       {/* Categories */}
-      <section className="py-8 bg-white border-b sticky top-0 z-10 shadow-sm">
+      <section className="py-8 bg-white border-b top-0 z-10 shadow-sm">
         <div className="container mx-auto px-6">
           <div className="flex flex-wrap gap-2 justify-center">
             {categories.map((category) => (

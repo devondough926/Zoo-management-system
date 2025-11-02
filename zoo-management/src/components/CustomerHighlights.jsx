@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
 import {
@@ -129,14 +129,22 @@ export function CustomerHighlights({ onNavigate }) {
         const activityIndex = eventDate.getDate() % exhibitActivities.length;
         const selectedActivity = exhibitActivities[activityIndex];
 
+        // Check if this event is today
+        const isToday =
+          eventDate.getDate() === today.getDate() &&
+          eventDate.getMonth() === today.getMonth() &&
+          eventDate.getFullYear() === today.getFullYear();
+
         next7Days.push({
           ...selectedActivity,
           displayDate: eventDate,
-          dateString: eventDate.toLocaleDateString("en-US", {
-            weekday: "short",
-            month: "numeric",
-            day: "numeric",
-          }),
+          dateString: isToday
+            ? "Today"
+            : eventDate.toLocaleDateString("en-US", {
+                weekday: "short",
+                month: "numeric",
+                day: "numeric",
+              }),
         });
       }
     }
@@ -244,7 +252,7 @@ export function CustomerHighlights({ onNavigate }) {
           <div className="relative max-w-6xl mx-auto">
             <button
               onClick={prevEvents}
-              className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-4 z-10 bg-green-600 text-white rounded-full p-3 shadow-lg hover:bg-green-700 transition-colors cursor-pointer"
+              className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-4 z-5 bg-green-600 text-white rounded-full p-3 shadow-lg hover:bg-green-700 transition-colors cursor-pointer"
               aria-label="Previous events"
             >
               <ChevronLeft className="h-6 w-6" />
@@ -286,7 +294,7 @@ export function CustomerHighlights({ onNavigate }) {
 
             <button
               onClick={nextEvents}
-              className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-4 z-10 bg-green-600 text-white rounded-full p-3 shadow-lg hover:bg-green-700 transition-colors cursor-pointer"
+              className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-4 z-5 bg-green-600 text-white rounded-full p-3 shadow-lg hover:bg-green-700 transition-colors cursor-pointer"
               aria-label="Next events"
             >
               <ChevronRight className="h-6 w-6" />
@@ -306,7 +314,7 @@ export function CustomerHighlights({ onNavigate }) {
           <div className="relative max-w-6xl mx-auto">
             <button
               onClick={prevExhibits}
-              className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-4 z-10 bg-green-600 text-white rounded-full p-3 shadow-lg hover:bg-green-700 transition-colors cursor-pointer"
+              className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-4 z-5 bg-green-600 text-white rounded-full p-3 shadow-lg hover:bg-green-700 transition-colors cursor-pointer"
               aria-label="Previous exhibits"
             >
               <ChevronLeft className="h-6 w-6" />
@@ -350,7 +358,7 @@ export function CustomerHighlights({ onNavigate }) {
 
             <button
               onClick={nextExhibits}
-              className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-4 z-10 bg-green-600 text-white rounded-full p-3 shadow-lg hover:bg-green-700 transition-colors cursor-pointer"
+              className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-4 z-5 bg-green-600 text-white rounded-full p-3 shadow-lg hover:bg-green-700 transition-colors cursor-pointer"
               aria-label="Next exhibits"
             >
               <ChevronRight className="h-6 w-6" />

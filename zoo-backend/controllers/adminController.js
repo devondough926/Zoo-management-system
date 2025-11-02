@@ -8,11 +8,24 @@ export const getAllEmployees = async (req, res) => {
   try {
     const [employees] = await db.query(`
       SELECT 
-        e.*,
+        e.Employee_ID,
+        e.First_Name,
+        e.Last_Name,
+        DATE_FORMAT(e.Birthdate, '%Y-%m-%d') as Birthdate,
+        e.Sex,
+        e.Job_ID,
+        e.Salary,
+        e.Email,
+        e.Address,
         jt.Title,
-        jt.Description as Job_Description
+        jt.Description as Job_Description,
+        el.Location_ID,
+        el.Is_Primary,
+        l.Zone
       FROM Employee e
       LEFT JOIN Job_Title jt ON e.Job_ID = jt.Job_ID
+      LEFT JOIN employee_location el ON e.Employee_ID = el.Employee_ID AND el.end_date IS NULL
+      LEFT JOIN Location l ON el.Location_ID = l.Location_ID
       ORDER BY e.Last_Name, e.First_Name
     `);
     res.json(employees);
@@ -28,11 +41,24 @@ export const getEmployeeById = async (req, res) => {
     const [employees] = await db.query(
       `
       SELECT 
-        e.*,
+        e.Employee_ID,
+        e.First_Name,
+        e.Last_Name,
+        DATE_FORMAT(e.Birthdate, '%Y-%m-%d') as Birthdate,
+        e.Sex,
+        e.Job_ID,
+        e.Salary,
+        e.Email,
+        e.Address,
         jt.Title,
-        jt.Description as Job_Description
+        jt.Description as Job_Description,
+        el.Location_ID,
+        el.Is_Primary,
+        l.Zone
       FROM Employee e
       LEFT JOIN Job_Title jt ON e.Job_ID = jt.Job_ID
+      LEFT JOIN employee_location el ON e.Employee_ID = el.Employee_ID AND el.end_date IS NULL
+      LEFT JOIN Location l ON el.Location_ID = l.Location_ID
       WHERE e.Employee_ID = ?
     `,
       [id]
@@ -50,7 +76,10 @@ export const getEmployeeById = async (req, res) => {
 };
 
 export const addEmployee = async (req, res) => {
+  const connection = await db.getConnection();
   try {
+    await connection.beginTransaction();
+
     const {
       firstName,
       lastName,
@@ -60,27 +89,34 @@ export const addEmployee = async (req, res) => {
       salary,
       email,
       address,
-      supervisorId,
+      locationId,
     } = req.body;
 
-    const [result] = await db.query(
+    // Insert the employee (removed Supervisor_ID)
+    const [result] = await connection.query(
       `
       INSERT INTO Employee 
-      (First_Name, Last_Name, Birthdate, Sex, Job_ID, Salary, Email, Address, Supervisor_ID)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (First_Name, Last_Name, Birthdate, Sex, Job_ID, Salary, Email, Address)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `,
-      [
-        firstName,
-        lastName,
-        birthdate,
-        sex,
-        jobId,
-        salary,
-        email,
-        address,
-        supervisorId || null,
-      ]
+      [firstName, lastName, birthdate, sex, jobId, salary, email, address]
     );
+
+    const employeeId = result.insertId;
+
+    // If locationId is provided, insert into employee_location with current timestamp
+    if (locationId) {
+      await connection.query(
+        `
+        INSERT INTO employee_location 
+        (Employee_ID, Location_ID, start_date, Is_Primary)
+        VALUES (?, ?, NOW(), 1)
+      `,
+        [employeeId, locationId]
+      );
+    }
+
+    await connection.commit();
 
     // Fetch the newly created employee with job title
     const [newEmployee] = await db.query(
@@ -93,18 +129,24 @@ export const addEmployee = async (req, res) => {
       LEFT JOIN Job_Title jt ON e.Job_ID = jt.Job_ID
       WHERE e.Employee_ID = ?
     `,
-      [result.insertId]
+      [employeeId]
     );
 
     res.status(201).json(newEmployee[0]);
   } catch (error) {
+    await connection.rollback();
     console.error("Error adding employee:", error);
     res.status(500).json({ error: "Failed to add employee" });
+  } finally {
+    connection.release();
   }
 };
 
 export const updateEmployee = async (req, res) => {
+  const connection = await db.getConnection();
   try {
+    await connection.beginTransaction();
+
     const { id } = req.params;
     const {
       firstName,
@@ -115,29 +157,70 @@ export const updateEmployee = async (req, res) => {
       salary,
       email,
       address,
-      supervisorId,
+      locationId,
     } = req.body;
 
-    await db.query(
+    // Update employee (removed Supervisor_ID)
+    await connection.query(
       `
       UPDATE Employee 
       SET First_Name = ?, Last_Name = ?, Birthdate = ?, Sex = ?, 
-          Job_ID = ?, Salary = ?, Email = ?, Address = ?, Supervisor_ID = ?
+          Job_ID = ?, Salary = ?, Email = ?, Address = ?
       WHERE Employee_ID = ?
     `,
-      [
-        firstName,
-        lastName,
-        birthdate,
-        sex,
-        jobId,
-        salary,
-        email,
-        address,
-        supervisorId || null,
-        id,
-      ]
+      [firstName, lastName, birthdate, sex, jobId, salary, email, address, id]
     );
+
+    // If locationId is provided, update the employee_location
+    if (locationId) {
+      // Check if employee has an active location assignment
+      const [currentLocation] = await connection.query(
+        `
+        SELECT Location_ID FROM employee_location 
+        WHERE Employee_ID = ? AND end_date IS NULL
+      `,
+        [id]
+      );
+
+      if (currentLocation.length > 0) {
+        const currentLocationId = currentLocation[0].Location_ID;
+
+        // If location changed, end the current assignment and create a new one
+        if (currentLocationId !== locationId) {
+          // End current location assignment
+          await connection.query(
+            `
+            UPDATE employee_location 
+            SET end_date = NOW()
+            WHERE Employee_ID = ? AND Location_ID = ? AND end_date IS NULL
+          `,
+            [id, currentLocationId]
+          );
+
+          // Create new location assignment (Is_Primary = 1 for regular employee)
+          await connection.query(
+            `
+            INSERT INTO employee_location 
+            (Employee_ID, Location_ID, start_date, Is_Primary)
+            VALUES (?, ?, NOW(), 1)
+          `,
+            [id, locationId]
+          );
+        }
+      } else {
+        // No active assignment exists, create one
+        await connection.query(
+          `
+          INSERT INTO employee_location 
+          (Employee_ID, Location_ID, start_date, Is_Primary)
+          VALUES (?, ?, NOW(), 1)
+        `,
+          [id, locationId]
+        );
+      }
+    }
+
+    await connection.commit();
 
     // Fetch updated employee
     const [updatedEmployee] = await db.query(
@@ -155,8 +238,11 @@ export const updateEmployee = async (req, res) => {
 
     res.json(updatedEmployee[0]);
   } catch (error) {
+    await connection.rollback();
     console.error("Error updating employee:", error);
     res.status(500).json({ error: "Failed to update employee" });
+  } finally {
+    connection.release();
   }
 };
 
@@ -174,24 +260,14 @@ export const deleteEmployee = async (req, res) => {
       return res.status(404).json({ error: "Employee not found" });
     }
 
-    // Note: If you've run the migration with SET NULL constraints,
-    // these manual updates are not strictly necessary but provide safety
-
-    // Remove this employee as supervisor from any locations
+    // Remove this employee as supervisor from any locations (if they are a supervisor)
     await db.query(
       "UPDATE Location SET Supervisor_ID = NULL WHERE Supervisor_ID = ?",
       [id]
     );
 
-    // Update any subordinate employees to have no supervisor
-    await db.query(
-      "UPDATE Employee SET Supervisor_ID = NULL WHERE Supervisor_ID = ?",
-      [id]
-    );
-
     // Delete the employee
-    // If foreign keys are SET NULL, related records will be preserved
-    // If foreign keys are CASCADE, related records will be deleted
+    // employee_location records will be automatically deleted due to CASCADE constraint
     const [result] = await db.query(
       "DELETE FROM Employee WHERE Employee_ID = ?",
       [id]
@@ -266,15 +342,113 @@ export const getAllLocations = async (req, res) => {
   }
 };
 
-export const updateLocationSupervisor = async (req, res) => {
+export const getEmployeesByLocation = async (req, res) => {
   try {
+    const { id } = req.params;
+    const [employees] = await db.query(
+      `
+      SELECT 
+        e.Employee_ID,
+        e.First_Name,
+        e.Last_Name,
+        DATE_FORMAT(e.Birthdate, '%Y-%m-%d') as Birthdate,
+        e.Sex,
+        e.Job_ID,
+        e.Salary,
+        e.Email,
+        e.Address,
+        jt.Title,
+        jt.Description as Job_Description,
+        el.Location_ID,
+        el.Is_Primary,
+        el.start_date,
+        l.Zone
+      FROM employee_location el
+      JOIN Employee e ON el.Employee_ID = e.Employee_ID
+      LEFT JOIN Job_Title jt ON e.Job_ID = jt.Job_ID
+      LEFT JOIN Location l ON el.Location_ID = l.Location_ID
+      WHERE el.Location_ID = ? AND el.end_date IS NULL
+      ORDER BY e.Last_Name, e.First_Name
+    `,
+      [id]
+    );
+    res.json(employees);
+  } catch (error) {
+    console.error("Error fetching employees by location:", error);
+    res.status(500).json({ error: "Failed to fetch employees" });
+  }
+};
+
+export const updateLocationSupervisor = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+
     const { id } = req.params;
     const { supervisorId } = req.body;
 
-    await db.query(
+    // Get the current supervisor for this location
+    const [currentLocation] = await connection.query(
+      "SELECT Supervisor_ID FROM Location WHERE Location_ID = ?",
+      [id]
+    );
+
+    const currentSupervisorId = currentLocation[0]?.Supervisor_ID;
+
+    // If there was a previous supervisor, revert them back to regular employee
+    if (currentSupervisorId) {
+      // Set Is_Primary back to 1 (demoted back to regular employee role)
+      await connection.query(
+        `
+        UPDATE employee_location 
+        SET Is_Primary = 1
+        WHERE Employee_ID = ? AND Location_ID = ? AND end_date IS NULL
+      `,
+        [currentSupervisorId, id]
+      );
+    }
+
+    // If there's a new supervisor, promote them
+    if (supervisorId) {
+      // Check if this employee already has a record for this location
+      const [existingRecord] = await connection.query(
+        `
+        SELECT * FROM employee_location 
+        WHERE Employee_ID = ? AND Location_ID = ? AND end_date IS NULL
+      `,
+        [supervisorId, id]
+      );
+
+      if (existingRecord.length > 0) {
+        // Update existing record to Is_Primary = 0 (promoted to supervisor)
+        await connection.query(
+          `
+          UPDATE employee_location 
+          SET Is_Primary = 0
+          WHERE Employee_ID = ? AND Location_ID = ? AND end_date IS NULL
+        `,
+          [supervisorId, id]
+        );
+      } else {
+        // Create a new record with Is_Primary = 0 (they are being assigned as supervisor)
+        await connection.query(
+          `
+          INSERT INTO employee_location 
+          (Employee_ID, Location_ID, start_date, Is_Primary)
+          VALUES (?, ?, NOW(), 0)
+        `,
+          [supervisorId, id]
+        );
+      }
+    }
+
+    // Update the location table
+    await connection.query(
       "UPDATE Location SET Supervisor_ID = ? WHERE Location_ID = ?",
       [supervisorId || null, id]
     );
+
+    await connection.commit();
 
     const [updatedLocation] = await db.query(
       `
@@ -291,8 +465,11 @@ export const updateLocationSupervisor = async (req, res) => {
 
     res.json(updatedLocation[0]);
   } catch (error) {
+    await connection.rollback();
     console.error("Error updating location supervisor:", error);
     res.status(500).json({ error: "Failed to update supervisor" });
+  } finally {
+    connection.release();
   }
 };
 
@@ -418,7 +595,16 @@ export const getAllAnimals = async (req, res) => {
   try {
     const [animals] = await db.query(`
       SELECT 
-        a.*,
+        a.Animal_ID,
+        a.Animal_Name,
+        a.Species,
+        a.Gender,
+        a.Weight,
+        DATE_FORMAT(a.Birthday, '%Y-%m-%d') as Birthday,
+        a.Health_Status,
+        a.Is_Vaccinated,
+        a.Enclosure_ID,
+        a.Image_URL,
         e.Enclosure_Name,
         e.Enclosure_Type,
         e.Location_ID
@@ -439,7 +625,16 @@ export const getAnimalById = async (req, res) => {
     const [animals] = await db.query(
       `
       SELECT 
-        a.*,
+        a.Animal_ID,
+        a.Animal_Name,
+        a.Species,
+        a.Gender,
+        a.Weight,
+        DATE_FORMAT(a.Birthday, '%Y-%m-%d') as Birthday,
+        a.Health_Status,
+        a.Is_Vaccinated,
+        a.Enclosure_ID,
+        a.Image_URL,
         e.Enclosure_Name,
         e.Enclosure_Type,
         e.Location_ID
@@ -628,7 +823,8 @@ export const getRevenueData = async (req, res) => {
     const params = [];
 
     if (startDate && endDate) {
-      dateFilter = "WHERE p.Purchase_Date BETWEEN ? AND ?";
+      // Use DATE() to compare only the date part, ignoring time
+      dateFilter = "WHERE DATE(p.Purchase_Date) BETWEEN DATE(?) AND DATE(?)";
       params.push(startDate, endDate);
     }
 
@@ -819,7 +1015,11 @@ export const getAllPurchases = async (req, res) => {
   try {
     const [purchases] = await db.query(`
       SELECT 
-        p.*,
+        p.Purchase_ID,
+        p.Customer_ID,
+        DATE_FORMAT(p.Purchase_Date, '%Y-%m-%dT%H:%i:%s') as Purchase_Date,
+        p.Total_Amount,
+        p.Payment_Method,
         c.First_Name,
         c.Last_Name,
         c.Email
@@ -839,7 +1039,7 @@ export const getAllTickets = async (req, res) => {
     const [tickets] = await db.query(`
       SELECT 
         t.*,
-        p.Purchase_Date,
+        DATE_FORMAT(p.Purchase_Date, '%Y-%m-%dT%H:%i:%s') as Purchase_Date,
         p.Customer_ID
       FROM Ticket t
       JOIN Purchase p ON t.Purchase_ID = p.Purchase_ID
@@ -859,7 +1059,7 @@ export const getPurchaseItems = async (req, res) => {
         pi.*,
         i.Item_Name,
         i.Category,
-        p.Purchase_Date
+        DATE_FORMAT(p.Purchase_Date, '%Y-%m-%dT%H:%i:%s') as Purchase_Date
       FROM Purchase_Item pi
       JOIN Item i ON pi.Item_ID = i.Item_ID
       JOIN Purchase p ON pi.Purchase_ID = p.Purchase_ID
@@ -879,7 +1079,7 @@ export const getPurchaseConcessionItems = async (req, res) => {
         pci.*,
         ci.Item_Name,
         ci.Stand_ID,
-        p.Purchase_Date
+        DATE_FORMAT(p.Purchase_Date, '%Y-%m-%dT%H:%i:%s') as Purchase_Date
       FROM Purchase_Concession_Item pci
       JOIN Concession_Item ci ON pci.Concession_Item_ID = ci.Concession_Item_ID
       JOIN Purchase p ON pci.Purchase_ID = p.Purchase_ID
@@ -896,9 +1096,15 @@ export const getPurchaseConcessionItems = async (req, res) => {
 
 export const getAllMemberships = async (req, res) => {
   try {
+    // Note: Membership table uses Customer_ID as primary key, not Membership_ID
+    // Start_Date and End_Date are DATETIME columns
     const [memberships] = await db.query(`
       SELECT 
-        m.*,
+        m.Customer_ID,
+        m.Membership_Status,
+        m.Start_Date,
+        m.End_Date,
+        m.Price,
         c.First_Name,
         c.Last_Name,
         c.Email
@@ -906,7 +1112,19 @@ export const getAllMemberships = async (req, res) => {
       JOIN Customer c ON m.Customer_ID = c.Customer_ID
       ORDER BY m.Start_Date DESC
     `);
-    res.json(memberships);
+
+    // Format dates after retrieval (convert datetime to date string)
+    const formattedMemberships = memberships.map((m) => ({
+      ...m,
+      Start_Date: m.Start_Date
+        ? new Date(m.Start_Date).toISOString().split("T")[0]
+        : null,
+      End_Date: m.End_Date
+        ? new Date(m.End_Date).toISOString().split("T")[0]
+        : null,
+    }));
+
+    res.json(formattedMemberships);
   } catch (error) {
     console.error("Error fetching memberships:", error);
     res.status(500).json({ error: "Failed to fetch memberships" });

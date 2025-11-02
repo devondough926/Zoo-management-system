@@ -1,13 +1,38 @@
-// API service for Customer-facing pages
+import { clearSpecificCache } from "../hooks/useOptimizedFetch";
+
 const API_BASE_URL =
   import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
-// ============================================
-// AUTHENTICATION API
-// ============================================
+const CACHE_DURATION = 5 * 60 * 1000;
+
+const cache = new Map();
+
+function getCachedData(key) {
+  const cached = cache.get(key);
+  if (!cached) return null;
+
+  const age = Date.now() - cached.timestamp;
+  if (age > CACHE_DURATION) {
+    cache.delete(key);
+    return null;
+  }
+
+  return cached.data;
+}
+
+function setCachedData(key, data) {
+  cache.set(key, {
+    data,
+    timestamp: Date.now(),
+  });
+}
+
+function clearCache(...keys) {
+  keys.forEach((key) => cache.delete(key));
+  clearSpecificCache(...keys);
+}
 
 export const authAPI = {
-  // Register a new customer
   register: async (userData) => {
     try {
       const response = await fetch(`${API_BASE_URL}/auth/register`, {
@@ -29,7 +54,6 @@ export const authAPI = {
     }
   },
 
-  // Login customer
   login: async (email, password) => {
     try {
       const response = await fetch(`${API_BASE_URL}/auth/login`, {
@@ -51,9 +75,12 @@ export const authAPI = {
     }
   },
 
-  // Get customer profile
   getProfile: async (customerId) => {
     try {
+      const cacheKey = `profile_${customerId}`;
+      const cached = getCachedData(cacheKey);
+      if (cached) return cached;
+
       const response = await fetch(
         `${API_BASE_URL}/auth/profile/${customerId}`
       );
@@ -62,14 +89,15 @@ export const authAPI = {
         throw new Error("Failed to fetch profile");
       }
 
-      return response.json();
+      const data = await response.json();
+      setCachedData(cacheKey, data);
+      return data;
     } catch (error) {
       console.error("Get profile error:", error);
       throw error;
     }
   },
 
-  // Update customer profile
   updateProfile: async (customerId, profileData) => {
     try {
       const response = await fetch(
@@ -87,6 +115,7 @@ export const authAPI = {
         throw new Error(data.error || "Failed to update profile");
       }
 
+      clearCache(`profile_${customerId}`);
       return data;
     } catch (error) {
       console.error("Update profile error:", error);
@@ -94,7 +123,6 @@ export const authAPI = {
     }
   },
 
-  // Change customer password
   changePassword: async (customerId, passwordData) => {
     try {
       const response = await fetch(
@@ -119,7 +147,6 @@ export const authAPI = {
     }
   },
 
-  // Check if backend is connected
   checkConnection: async () => {
     try {
       const response = await fetch(
@@ -135,86 +162,107 @@ export const authAPI = {
   },
 };
 
-// ============================================
-// EXHIBITS API
-// ============================================
-
 export const exhibitsAPI = {
-  // Get all exhibits with their location info
   getAll: async () => {
+    const cacheKey = "customer_exhibits";
+    const cached = getCachedData(cacheKey);
+    if (cached) return cached;
+
     const response = await fetch(`${API_BASE_URL}/customer/exhibits`);
     if (!response.ok) throw new Error("Failed to fetch exhibits");
-    return response.json();
+    const data = await response.json();
+
+    setCachedData(cacheKey, data);
+    return data;
   },
 
-  // Get exhibit by ID
   getById: async (id) => {
+    const cacheKey = `customer_exhibit_${id}`;
+    const cached = getCachedData(cacheKey);
+    if (cached) return cached;
+
     const response = await fetch(`${API_BASE_URL}/customer/exhibits/${id}`);
     if (!response.ok) throw new Error("Failed to fetch exhibit");
-    return response.json();
+    const data = await response.json();
+
+    setCachedData(cacheKey, data);
+    return data;
   },
 };
 
-// ============================================
-// ACTIVITIES API
-// ============================================
-
 export const activitiesAPI = {
-  // Get all exhibit activities
   getAll: async () => {
+    const cacheKey = "customer_activities";
+    const cached = getCachedData(cacheKey);
+    if (cached) return cached;
+
     const response = await fetch(`${API_BASE_URL}/customer/activities`);
     if (!response.ok) throw new Error("Failed to fetch activities");
-    return response.json();
+    const data = await response.json();
+
+    setCachedData(cacheKey, data);
+    return data;
   },
 
-  // Get activities for a specific exhibit
   getByExhibit: async (exhibitId) => {
+    const cacheKey = `customer_exhibit_${exhibitId}_activities`;
+    const cached = getCachedData(cacheKey);
+    if (cached) return cached;
+
     const response = await fetch(
       `${API_BASE_URL}/customer/exhibits/${exhibitId}/activities`
     );
     if (!response.ok) throw new Error("Failed to fetch exhibit activities");
-    return response.json();
+    const data = await response.json();
+
+    setCachedData(cacheKey, data);
+    return data;
   },
 
-  // Get today's schedule (activities based on rotation)
   getTodaysSchedule: async () => {
+    const cacheKey = "customer_todays_schedule";
+    const cached = getCachedData(cacheKey);
+    if (cached) return cached;
+
     const response = await fetch(`${API_BASE_URL}/customer/schedule/today`);
     if (!response.ok) throw new Error("Failed to fetch today's schedule");
-    return response.json();
+    const data = await response.json();
+
+    setCachedData(cacheKey, data);
+    return data;
   },
 };
-
-// ============================================
-// ANIMALS API
-// ============================================
 
 export const animalsAPI = {
-  // Get all animals with their enclosure info
   getAll: async () => {
+    const cacheKey = "customer_animals";
+    const cached = getCachedData(cacheKey);
+    if (cached) return cached;
+
     const response = await fetch(`${API_BASE_URL}/customer/animals`);
     if (!response.ok) throw new Error("Failed to fetch animals");
-    return response.json();
+    const data = await response.json();
+
+    setCachedData(cacheKey, data);
+    return data;
   },
 };
-
-// ============================================
-// ENCLOSURES API
-// ============================================
 
 export const enclosuresAPI = {
-  // Get all enclosures
   getAll: async () => {
+    const cacheKey = "customer_enclosures";
+    const cached = getCachedData(cacheKey);
+    if (cached) return cached;
+
     const response = await fetch(`${API_BASE_URL}/customer/enclosures`);
     if (!response.ok) throw new Error("Failed to fetch enclosures");
-    return response.json();
+    const data = await response.json();
+
+    setCachedData(cacheKey, data);
+    return data;
   },
 };
 
-// ============================================
-// HELPER FUNCTIONS
-// ============================================
-
-// Format time from 24-hour to 12-hour format
 export const formatTime = (time) => {
   if (!time) return "";
   const [hours, minutes] = time.split(":");
@@ -222,4 +270,71 @@ export const formatTime = (time) => {
   const period = hour >= 12 ? "PM" : "AM";
   const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
   return `${displayHour}:${minutes} ${period}`;
+};
+
+export const purchasesAPI = {
+  getHistory: async (customerId) => {
+    try {
+      const cacheKey = `purchases_${customerId}`;
+      const cached = getCachedData(cacheKey);
+      if (cached) return cached;
+
+      const response = await fetch(
+        `${API_BASE_URL}/customer/purchases/${customerId}`
+      );
+      if (!response.ok) throw new Error("Failed to fetch purchase history");
+      const data = await response.json();
+
+      setCachedData(cacheKey, data);
+      return data;
+    } catch (error) {
+      console.error("Get purchase history error:", error);
+      throw error;
+    }
+  },
+
+  getDetails: async (purchaseId) => {
+    try {
+      const cacheKey = `purchase_details_${purchaseId}`;
+      const cached = getCachedData(cacheKey);
+      if (cached) return cached;
+
+      const response = await fetch(
+        `${API_BASE_URL}/customer/purchases/${purchaseId}/details`
+      );
+      if (!response.ok) throw new Error("Failed to fetch purchase details");
+      const data = await response.json();
+
+      setCachedData(cacheKey, data);
+      return data;
+    } catch (error) {
+      console.error("Get purchase details error:", error);
+      throw error;
+    }
+  },
+
+  create: async (purchaseData) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/customer/purchases`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(purchaseData),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to create purchase");
+      }
+
+      if (purchaseData.Customer_ID) {
+        clearCache(`purchases_${purchaseData.Customer_ID}`);
+      }
+
+      return data;
+    } catch (error) {
+      console.error("Create purchase error:", error);
+      throw error;
+    }
+  },
 };

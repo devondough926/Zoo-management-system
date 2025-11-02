@@ -17,6 +17,39 @@ const formatNumber = (num) => {
   });
 };
 
+// Helper function to format datetime
+const formatDateTime = (dateString) => {
+  if (!dateString) return "N/A";
+
+  // Remove 'T' and treat as MySQL datetime (local time, not UTC)
+  let dateStr = dateString.replace("T", " ");
+
+  // Parse the date string manually to avoid timezone issues
+  // MySQL format: YYYY-MM-DD HH:mm:ss
+  const parts = dateStr.match(
+    /(\d{4})-(\d{2})-(\d{2})\s(\d{2}):(\d{2}):(\d{2})/
+  );
+
+  if (!parts) return "Invalid Date";
+
+  const [, year, month, day, hour, minute, second] = parts;
+
+  // Create date in local timezone (not UTC)
+  const date = new Date(year, month - 1, day, hour, minute, second);
+
+  // Check if date is valid
+  if (isNaN(date.getTime())) return "Invalid Date";
+
+  return date.toLocaleString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+};
+
 export function OrderHistoryPage({ user }) {
   const {
     purchases,
@@ -105,14 +138,12 @@ export function OrderHistoryPage({ user }) {
                                 </span>
                               </div>
                               <p className="text-sm text-gray-600">
-                                {new Date(
-                                  purchase.Purchase_Date
-                                ).toLocaleString()}
+                                {formatDateTime(purchase.Purchase_Date)}
                               </p>
                             </div>
                             <div className="text-right">
                               <p className="text-2xl text-green-600 font-semibold">
-                                ${purchase.Total_Amount.toFixed(2)}
+                                ${Number(purchase.Total_Amount).toFixed(2)}
                               </p>
                             </div>
                           </div>

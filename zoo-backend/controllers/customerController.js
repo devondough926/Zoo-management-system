@@ -121,12 +121,10 @@ export const getActivitiesByExhibit = async (req, res) => {
   } catch (error) {
     console.error("Error fetching exhibit activities:", error);
     console.error("SQL Error details:", error.sqlMessage);
-    res
-      .status(500)
-      .json({
-        error: "Failed to fetch exhibit activities",
-        details: error.message,
-      });
+    res.status(500).json({
+      error: "Failed to fetch exhibit activities",
+      details: error.message,
+    });
   }
 };
 
@@ -167,12 +165,10 @@ export const getTodaysSchedule = async (req, res) => {
   } catch (error) {
     console.error("Error fetching today's schedule:", error);
     console.error("SQL Error details:", error.sqlMessage);
-    res
-      .status(500)
-      .json({
-        error: "Failed to fetch today's schedule",
-        details: error.message,
-      });
+    res.status(500).json({
+      error: "Failed to fetch today's schedule",
+      details: error.message,
+    });
   }
 };
 
@@ -216,5 +212,313 @@ export const getAllEnclosures = async (req, res) => {
   } catch (error) {
     console.error("Error fetching enclosures:", error);
     res.status(500).json({ error: "Failed to fetch enclosures" });
+  }
+};
+
+// ============================================
+// PURCHASES - Customer View
+// ============================================
+
+// Get purchase history for a customer
+export const getPurchaseHistory = async (req, res) => {
+  try {
+    const { customerId } = req.params;
+
+    // Get all purchases for this customer
+    const [purchases] = await db.query(
+      `
+      SELECT 
+        Purchase_ID,
+        Customer_ID,
+        DATE_FORMAT(Purchase_Date, '%Y-%m-%dT%H:%i:%s') as Purchase_Date,
+        CAST(Total_Amount AS DECIMAL(10,2)) as Total_Amount,
+        Payment_Method
+      FROM Purchase
+      WHERE Customer_ID = ?
+      ORDER BY Purchase_Date DESC
+    `,
+      [customerId]
+    );
+
+    // Convert Total_Amount to number for each purchase
+    const formattedPurchases = purchases.map((purchase) => ({
+      ...purchase,
+      Total_Amount: parseFloat(purchase.Total_Amount),
+    }));
+
+    res.json(formattedPurchases);
+  } catch (error) {
+    console.error("Error fetching purchase history:", error);
+    res.status(500).json({ error: "Failed to fetch purchase history" });
+  }
+};
+
+// Get detailed information about a specific purchase
+export const getPurchaseDetails = async (req, res) => {
+  try {
+    const { purchaseId } = req.params;
+
+    // Get purchase info
+    const [purchases] = await db.query(
+      `
+      SELECT 
+        p.Purchase_ID,
+        p.Customer_ID,
+        DATE_FORMAT(p.Purchase_Date, '%Y-%m-%dT%H:%i:%s') as Purchase_Date,
+        CAST(p.Total_Amount AS DECIMAL(10,2)) as Total_Amount,
+        p.Payment_Method,
+        c.First_Name,
+        c.Last_Name,
+        c.Email
+      FROM Purchase p
+      JOIN Customer c ON p.Customer_ID = c.Customer_ID
+      WHERE p.Purchase_ID = ?
+    `,
+      [purchaseId]
+    );
+
+    if (purchases.length === 0) {
+      return res.status(404).json({ error: "Purchase not found" });
+    }
+
+    const purchase = purchases[0];
+
+    // Get tickets for this purchase
+    const [tickets] = await db.query(
+      `
+      SELECT 
+        Ticket_ID,
+        Purchase_ID,
+        Ticket_Type,
+        CAST(Price AS DECIMAL(10,2)) as Price,
+        Quantity
+      FROM Ticket
+      WHERE Purchase_ID = ?
+    `,
+      [purchaseId]
+    );
+
+    // Get purchase items (gift shop) for this purchase
+    const [purchaseItems] = await db.query(
+      `
+      SELECT 
+        pi.Purchase_ID,
+        pi.Item_ID,
+        pi.Quantity,
+        CAST(pi.Unit_Price AS DECIMAL(10,2)) as Unit_Price,
+        i.Item_Name,
+        i.Item_Description,
+        i.Image_URL
+      FROM Purchase_Item pi
+      JOIN Item i ON pi.Item_ID = i.Item_ID
+      WHERE pi.Purchase_ID = ?
+    `,
+      [purchaseId]
+    );
+
+    // Get concession items for this purchase
+    const [concessionItems] = await db.query(
+      `
+      SELECT 
+        pci.Purchase_ID,
+        pci.Concession_Item_ID,
+        pci.Quantity,
+        CAST(pci.Unit_Price AS DECIMAL(10,2)) as Unit_Price,
+        ci.Item_Name,
+        ci.Item_Description
+      FROM Purchase_Concession_Item pci
+      JOIN Concession_Item ci ON pci.Concession_Item_ID = ci.Concession_Item_ID
+      WHERE pci.Purchase_ID = ?
+    `,
+      [purchaseId]
+    );
+
+    // Format numeric fields
+    const formattedPurchase = {
+      ...purchase,
+      Total_Amount: parseFloat(purchase.Total_Amount),
+    };
+
+    const formattedTickets = tickets.map((t) => ({
+      ...t,
+      Price: parseFloat(t.Price),
+    }));
+
+    const formattedPurchaseItems = purchaseItems.map((pi) => ({
+      ...pi,
+      Unit_Price: parseFloat(pi.Unit_Price),
+    }));
+
+    const formattedConcessionItems = concessionItems.map((ci) => ({
+      ...ci,
+      Unit_Price: parseFloat(ci.Unit_Price),
+    }));
+
+    res.json({
+      purchase: formattedPurchase,
+      tickets: formattedTickets,
+      purchaseItems: formattedPurchaseItems,
+      concessionItems: formattedConcessionItems,
+    });
+  } catch (error) {
+    console.error("Error fetching purchase details:", error);
+    res.status(500).json({ error: "Failed to fetch purchase details" });
+  }
+};
+
+// Create a new purchase with all items
+export const createPurchase = async (req, res) => {
+  const connection = await db.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    const {
+      customerId,
+      totalAmount,
+      paymentMethod = "Card",
+      tickets = [],
+      items = [],
+      concessionItems = [],
+      membership = null,
+    } = req.body;
+
+    // Validate required fields
+    if (!customerId || totalAmount === undefined) {
+      await connection.rollback();
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    // Create the purchase record
+    const [purchaseResult] = await connection.query(
+      `
+      INSERT INTO Purchase (Customer_ID, Purchase_Date, Total_Amount, Payment_Method)
+      VALUES (?, NOW(), ?, ?)
+    `,
+      [customerId, totalAmount, paymentMethod]
+    );
+
+    const purchaseId = purchaseResult.insertId;
+
+    // Insert tickets
+    if (tickets.length > 0) {
+      for (const ticket of tickets) {
+        await connection.query(
+          `
+          INSERT INTO Ticket (Purchase_ID, Ticket_Type, Price, Quantity)
+          VALUES (?, ?, ?, ?)
+        `,
+          [purchaseId, ticket.ticketType, ticket.price, ticket.quantity]
+        );
+      }
+    }
+
+    // Insert purchase items (gift shop)
+    if (items.length > 0) {
+      for (const item of items) {
+        await connection.query(
+          `
+          INSERT INTO Purchase_Item (Purchase_ID, Item_ID, Quantity, Unit_Price)
+          VALUES (?, ?, ?, ?)
+        `,
+          [purchaseId, item.itemId, item.quantity, item.unitPrice]
+        );
+      }
+    }
+
+    // Insert concession items
+    if (concessionItems.length > 0) {
+      for (const item of concessionItems) {
+        await connection.query(
+          `
+          INSERT INTO Purchase_Concession_Item (Purchase_ID, Concession_Item_ID, Quantity, Unit_Price)
+          VALUES (?, ?, ?, ?)
+        `,
+          [purchaseId, item.concessionItemId, item.quantity, item.unitPrice]
+        );
+      }
+    }
+
+    // Handle membership if included
+    if (membership) {
+      // Check if customer already has a membership
+      const [existingMembership] = await connection.query(
+        `
+        SELECT Membership_ID, End_Date
+        FROM Membership
+        WHERE Customer_ID = ?
+        LIMIT 1
+      `,
+        [customerId]
+      );
+
+      const startDate = new Date();
+      let endDate = new Date();
+
+      // If existing membership and it's still valid, extend from its end date
+      if (existingMembership.length > 0 && existingMembership[0].End_Date) {
+        const existingEndDate = new Date(existingMembership[0].End_Date);
+        if (existingEndDate > startDate) {
+          endDate = new Date(existingEndDate);
+          endDate.setFullYear(endDate.getFullYear() + 1);
+        } else {
+          endDate.setFullYear(endDate.getFullYear() + 1);
+        }
+      } else {
+        endDate.setFullYear(endDate.getFullYear() + 1);
+      }
+
+      if (existingMembership.length > 0) {
+        // Update existing membership
+        await connection.query(
+          `
+          UPDATE Membership
+          SET Membership_Status = 1,
+              End_Date = ?,
+              Price = ?
+          WHERE Customer_ID = ?
+        `,
+          [endDate, membership.price, customerId]
+        );
+      } else {
+        // Create new membership
+        await connection.query(
+          `
+          INSERT INTO Membership (Customer_ID, Membership_Status, Start_Date, End_Date, Price)
+          VALUES (?, 1, ?, ?, ?)
+        `,
+          [customerId, startDate, endDate, membership.price]
+        );
+      }
+    }
+
+    await connection.commit();
+
+    // Fetch the created purchase with details
+    const [createdPurchase] = await connection.query(
+      `
+      SELECT 
+        Purchase_ID,
+        Customer_ID,
+        DATE_FORMAT(Purchase_Date, '%Y-%m-%dT%H:%i:%s') as Purchase_Date,
+        CAST(Total_Amount AS DECIMAL(10,2)) as Total_Amount,
+        Payment_Method
+      FROM Purchase
+      WHERE Purchase_ID = ?
+    `,
+      [purchaseId]
+    );
+
+    res.status(201).json({
+      message: "Purchase created successfully",
+      purchase: createdPurchase[0],
+      purchaseId,
+    });
+  } catch (error) {
+    await connection.rollback();
+    console.error("Error creating purchase:", error);
+    res.status(500).json({ error: "Failed to create purchase" });
+  } finally {
+    connection.release();
   }
 };

@@ -7,6 +7,9 @@ import {
   getTodaysSchedule,
   getAllAnimals,
   getAllEnclosures,
+  getPurchaseHistory,
+  getPurchaseDetails,
+  createPurchase,
 } from "../controllers/customerController.js";
 
 const router = express.Router();
@@ -27,5 +30,10 @@ router.get("/animals", getAllAnimals);
 
 // Enclosure routes
 router.get("/enclosures", getAllEnclosures);
+
+// Purchase routes
+router.get("/purchases/:customerId", getPurchaseHistory);
+router.get("/purchases/:purchaseId/details", getPurchaseDetails);
+router.post("/purchases", createPurchase);
 
 export default router;

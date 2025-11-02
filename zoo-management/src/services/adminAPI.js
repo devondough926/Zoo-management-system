@@ -1,27 +1,64 @@
-// API service for Admin Portal
+import { clearSpecificCache } from "../hooks/useOptimizedFetch";
+
 const API_BASE_URL =
   import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
-// ============================================
-// EMPLOYEE API
-// ============================================
+const CACHE_DURATION = 5 * 60 * 1000;
+
+const cache = new Map();
+
+function getCachedData(key) {
+  const cached = cache.get(key);
+  if (!cached) return null;
+
+  const age = Date.now() - cached.timestamp;
+  if (age > CACHE_DURATION) {
+    cache.delete(key);
+    return null;
+  }
+
+  return cached.data;
+}
+
+function setCachedData(key, data) {
+  cache.set(key, {
+    data,
+    timestamp: Date.now(),
+  });
+}
+
+function clearCache(...keys) {
+  keys.forEach((key) => cache.delete(key));
+  clearSpecificCache(...keys);
+}
 
 export const employeeAPI = {
-  // Get all employees
   getAll: async () => {
+    const cacheKey = "employees";
+    const cached = getCachedData(cacheKey);
+    if (cached) return cached;
+
     const response = await fetch(`${API_BASE_URL}/admin/employees`);
     if (!response.ok) throw new Error("Failed to fetch employees");
-    return response.json();
+    const data = await response.json();
+
+    setCachedData(cacheKey, data);
+    return data;
   },
 
-  // Get employee by ID
   getById: async (id) => {
+    const cacheKey = `employee_${id}`;
+    const cached = getCachedData(cacheKey);
+    if (cached) return cached;
+
     const response = await fetch(`${API_BASE_URL}/admin/employees/${id}`);
     if (!response.ok) throw new Error("Failed to fetch employee");
-    return response.json();
+    const data = await response.json();
+
+    setCachedData(cacheKey, data);
+    return data;
   },
 
-  // Add new employee
   create: async (employeeData) => {
     const response = await fetch(`${API_BASE_URL}/admin/employees`, {
       method: "POST",
@@ -29,10 +66,12 @@ export const employeeAPI = {
       body: JSON.stringify(employeeData),
     });
     if (!response.ok) throw new Error("Failed to create employee");
-    return response.json();
+    const data = await response.json();
+
+    clearCache("employees", "locations");
+    return data;
   },
 
-  // Update employee
   update: async (id, employeeData) => {
     const response = await fetch(`${API_BASE_URL}/admin/employees/${id}`, {
       method: "PUT",
@@ -40,10 +79,12 @@ export const employeeAPI = {
       body: JSON.stringify(employeeData),
     });
     if (!response.ok) throw new Error("Failed to update employee");
-    return response.json();
+    const data = await response.json();
+
+    clearCache("employees", "locations", `employee_${id}`);
+    return data;
   },
 
-  // Delete employee
   delete: async (id) => {
     const response = await fetch(`${API_BASE_URL}/admin/employees/${id}`, {
       method: "DELETE",
@@ -54,10 +95,12 @@ export const employeeAPI = {
       error.response = { data: errorData };
       throw error;
     }
-    return response.json();
+    const data = await response.json();
+
+    clearCache("employees", "locations", `employee_${id}`);
+    return data;
   },
 
-  // Update employee salary
   updateSalary: async (id, salary) => {
     const response = await fetch(
       `${API_BASE_URL}/admin/employees/${id}/salary`,
@@ -68,23 +111,42 @@ export const employeeAPI = {
       }
     );
     if (!response.ok) throw new Error("Failed to update salary");
-    return response.json();
+    const data = await response.json();
+
+    clearCache("employees", `employee_${id}`);
+    return data;
   },
 };
 
-// ============================================
-// LOCATION API
-// ============================================
-
 export const locationAPI = {
-  // Get all locations
   getAll: async () => {
+    const cacheKey = "locations";
+    const cached = getCachedData(cacheKey);
+    if (cached) return cached;
+
     const response = await fetch(`${API_BASE_URL}/admin/locations`);
     if (!response.ok) throw new Error("Failed to fetch locations");
-    return response.json();
+    const data = await response.json();
+
+    setCachedData(cacheKey, data);
+    return data;
   },
 
-  // Update location supervisor
+  getEmployees: async (locationId) => {
+    const cacheKey = `location_${locationId}_employees`;
+    const cached = getCachedData(cacheKey);
+    if (cached) return cached;
+
+    const response = await fetch(
+      `${API_BASE_URL}/admin/locations/${locationId}/employees`
+    );
+    if (!response.ok) throw new Error("Failed to fetch employees for location");
+    const data = await response.json();
+
+    setCachedData(cacheKey, data);
+    return data;
+  },
+
   updateSupervisor: async (locationId, supervisorId) => {
     const response = await fetch(
       `${API_BASE_URL}/admin/locations/${locationId}/supervisor`,
@@ -95,30 +157,40 @@ export const locationAPI = {
       }
     );
     if (!response.ok) throw new Error("Failed to update supervisor");
-    return response.json();
+    const data = await response.json();
+
+    clearCache("locations", "employees", `location_${locationId}_employees`);
+    return data;
   },
 };
 
-// ============================================
-// EXHIBIT API
-// ============================================
-
 export const exhibitAPI = {
-  // Get all exhibits
   getAll: async () => {
+    const cacheKey = "exhibits";
+    const cached = getCachedData(cacheKey);
+    if (cached) return cached;
+
     const response = await fetch(`${API_BASE_URL}/admin/exhibits`);
     if (!response.ok) throw new Error("Failed to fetch exhibits");
-    return response.json();
+    const data = await response.json();
+
+    setCachedData(cacheKey, data);
+    return data;
   },
 
-  // Get exhibit by ID
   getById: async (id) => {
+    const cacheKey = `exhibit_${id}`;
+    const cached = getCachedData(cacheKey);
+    if (cached) return cached;
+
     const response = await fetch(`${API_BASE_URL}/admin/exhibits/${id}`);
     if (!response.ok) throw new Error("Failed to fetch exhibit");
-    return response.json();
+    const data = await response.json();
+
+    setCachedData(cacheKey, data);
+    return data;
   },
 
-  // Add new exhibit
   create: async (exhibitData) => {
     const response = await fetch(`${API_BASE_URL}/admin/exhibits`, {
       method: "POST",
@@ -126,10 +198,12 @@ export const exhibitAPI = {
       body: JSON.stringify(exhibitData),
     });
     if (!response.ok) throw new Error("Failed to create exhibit");
-    return response.json();
+    const data = await response.json();
+
+    clearCache("exhibits", "activities", "todaysSchedule");
+    return data;
   },
 
-  // Update exhibit
   update: async (id, exhibitData) => {
     const response = await fetch(`${API_BASE_URL}/admin/exhibits/${id}`, {
       method: "PUT",
@@ -137,19 +211,23 @@ export const exhibitAPI = {
       body: JSON.stringify(exhibitData),
     });
     if (!response.ok) throw new Error("Failed to update exhibit");
-    return response.json();
+    const data = await response.json();
+
+    clearCache("exhibits", "activities", "todaysSchedule", `exhibit_${id}`);
+    return data;
   },
 
-  // Delete exhibit
   delete: async (id) => {
     const response = await fetch(`${API_BASE_URL}/admin/exhibits/${id}`, {
       method: "DELETE",
     });
     if (!response.ok) throw new Error("Failed to delete exhibit");
-    return response.json();
+    const data = await response.json();
+
+    clearCache("exhibits", "activities", "todaysSchedule", `exhibit_${id}`);
+    return data;
   },
 
-  // Upload exhibit image
   uploadImage: async (id, imageFile) => {
     const formData = new FormData();
     formData.append("image", imageFile);
@@ -162,10 +240,12 @@ export const exhibitAPI = {
       }
     );
     if (!response.ok) throw new Error("Failed to upload exhibit image");
-    return response.json();
+    const data = await response.json();
+
+    clearCache("exhibits", `exhibit_${id}`);
+    return data;
   },
 
-  // Remove exhibit image
   removeImage: async (id) => {
     const response = await fetch(
       `${API_BASE_URL}/admin/exhibits/${id}/remove-image`,
@@ -174,30 +254,40 @@ export const exhibitAPI = {
       }
     );
     if (!response.ok) throw new Error("Failed to remove exhibit image");
-    return response.json();
+    const data = await response.json();
+
+    clearCache("exhibits", `exhibit_${id}`);
+    return data;
   },
 };
 
-// ============================================
-// ANIMAL API
-// ============================================
-
 export const animalAPI = {
-  // Get all animals
   getAll: async () => {
+    const cacheKey = "animals";
+    const cached = getCachedData(cacheKey);
+    if (cached) return cached;
+
     const response = await fetch(`${API_BASE_URL}/admin/animals`);
     if (!response.ok) throw new Error("Failed to fetch animals");
-    return response.json();
+    const data = await response.json();
+
+    setCachedData(cacheKey, data);
+    return data;
   },
 
-  // Get animal by ID
   getById: async (id) => {
+    const cacheKey = `animal_${id}`;
+    const cached = getCachedData(cacheKey);
+    if (cached) return cached;
+
     const response = await fetch(`${API_BASE_URL}/admin/animals/${id}`);
     if (!response.ok) throw new Error("Failed to fetch animal");
-    return response.json();
+    const data = await response.json();
+
+    setCachedData(cacheKey, data);
+    return data;
   },
 
-  // Add new animal
   create: async (animalData) => {
     const response = await fetch(`${API_BASE_URL}/admin/animals`, {
       method: "POST",
@@ -205,10 +295,12 @@ export const animalAPI = {
       body: JSON.stringify(animalData),
     });
     if (!response.ok) throw new Error("Failed to create animal");
-    return response.json();
+    const data = await response.json();
+
+    clearCache("animals", "enclosures");
+    return data;
   },
 
-  // Update animal
   update: async (id, animalData) => {
     const response = await fetch(`${API_BASE_URL}/admin/animals/${id}`, {
       method: "PUT",
@@ -216,19 +308,23 @@ export const animalAPI = {
       body: JSON.stringify(animalData),
     });
     if (!response.ok) throw new Error("Failed to update animal");
-    return response.json();
+    const data = await response.json();
+
+    clearCache("animals", "enclosures", `animal_${id}`);
+    return data;
   },
 
-  // Delete animal
   delete: async (id) => {
     const response = await fetch(`${API_BASE_URL}/admin/animals/${id}`, {
       method: "DELETE",
     });
     if (!response.ok) throw new Error("Failed to delete animal");
-    return response.json();
+    const data = await response.json();
+
+    clearCache("animals", "enclosures", `animal_${id}`);
+    return data;
   },
 
-  // Upload animal image
   uploadImage: async (id, imageFile) => {
     const formData = new FormData();
     formData.append("image", imageFile);
@@ -241,10 +337,12 @@ export const animalAPI = {
       }
     );
     if (!response.ok) throw new Error("Failed to upload animal image");
-    return response.json();
+    const data = await response.json();
+
+    clearCache("animals", `animal_${id}`);
+    return data;
   },
 
-  // Remove animal image
   removeImage: async (id) => {
     const response = await fetch(
       `${API_BASE_URL}/admin/animals/${id}/remove-image`,
@@ -253,111 +351,157 @@ export const animalAPI = {
       }
     );
     if (!response.ok) throw new Error("Failed to remove animal image");
-    return response.json();
+    const data = await response.json();
+
+    clearCache("animals", `animal_${id}`);
+    return data;
   },
 };
 
-// ============================================
-// ANALYTICS API
-// ============================================
-
 export const analyticsAPI = {
-  // Get revenue data
   getRevenue: async (startDate = null, endDate = null) => {
+    const cacheKey = `revenue_${startDate}_${endDate}`;
+    const cached = getCachedData(cacheKey);
+    if (cached) return cached;
+
     let url = `${API_BASE_URL}/admin/revenue`;
     if (startDate && endDate) {
       url += `?startDate=${startDate}&endDate=${endDate}`;
     }
     const response = await fetch(url);
     if (!response.ok) throw new Error("Failed to fetch revenue data");
-    return response.json();
+    const data = await response.json();
+
+    setCachedData(cacheKey, data);
+    return data;
   },
 
-  // Get general statistics
   getStatistics: async () => {
+    const cacheKey = "statistics";
+    const cached = getCachedData(cacheKey);
+    if (cached) return cached;
+
     const response = await fetch(`${API_BASE_URL}/admin/statistics`);
     if (!response.ok) throw new Error("Failed to fetch statistics");
-    return response.json();
+    const data = await response.json();
+
+    setCachedData(cacheKey, data);
+    return data;
   },
 };
-
-// ============================================
-// REFERENCE DATA API
-// ============================================
 
 export const referenceAPI = {
-  // Get all job titles
   getJobTitles: async () => {
+    const cacheKey = "job_titles";
+    const cached = getCachedData(cacheKey);
+    if (cached) return cached;
+
     const response = await fetch(`${API_BASE_URL}/admin/job-titles`);
     if (!response.ok) throw new Error("Failed to fetch job titles");
-    return response.json();
+    const data = await response.json();
+
+    setCachedData(cacheKey, data);
+    return data;
   },
 
-  // Get all enclosures
   getEnclosures: async () => {
+    const cacheKey = "enclosures";
+    const cached = getCachedData(cacheKey);
+    if (cached) return cached;
+
     const response = await fetch(`${API_BASE_URL}/admin/enclosures`);
     if (!response.ok) throw new Error("Failed to fetch enclosures");
-    return response.json();
+    const data = await response.json();
+
+    setCachedData(cacheKey, data);
+    return data;
   },
 };
 
-// ============================================
-// PURCHASE & TRANSACTION API
-// ============================================
-
 export const transactionAPI = {
-  // Get all purchases
   getPurchases: async () => {
+    const cacheKey = "purchases";
+    const cached = getCachedData(cacheKey);
+    if (cached) return cached;
+
     const response = await fetch(`${API_BASE_URL}/admin/purchases`);
     if (!response.ok) throw new Error("Failed to fetch purchases");
-    return response.json();
+    const data = await response.json();
+
+    setCachedData(cacheKey, data);
+    return data;
   },
 
-  // Get all tickets
   getTickets: async () => {
+    const cacheKey = "tickets";
+    const cached = getCachedData(cacheKey);
+    if (cached) return cached;
+
     const response = await fetch(`${API_BASE_URL}/admin/tickets`);
     if (!response.ok) throw new Error("Failed to fetch tickets");
-    return response.json();
+    const data = await response.json();
+
+    setCachedData(cacheKey, data);
+    return data;
   },
 
-  // Get purchase items
   getPurchaseItems: async () => {
+    const cacheKey = "purchase_items";
+    const cached = getCachedData(cacheKey);
+    if (cached) return cached;
+
     const response = await fetch(`${API_BASE_URL}/admin/purchase-items`);
     if (!response.ok) throw new Error("Failed to fetch purchase items");
-    return response.json();
+    const data = await response.json();
+
+    setCachedData(cacheKey, data);
+    return data;
   },
 
-  // Get purchase concession items
   getPurchaseConcessionItems: async () => {
+    const cacheKey = "purchase_concession_items";
+    const cached = getCachedData(cacheKey);
+    if (cached) return cached;
+
     const response = await fetch(
       `${API_BASE_URL}/admin/purchase-concession-items`
     );
     if (!response.ok)
       throw new Error("Failed to fetch purchase concession items");
-    return response.json();
+    const data = await response.json();
+
+    setCachedData(cacheKey, data);
+    return data;
   },
 
-  // Get memberships
   getMemberships: async () => {
+    const cacheKey = "memberships";
+    const cached = getCachedData(cacheKey);
+    if (cached) return cached;
+
     const response = await fetch(`${API_BASE_URL}/admin/memberships`);
     if (!response.ok) throw new Error("Failed to fetch memberships");
-    return response.json();
+    const data = await response.json();
+
+    setCachedData(cacheKey, data);
+    return data;
   },
 };
 
-// ============================================
-// PRICING API
-// ============================================
-
 export const pricingAPI = {
-  // Get current pricing
   getPricing: async () => {
+    const cacheKey = "pricing";
+    const cached = getCachedData(cacheKey);
+    if (cached) return cached;
+
     const response = await fetch(`${API_BASE_URL}/admin/pricing`);
     if (!response.ok) throw new Error("Failed to fetch pricing");
-    return response.json();
+    const data = await response.json();
+
+    setCachedData(cacheKey, data);
+    return data;
   },
 
-  // Update pricing
   updatePricing: async (ticketPrices, membershipPrice) => {
     const response = await fetch(`${API_BASE_URL}/admin/pricing`, {
       method: "PATCH",
@@ -365,15 +509,13 @@ export const pricingAPI = {
       body: JSON.stringify({ ticketPrices, membershipPrice }),
     });
     if (!response.ok) throw new Error("Failed to update pricing");
-    return response.json();
+    const data = await response.json();
+
+    clearCache("pricing");
+    return data;
   },
 };
 
-// ============================================
-// HELPER FUNCTIONS
-// ============================================
-
-// Calculate date range for analytics
 export const getDateRange = (range) => {
   const now = new Date();
   const startDate = new Date(now);
