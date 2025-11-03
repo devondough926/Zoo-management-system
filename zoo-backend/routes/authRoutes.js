@@ -5,11 +5,13 @@ import {
   getCustomerProfile,
   updateCustomerProfile,
   changeCustomerPassword,
+  loginEmployee,
+  getEmployeeProfile,
 } from "../controllers/authController.js";
 
 const router = express.Router();
 
-// Authentication routes
+// Customer authentication routes
 router.post("/register", registerCustomer);
 router.post("/login", loginCustomer);
 
@@ -17,5 +19,9 @@ router.post("/login", loginCustomer);
 router.get("/profile/:customerId", getCustomerProfile);
 router.put("/profile/:customerId", updateCustomerProfile);
 router.put("/profile/:customerId/password", changeCustomerPassword);
+
+// Employee authentication routes
+router.post("/employee/login", loginEmployee);
+router.get("/employee/profile/:employeeId", getEmployeeProfile);
 
 export default router;

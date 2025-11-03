@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Card,
   CardContent,
@@ -49,12 +50,6 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import {
-  employeeRecords,
-  locations,
-  jobTitles,
-  enclosures,
-} from "../data/mockData";
-import {
   LogOut,
   DollarSign,
   Users,
@@ -84,7 +79,6 @@ import { toast } from "sonner";
 import { ZooLogo } from "../components/ZooLogo";
 import { EditExhibitDialog } from "../components/ExhibitDialogs";
 import { usePricing } from "../data/PricingContext";
-import { useLazyLoad } from "../hooks/useLazyLoad";
 import {
   employeeAPI,
   locationAPI,
@@ -100,7 +94,8 @@ import {
 const API_BASE_URL =
   import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
-export function AdminPortal({ user, onLogout, onNavigate }) {
+export function AdminPortal({ user, onLogout }) {
+  const navigate = useNavigate();
   const {
     animals,
     addAnimal,
@@ -159,10 +154,6 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
   const [tempMembershipPrice, setTempMembershipPrice] =
     useState(membershipPrice);
 
-  const [employeesRef, employeesVisible] = useLazyLoad();
-  const [exhibitsRef, exhibitsVisible] = useLazyLoad();
-  const [animalsRef, animalsVisible] = useLazyLoad();
-
   useEffect(() => {
     loadInitialData();
   }, []);
@@ -173,40 +164,35 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
     }
   }, [revenueRange]);
 
-  useEffect(() => {
-    if (employeesVisible && allEmployees.length === 0) {
-      loadEmployees();
-    }
-  }, [employeesVisible]);
-
-  useEffect(() => {
-    if (exhibitsVisible && allExhibitsDB.length === 0) {
-      loadExhibits();
-    }
-  }, [exhibitsVisible]);
-
-  useEffect(() => {
-    if (animalsVisible && allAnimalsDB.length === 0) {
-      loadAnimals();
-    }
-  }, [animalsVisible]);
-
   const loadInitialData = async () => {
     try {
       setIsLoading(true);
 
-      const [locationsData, jobTitlesData, enclosuresData, membershipsData] =
-        await Promise.all([
-          locationAPI.getAll(),
-          referenceAPI.getJobTitles(),
-          referenceAPI.getEnclosures(),
-          transactionAPI.getMemberships(),
-        ]);
+      const [
+        locationsData,
+        jobTitlesData,
+        enclosuresData,
+        membershipsData,
+        employeesData,
+        exhibitsData,
+        animalsData,
+      ] = await Promise.all([
+        locationAPI.getAll(),
+        referenceAPI.getJobTitles(),
+        referenceAPI.getEnclosures(),
+        transactionAPI.getMemberships(),
+        employeeAPI.getAll(),
+        exhibitAPI.getAll(),
+        animalAPI.getAll(),
+      ]);
 
       setAllLocations(locationsData);
       setAllJobTitles(jobTitlesData);
       setAllEnclosures(enclosuresData);
       setAllMemberships(membershipsData);
+      setAllEmployees(employeesData);
+      setAllExhibitsDB(exhibitsData);
+      setAllAnimalsDB(animalsData);
 
       await loadRevenueData();
 
@@ -745,7 +731,6 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
       const exhibitsData = await exhibitAPI.getAll();
       setAllExhibitsDB(exhibitsData);
 
-      // Clear exhibits and activities cache (activities are tied to exhibits)
       setEditingExhibit(null);
       toast.success(`Successfully updated exhibit: ${formData.name}!`);
     } catch (error) {
@@ -762,11 +747,9 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
     try {
       await exhibitAPI.removeImage(exhibitId);
 
-      // Reload exhibits to get fresh data
       const exhibitsData = await exhibitAPI.getAll();
       setAllExhibitsDB(exhibitsData);
 
-      // Clear exhibits and activities cache (activities are tied to exhibits)
       toast.success("Image removed successfully!");
     } catch (error) {
       console.error("Error removing exhibit image:", error);
@@ -844,7 +827,6 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
         ),
       });
 
-      // Clear only animals and enclosures cache
       setIsAddAnimalOpen(false);
       toast.success(
         `Successfully added ${formData.name} to ${
@@ -934,11 +916,9 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
         }
       }
 
-      // Reload animals to get fresh data including updated image URL
       const animalsData = await animalAPI.getAll();
       setAllAnimalsDB(animalsData);
 
-      // Clear only animals and enclosures cache
       setEditingAnimal(null);
       toast.success(
         `Successfully updated ${formData.name || editingAnimal.Animal_Name}!`
@@ -957,11 +937,9 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
     try {
       await animalAPI.removeImage(animalId);
 
-      // Reload animals to get fresh data
       const animalsData = await animalAPI.getAll();
       setAllAnimalsDB(animalsData);
 
-      // Clear only animals and enclosures cache
       toast.success("Image removed successfully!");
     } catch (error) {
       console.error("Error removing animal image:", error);
@@ -981,10 +959,8 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
       const animalsData = await animalAPI.getAll();
       setAllAnimalsDB(animalsData);
 
-      // Also delete from context
       deleteAnimal(animal.Animal_ID);
 
-      // Clear only animals and enclosures cache
       setDeleteConfirmAnimal(null);
       toast.success(`Successfully removed ${animal.Animal_Name} from the zoo.`);
     } catch (error) {
@@ -1064,7 +1040,7 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
               </div>
               <Button
                 variant="outline"
-                onClick={() => onNavigate("home")}
+                onClick={() => navigate("/")}
                 className="border-teal-600 text-teal-600 cursor-pointer"
               >
                 <Home className="h-4 w-4 mr-2" />
@@ -1623,7 +1599,7 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
           <Card>
             <CardContent className="pt-6">
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                {jobTitles
+                {allJobTitles
                   .filter((j) => j.Job_ID !== 1)
                   .map((job) => {
                     const avgSalary = salaries[job.Job_ID] || 0;
@@ -1659,7 +1635,7 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
-                {jobTitles
+                {allJobTitles
                   .filter((j) => j.Job_ID !== 1)
                   .map((job) => {
                     const displayTitle =
@@ -1713,7 +1689,7 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
         </section>
 
         {/* Employee Management */}
-        <section id="employees" ref={employeesRef}>
+        <section id="employees">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-2xl flex items-center gap-2">
               <Users className="h-6 w-6" /> Staff Management
@@ -1723,107 +1699,97 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
               onOpenChange={setIsAddEmployeeOpen}
               onAdd={handleAddEmployee}
               allEmployees={allEmployees}
+              allJobTitles={allJobTitles}
               salaries={salaries}
               isSaving={isSaving}
             />
           </div>
           <Card>
             <CardContent className="pt-6">
-              {employeesVisible ? (
-                <>
-                  <p className="text-sm text-gray-600 mb-4">
-                    Total Employees: {allEmployees.length}
-                  </p>
-                  <ScrollArea className="h-[600px] pr-4">
-                    <div className="space-y-3">
-                      {sortedEmployees.map((emp) => (
-                        <div
-                          key={emp.Employee_ID}
-                          className="flex items-start justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors border border-gray-200"
-                        >
-                          <div className="flex-1">
-                            <div className="flex items-center space-x-3 mb-2">
-                              <p className="font-medium text-lg">
-                                {emp.Last_Name}, {emp.First_Name}
-                              </p>
-                              <Badge
-                                className={
-                                  isSupervisor(emp)
-                                    ? "bg-purple-100 text-purple-800"
-                                    : "bg-green-100 text-green-800"
-                                }
-                              >
-                                {getEmployeeTitle(emp)}
-                              </Badge>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 text-sm text-gray-600">
-                              <div>
-                                <span className="font-medium">Email:</span>{" "}
-                                {emp.Email}
-                              </div>
-                              <div>
-                                <span className="font-medium">
-                                  Employee ID:
-                                </span>{" "}
-                                {emp.Employee_ID}
-                              </div>
-                              <div>
-                                <span className="font-medium">Zone:</span>{" "}
-                                {getEmployeeZone(emp)}
-                              </div>
-                              <div>
-                                <span className="font-medium">Birthdate:</span>{" "}
-                                {formatDate(emp.Birthdate)}
-                              </div>
-                              <div>
-                                <span className="font-medium">Sex:</span>{" "}
-                                {emp.Sex}
-                              </div>
-                              <div>
-                                <span className="font-medium">Salary:</span> $
-                                {emp.Salary.toLocaleString()}
-                              </div>
-                              <div className="md:col-span-2">
-                                <span className="font-medium">Address:</span>{" "}
-                                {emp.Address}
-                              </div>
-                            </div>
+              <p className="text-sm text-gray-600 mb-4">
+                Total Employees: {allEmployees.length}
+              </p>
+              <ScrollArea className="h-[600px] pr-4">
+                <div className="space-y-3">
+                  {sortedEmployees.map((emp) => (
+                    <div
+                      key={emp.Employee_ID}
+                      className="flex items-start justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors border border-gray-200"
+                    >
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-3 mb-2">
+                          <p className="font-medium text-lg">
+                            {emp.Last_Name}, {emp.First_Name}
+                          </p>
+                          <Badge
+                            className={
+                              isSupervisor(emp)
+                                ? "bg-purple-100 text-purple-800"
+                                : "bg-green-100 text-green-800"
+                            }
+                          >
+                            {getEmployeeTitle(emp)}
+                          </Badge>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 text-sm text-gray-600">
+                          <div>
+                            <span className="font-medium">Email:</span>{" "}
+                            {emp.Email}
                           </div>
-                          <div className="flex items-center gap-2 ml-4">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setEditingEmployee(emp)}
-                              className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 cursor-pointer"
-                              disabled={isSaving}
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setDeleteConfirmEmployee(emp)}
-                              className="text-red-600 hover:text-red-700 hover:bg-red-50 cursor-pointer"
-                              disabled={isSaving}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                          <div>
+                            <span className="font-medium">Employee ID:</span>{" "}
+                            {emp.Employee_ID}
+                          </div>
+                          <div>
+                            <span className="font-medium">Zone:</span>{" "}
+                            {getEmployeeZone(emp)}
+                          </div>
+                          <div>
+                            <span className="font-medium">Birthdate:</span>{" "}
+                            {formatDate(emp.Birthdate)}
+                          </div>
+                          <div>
+                            <span className="font-medium">Sex:</span> {emp.Sex}
+                          </div>
+                          <div>
+                            <span className="font-medium">Salary:</span> $
+                            {emp.Salary.toLocaleString()}
+                          </div>
+                          <div className="md:col-span-2">
+                            <span className="font-medium">Address:</span>{" "}
+                            {emp.Address}
                           </div>
                         </div>
-                      ))}
+                      </div>
+                      <div className="flex items-center gap-2 ml-4">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setEditingEmployee(emp)}
+                          className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 cursor-pointer"
+                          disabled={isSaving}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setDeleteConfirmEmployee(emp)}
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50 cursor-pointer"
+                          disabled={isSaving}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
-                  </ScrollArea>
-                </>
-              ) : (
-                <div className="flex items-center justify-center py-8">
-                  <p className="text-gray-500">Loading employees...</p>
+                  ))}
                 </div>
-              )}
+              </ScrollArea>
             </CardContent>
           </Card>
         </section>
 
-        <section id="exhibits" ref={exhibitsRef}>
+        <section id="exhibits">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-2xl flex items-center gap-2">
               <Building2 className="h-6 w-6" /> Exhibit Management
@@ -1831,70 +1797,62 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
           </div>
           <Card>
             <CardContent className="pt-6">
-              {exhibitsVisible ? (
-                <>
-                  <p className="text-sm text-gray-600 mb-4">
-                    Manage zoo exhibits and displays
-                  </p>
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                    {allExhibitsDB.map((exhibit) => (
-                      <Card
-                        key={exhibit.Exhibit_ID}
-                        className="p-4 hover:shadow-md transition-shadow"
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-2">
-                              <h3 className="font-semibold text-lg">
-                                {exhibit.exhibit_Name}
-                              </h3>
-                              {exhibit.Location_Description && (
-                                <Badge
-                                  variant="outline"
-                                  className="text-xs bg-blue-50 text-blue-700 border-blue-200"
-                                >
-                                  {exhibit.Zone}
-                                </Badge>
-                              )}
-                            </div>
-                            <p className="text-sm text-gray-600 mb-2">
-                              {exhibit.exhibit_Description || "No description"}
-                            </p>
-                            <div className="flex flex-wrap gap-2 text-xs text-gray-500">
-                              {exhibit.Capacity && (
-                                <span>Capacity: {exhibit.Capacity}</span>
-                              )}
-                              {exhibit.Display_Time && (
-                                <span>• {exhibit.Display_Time}</span>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex gap-1 ml-2">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setEditingExhibit(exhibit)}
-                              className="cursor-pointer"
-                              disabled={isSaving}
+              <p className="text-sm text-gray-600 mb-4">
+                Manage zoo exhibits and displays
+              </p>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                {allExhibitsDB.map((exhibit) => (
+                  <Card
+                    key={exhibit.Exhibit_ID}
+                    className="p-4 hover:shadow-md transition-shadow"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <h3 className="font-semibold text-lg">
+                            {exhibit.exhibit_Name}
+                          </h3>
+                          {exhibit.Location_Description && (
+                            <Badge
+                              variant="outline"
+                              className="text-xs bg-blue-50 text-blue-700 border-blue-200"
                             >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                          </div>
+                              {exhibit.Zone}
+                            </Badge>
+                          )}
                         </div>
-                      </Card>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <div className="flex items-center justify-center py-8">
-                  <p className="text-gray-500">Loading exhibits...</p>
-                </div>
-              )}
+                        <p className="text-sm text-gray-600 mb-2">
+                          {exhibit.exhibit_Description || "No description"}
+                        </p>
+                        <div className="flex flex-wrap gap-2 text-xs text-gray-500">
+                          {exhibit.Capacity && (
+                            <span>Capacity: {exhibit.Capacity}</span>
+                          )}
+                          {exhibit.Display_Time && (
+                            <span>• {exhibit.Display_Time}</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex gap-1 ml-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setEditingExhibit(exhibit)}
+                          className="cursor-pointer"
+                          disabled={isSaving}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
             </CardContent>
           </Card>
         </section>
 
-        <section id="animals" ref={animalsRef}>
+        <section id="animals">
           <div className="flex items-center justify-between mb-6">
             <div>
               <h2 className="text-2xl flex items-center gap-2">
@@ -1917,79 +1875,68 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
           </div>
           <Card>
             <CardContent className="pt-6">
-              {animalsVisible ? (
-                <>
-                  <p className="text-sm text-gray-600 mb-4">
-                    Manage zoo animals and their habitats
-                  </p>
-                  <ScrollArea className="h-[400px]">
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                      {displayAnimals.map((animal, index) => {
-                        const enclosure = allEnclosures.find(
-                          (e) => e.Enclosure_ID === animal.Enclosure_ID
-                        );
-                        // Generate a mock date added (based on animal ID for consistency)
-                        const daysAgo = (animal.Animal_ID * 13) % 365; // Pseudo-random but consistent
-                        const dateAdded = new Date();
-                        dateAdded.setDate(dateAdded.getDate() - daysAgo);
-                        const dateAddedString = formatDate(
-                          dateAdded.toISOString().split("T")[0]
-                        );
+              <p className="text-sm text-gray-600 mb-4">
+                Manage zoo animals and their habitats
+              </p>
+              <ScrollArea className="h-[400px]">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                  {displayAnimals.map((animal, index) => {
+                    const enclosure = allEnclosures.find(
+                      (e) => e.Enclosure_ID === animal.Enclosure_ID
+                    );
+                    // Generate a mock date added (based on animal ID for consistency)
+                    const daysAgo = (animal.Animal_ID * 13) % 365; // Pseudo-random but consistent
+                    const dateAdded = new Date();
+                    dateAdded.setDate(dateAdded.getDate() - daysAgo);
+                    const dateAddedString = formatDate(
+                      dateAdded.toISOString().split("T")[0]
+                    );
 
-                        return (
-                          <div
-                            key={animal.Animal_ID}
-                            className="p-4 bg-teal-50 rounded-lg border border-teal-200 flex items-center justify-between"
-                          >
-                            <div className="flex items-center space-x-4">
-                              <div className="flex items-center justify-center w-10 h-10 rounded-full bg-teal-600 text-white flex-shrink-0">
-                                <PawPrint className="h-5 w-5" />
-                              </div>
-                              <div>
-                                <p className="font-medium">
-                                  {animal.Animal_Name}
-                                </p>
-                                <p className="text-sm text-gray-600">
-                                  {animal.Species} •{" "}
-                                  {animal.Gender === "M"
-                                    ? "Male"
-                                    : animal.Gender === "F"
-                                    ? "Female"
-                                    : "Unknown"}{" "}
-                                  • ID: {animal.Animal_ID}
-                                </p>
-                                <p className="text-xs text-gray-500">
-                                  Weight: {animal.Weight} lbs • Born:{" "}
-                                  {formatDate(animal.Birthday)}
-                                </p>
-                                <p className="text-xs text-gray-500">
-                                  Habitat:{" "}
-                                  {enclosure?.Enclosure_Name || "Unknown"} •
-                                  Added: {dateAddedString}
-                                </p>
-                              </div>
-                            </div>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="bg-blue-50 border-blue-300 text-blue-600 hover:bg-blue-100 cursor-pointer flex-shrink-0"
-                              onClick={() => setEditingAnimal(animal)}
-                              disabled={isSaving}
-                            >
-                              <Edit className="h-4 w-4 mr-2" />
-                              Edit
-                            </Button>
+                    return (
+                      <div
+                        key={animal.Animal_ID}
+                        className="p-4 bg-teal-50 rounded-lg border border-teal-200 flex items-center justify-between"
+                      >
+                        <div className="flex items-center space-x-4">
+                          <div className="flex items-center justify-center w-10 h-10 rounded-full bg-teal-600 text-white flex-shrink-0">
+                            <PawPrint className="h-5 w-5" />
                           </div>
-                        );
-                      })}
-                    </div>
-                  </ScrollArea>
-                </>
-              ) : (
-                <div className="flex items-center justify-center py-8">
-                  <p className="text-gray-500">Loading animals...</p>
+                          <div>
+                            <p className="font-medium">{animal.Animal_Name}</p>
+                            <p className="text-sm text-gray-600">
+                              {animal.Species} •{" "}
+                              {animal.Gender === "M"
+                                ? "Male"
+                                : animal.Gender === "F"
+                                ? "Female"
+                                : "Unknown"}{" "}
+                              • ID: {animal.Animal_ID}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              Weight: {animal.Weight} lbs • Born:{" "}
+                              {formatDate(animal.Birthday)}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              Habitat: {enclosure?.Enclosure_Name || "Unknown"}{" "}
+                              • Added: {dateAddedString}
+                            </p>
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="bg-blue-50 border-blue-300 text-blue-600 hover:bg-blue-100 cursor-pointer flex-shrink-0"
+                          onClick={() => setEditingAnimal(animal)}
+                          disabled={isSaving}
+                        >
+                          <Edit className="h-4 w-4 mr-2" />
+                          Edit
+                        </Button>
+                      </div>
+                    );
+                  })}
                 </div>
-              )}
+              </ScrollArea>
             </CardContent>
           </Card>
         </section>
@@ -2153,6 +2100,7 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
           isOpen={editingEmployee !== null}
           onOpenChange={(open) => !open && setEditingEmployee(null)}
           onUpdate={handleUpdateEmployee}
+          allJobTitles={allJobTitles}
           allLocations={allLocations}
           salaries={salaries}
           isSaving={isSaving}
@@ -2227,6 +2175,7 @@ function AddEmployeeDialog({
   onOpenChange,
   onAdd,
   allEmployees,
+  allJobTitles,
   salaries,
   isSaving,
 }) {
@@ -2322,7 +2271,7 @@ function AddEmployeeDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {jobTitles
+                  {allJobTitles
                     .filter((j) => j.Job_ID !== 1 && j.Job_ID !== 2)
                     .map((job) => (
                       <SelectItem
@@ -2485,6 +2434,7 @@ function EditEmployeeDialog({
   isOpen,
   onOpenChange,
   onUpdate,
+  allJobTitles,
   allLocations,
   salaries,
   isSaving,
@@ -2630,7 +2580,7 @@ function EditEmployeeDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {jobTitles
+                  {allJobTitles
                     .filter((j) => j.Job_ID !== 1 && j.Job_ID !== 2)
                     .map((job) => (
                       <SelectItem

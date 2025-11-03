@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Card,
   CardContent,
@@ -24,7 +25,7 @@ import {
   Crown,
   CheckCircle2,
 } from "lucide-react";
-import { currentUser } from "../data/mockData";
+import { useAuth } from "../contexts/AuthContext";
 import { Badge } from "../components/ui/badge";
 import { toast } from "sonner";
 import { useData } from "../data/DataContext";
@@ -38,8 +39,8 @@ export function CartPage({
   removeFromCart,
   updateCartQuantity,
   clearCart,
-  onNavigate,
 }) {
+  const navigate = useNavigate();
   const {
     purchases,
     addPurchase,
@@ -52,6 +53,7 @@ export function CartPage({
     updateMembership,
   } = useData();
   const { membershipPrice } = usePricing();
+  const { user } = useAuth();
   const heroImage = useHeroImage("cart");
   const [itemToRemove, setItemToRemove] = useState(null);
   const [showClearDialog, setShowClearDialog] = useState(false);
@@ -59,10 +61,10 @@ export function CartPage({
 
   // Check if current user has an active membership
   const hasMembership =
-    currentUser &&
-    "Customer_ID" in currentUser &&
+    user &&
+    "Customer_ID" in user &&
     memberships.some(
-      (m) => m.Customer_ID === currentUser.Customer_ID && m.Membership_Status
+      (m) => m.Customer_ID === user.Customer_ID && m.Membership_Status
     );
 
   const subtotal = cart.reduce(
@@ -119,7 +121,7 @@ export function CartPage({
   };
 
   const confirmCheckout = async () => {
-    if (!currentUser || !("Customer_ID" in currentUser)) {
+    if (!user || !("Customer_ID" in user)) {
       toast.error("Please log in to complete your purchase");
       setShowCheckoutDialog(false);
       return;
@@ -128,11 +130,21 @@ export function CartPage({
     const hasMembershipInCart = cart.some((item) => item.id === 9000);
 
     try {
+      // Get current local datetime in ISO format
+      const now = new Date();
+      const localDatetime = new Date(
+        now.getTime() - now.getTimezoneOffset() * 60000
+      )
+        .toISOString()
+        .slice(0, 19)
+        .replace("T", " ");
+
       // Prepare purchase data for backend
       const purchaseData = {
-        customerId: currentUser.Customer_ID,
+        customerId: user.Customer_ID,
         totalAmount: total,
         paymentMethod: "Card",
+        purchaseDate: localDatetime,
         tickets: [],
         items: [],
         concessionItems: [],
@@ -184,14 +196,13 @@ export function CartPage({
 
       // Update local state as fallback
       const customerPurchases =
-        purchases?.filter((p) => p.Customer_ID === currentUser.Customer_ID) ??
-        [];
+        purchases?.filter((p) => p.Customer_ID === user.Customer_ID) ?? [];
       const customerPurchaseNumber = customerPurchases.length + 1;
 
       // Add purchase to local state for immediate UI update
       addPurchase({
         Purchase_ID: response.purchaseId,
-        Customer_ID: currentUser.Customer_ID,
+        Customer_ID: user.Customer_ID,
         Purchase_Date: response.purchase.Purchase_Date,
         Total_Amount: total,
         Payment_Method: "Card",
@@ -235,7 +246,7 @@ export function CartPage({
       // Update membership in local state if purchased
       if (hasMembershipInCart) {
         const existingMembership = memberships.find(
-          (m) => m.Customer_ID === currentUser.Customer_ID
+          (m) => m.Customer_ID === user.Customer_ID
         );
 
         const purchaseDate = new Date(response.purchase.Purchase_Date);
@@ -267,7 +278,7 @@ export function CartPage({
           addMembership({
             Membership_ID:
               Math.max(...memberships.map((m) => m.Membership_ID), 0) + 1,
-            Customer_ID: currentUser.Customer_ID,
+            Customer_ID: user.Customer_ID,
             Membership_Status: true,
             Start_Date: response.purchase.Purchase_Date,
             End_Date: endDateIso,
@@ -288,8 +299,7 @@ export function CartPage({
       const newPurchaseId =
         Math.max(...(purchases?.map((p) => p.Purchase_ID) ?? [0]), 0) + 1;
       const customerPurchases =
-        purchases?.filter((p) => p.Customer_ID === currentUser.Customer_ID) ??
-        [];
+        purchases?.filter((p) => p.Customer_ID === user.Customer_ID) ?? [];
       const customerPurchaseNumber = customerPurchases.length + 1;
 
       let purchaseDateTime = new Date();
@@ -325,7 +335,7 @@ export function CartPage({
 
       const newPurchase = {
         Purchase_ID: newPurchaseId,
-        Customer_ID: currentUser.Customer_ID,
+        Customer_ID: user.Customer_ID,
         Purchase_Date: formatDateTime(purchaseDateTime),
         Total_Amount: total,
         Payment_Method: "Card",
@@ -378,7 +388,7 @@ export function CartPage({
 
       if (hasMembershipInCart) {
         const existingMembership = memberships.find(
-          (m) => m.Customer_ID === currentUser.Customer_ID
+          (m) => m.Customer_ID === user.Customer_ID
         );
 
         const DAY_MS = 24 * 60 * 60 * 1000;
@@ -410,7 +420,7 @@ export function CartPage({
             Math.max(...memberships.map((m) => m.Membership_ID), 0) + 1;
           addMembership({
             Membership_ID: newMembershipId,
-            Customer_ID: currentUser.Customer_ID,
+            Customer_ID: user.Customer_ID,
             Membership_Status: true,
             Start_Date: formatDateTime(purchaseDateTime),
             End_Date: endDateIso,
@@ -555,7 +565,7 @@ export function CartPage({
                       <p className="text-gray-600 mb-4">Your cart is empty</p>
                       <Button
                         className="bg-green-600 hover:bg-green-700 cursor-pointer"
-                        onClick={() => onNavigate?.("shop")}
+                        onClick={() => navigate("/shop")}
                       >
                         Continue Shopping
                       </Button>

@@ -8,7 +8,6 @@ import adminRoutes from "./routes/adminRoutes.js";
 import customerRoutes from "./routes/customerRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
 import { isAzureConfigured } from "./middleware/azureUpload.js";
-import { cacheMiddleware } from "./middleware/cache.js";
 
 dotenv.config();
 
@@ -42,8 +41,6 @@ app.use(
 app.use(morgan("dev"));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-app.use(cacheMiddleware);
 
 app.get("/health", (req, res) => {
   res.status(200).json({

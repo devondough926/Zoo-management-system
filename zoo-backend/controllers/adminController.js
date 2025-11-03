@@ -6,6 +6,7 @@ import db from "../config/database.js";
 
 export const getAllEmployees = async (req, res) => {
   try {
+    // Get all employees with their most recent active location assignment
     const [employees] = await db.query(`
       SELECT 
         e.Employee_ID,
@@ -24,7 +25,13 @@ export const getAllEmployees = async (req, res) => {
         l.Zone
       FROM Employee e
       LEFT JOIN Job_Title jt ON e.Job_ID = jt.Job_ID
-      LEFT JOIN employee_location el ON e.Employee_ID = el.Employee_ID AND el.end_date IS NULL
+      LEFT JOIN employee_location el ON e.Employee_ID = el.Employee_ID 
+        AND el.end_date IS NULL
+        AND el.start_date = (
+          SELECT MAX(start_date) 
+          FROM employee_location 
+          WHERE Employee_ID = e.Employee_ID AND end_date IS NULL
+        )
       LEFT JOIN Location l ON el.Location_ID = l.Location_ID
       ORDER BY e.Last_Name, e.First_Name
     `);
@@ -395,51 +402,39 @@ export const updateLocationSupervisor = async (req, res) => {
 
     const currentSupervisorId = currentLocation[0]?.Supervisor_ID;
 
-    // If there was a previous supervisor, revert them back to regular employee
+    // If there was a previous supervisor, end their assignment to this location
     if (currentSupervisorId) {
-      // Set Is_Primary back to 1 (demoted back to regular employee role)
       await connection.query(
         `
         UPDATE employee_location 
-        SET Is_Primary = 1
+        SET end_date = NOW()
         WHERE Employee_ID = ? AND Location_ID = ? AND end_date IS NULL
       `,
         [currentSupervisorId, id]
       );
     }
 
-    // If there's a new supervisor, promote them
+    // If there's a new supervisor, assign them to this location
     if (supervisorId) {
-      // Check if this employee already has a record for this location
-      const [existingRecord] = await connection.query(
+      // First, end all current location assignments for this employee
+      await connection.query(
         `
-        SELECT * FROM employee_location 
-        WHERE Employee_ID = ? AND Location_ID = ? AND end_date IS NULL
+        UPDATE employee_location 
+        SET end_date = NOW()
+        WHERE Employee_ID = ? AND end_date IS NULL
+      `,
+        [supervisorId]
+      );
+
+      // Now assign them to the new location as supervisor (Is_Primary = 0)
+      await connection.query(
+        `
+        INSERT INTO employee_location 
+        (Employee_ID, Location_ID, start_date, Is_Primary)
+        VALUES (?, ?, NOW(), 0)
       `,
         [supervisorId, id]
       );
-
-      if (existingRecord.length > 0) {
-        // Update existing record to Is_Primary = 0 (promoted to supervisor)
-        await connection.query(
-          `
-          UPDATE employee_location 
-          SET Is_Primary = 0
-          WHERE Employee_ID = ? AND Location_ID = ? AND end_date IS NULL
-        `,
-          [supervisorId, id]
-        );
-      } else {
-        // Create a new record with Is_Primary = 0 (they are being assigned as supervisor)
-        await connection.query(
-          `
-          INSERT INTO employee_location 
-          (Employee_ID, Location_ID, start_date, Is_Primary)
-          VALUES (?, ?, NOW(), 0)
-        `,
-          [supervisorId, id]
-        );
-      }
     }
 
     // Update the location table

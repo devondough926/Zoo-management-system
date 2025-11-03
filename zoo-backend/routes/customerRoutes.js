@@ -9,6 +9,7 @@ import {
   getAllEnclosures,
   getPurchaseHistory,
   getPurchaseDetails,
+  getMembership,
   createPurchase,
 } from "../controllers/customerController.js";
 
@@ -32,8 +33,9 @@ router.get("/animals", getAllAnimals);
 router.get("/enclosures", getAllEnclosures);
 
 // Purchase routes
-router.get("/purchases/:customerId", getPurchaseHistory);
-router.get("/purchases/:purchaseId/details", getPurchaseDetails);
+router.get("/purchases/history/:customerId", getPurchaseHistory);
+router.get("/purchases/details/:purchaseId", getPurchaseDetails);
+router.get("/membership/:customerId", getMembership);
 router.post("/purchases", createPurchase);
 
 export default router;

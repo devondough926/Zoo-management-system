@@ -1,3 +1,4 @@
+import { useNavigate } from "react-router-dom";
 import {
   Card,
   CardContent,
@@ -7,7 +8,7 @@ import {
 import { Button } from "../components/ui/button";
 import { Check, X } from "lucide-react";
 import { toast } from "sonner";
-import { currentUser } from "../data/mockData";
+import { useAuth } from "../contexts/AuthContext";
 import { usePricing } from "../data/PricingContext";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { useHeroImage } from "../utils/heroImages";
@@ -26,8 +27,10 @@ const comparisonFeatures = [
   { feature: "Behind-the-Scenes Tours", dayPass: false, membership: "Yes" },
 ];
 
-export function TicketsPage({ onNavigate, addToCart, cart = [] }) {
+export function TicketsPage({ addToCart, cart = [] }) {
+  const navigate = useNavigate();
   const { ticketPrices: prices, membershipPrice } = usePricing();
+  const { user } = useAuth();
   const heroImage = useHeroImage("tickets");
 
   // Define ticket pricing using context prices
@@ -63,10 +66,8 @@ export function TicketsPage({ onNavigate, addToCart, cart = [] }) {
   ];
 
   const handleBuyTicket = (ticket) => {
-    if (!currentUser) {
-      if (onNavigate) {
-        onNavigate("login");
-      }
+    if (!user) {
+      navigate("/login");
     } else if (addToCart) {
       addToCart({
         id: ticket.ticketId, // Use the predefined ticket ID
@@ -87,10 +88,8 @@ export function TicketsPage({ onNavigate, addToCart, cart = [] }) {
   };
 
   const handleBecomeMember = () => {
-    if (!currentUser) {
-      if (onNavigate) {
-        onNavigate("login");
-      }
+    if (!user) {
+      navigate("/login");
     } else if (addToCart) {
       // Check if membership is already in cart
       const membershipInCart = cart.some((item) => item.id === 9000);

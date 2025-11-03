@@ -83,8 +83,7 @@ export const loginCustomer = async (req, res) => {
       return res.status(401).json({ error: "Invalid email or password" });
     }
 
-    // Remove password from response
-    delete customer.Customer_Password;
+    // Keep password in response for customer dashboard display
 
     res.json({
       message: "Login successful",
@@ -172,13 +171,11 @@ export const updateCustomerProfile = async (req, res) => {
 export const changeCustomerPassword = async (req, res) => {
   try {
     const { customerId } = req.params;
-    const { currentPassword, newPassword } = req.body;
+    const { newPassword } = req.body;
 
     // Validate required fields
-    if (!currentPassword || !newPassword) {
-      return res
-        .status(400)
-        .json({ error: "Current and new password are required" });
+    if (!newPassword) {
+      return res.status(400).json({ error: "New password is required" });
     }
 
     // Validate new password length
@@ -188,19 +185,14 @@ export const changeCustomerPassword = async (req, res) => {
         .json({ error: "New password must be at least 6 characters" });
     }
 
-    // Fetch current password
+    // Check if customer exists
     const [customers] = await db.query(
-      "SELECT Customer_Password FROM Customer WHERE Customer_ID = ?",
+      "SELECT Customer_ID FROM Customer WHERE Customer_ID = ?",
       [customerId]
     );
 
     if (customers.length === 0) {
       return res.status(404).json({ error: "Customer not found" });
-    }
-
-    // Verify current password
-    if (customers[0].Customer_Password !== currentPassword) {
-      return res.status(401).json({ error: "Current password is incorrect" });
     }
 
     // Update password
@@ -213,5 +205,119 @@ export const changeCustomerPassword = async (req, res) => {
   } catch (error) {
     console.error("Error changing password:", error);
     res.status(500).json({ error: "Failed to change password" });
+  }
+};
+
+// ============================================
+// EMPLOYEE AUTHENTICATION
+// ============================================
+
+// Login employee (staff/admin)
+// Staff login is role-based using Job_Title table only
+export const loginEmployee = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    // Validate required fields
+    if (!email || !password) {
+      return res.status(400).json({ error: "Email and password are required" });
+    }
+
+    // Find job title by email (role-based login only)
+    const [jobTitles] = await db.query(
+      `SELECT 
+        Job_ID,
+        Title,
+        Description as Job_Description,
+        Email,
+        Account_Password
+       FROM Job_Title
+       WHERE Email = ?`,
+      [email]
+    );
+
+    if (jobTitles.length === 0) {
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
+
+    const jobTitle = jobTitles[0];
+
+    // Check password
+    if (jobTitle.Account_Password !== password) {
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
+
+    // Create employee object for job title login
+    const employee = {
+      Employee_ID: null, // No specific employee, role-based access
+      First_Name: jobTitle.Title,
+      Last_Name: "Staff",
+      Email: jobTitle.Email,
+      Job_ID: jobTitle.Job_ID,
+      Title: jobTitle.Title,
+      Job_Description: jobTitle.Job_Description,
+    };
+
+    // Determine role based on job title
+    let role = "employee";
+    const title = jobTitle.Title.toLowerCase();
+
+    if (title.includes("administrator") || title.includes("admin")) {
+      role = "admin";
+    } else if (title.includes("supervisor") || title.includes("manager")) {
+      role = "supervisor";
+    } else if (title.includes("veterinarian")) {
+      role = "veterinarian";
+    } else if (title.includes("zookeeper") || title.includes("keeper")) {
+      role = "zookeeper";
+    } else if (title.includes("gift") || title.includes("shop")) {
+      role = "giftshop";
+    } else if (title.includes("concession") || title.includes("food")) {
+      role = "concession";
+    }
+
+    res.json({
+      message: "Login successful",
+      employee,
+      role,
+    });
+  } catch (error) {
+    console.error("Error logging in employee:", error);
+    res.status(500).json({ error: "Failed to login" });
+  }
+};
+
+// Get employee profile
+export const getEmployeeProfile = async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+
+    const [employees] = await db.query(
+      `SELECT 
+        e.Employee_ID, 
+        e.First_Name, 
+        e.Last_Name, 
+        e.Email,
+        e.Job_ID,
+        e.Salary,
+        e.Address,
+        DATE_FORMAT(e.Birthdate, '%Y-%m-%d') as Birthdate,
+        e.Sex,
+        jt.Title,
+        jt.Description as Job_Description
+       FROM Employee e
+       LEFT JOIN Job_Title jt ON e.Job_ID = jt.Job_ID
+       WHERE e.Employee_ID = ?`,
+      [employeeId]
+    );
+
+    if (employees.length === 0) {
+      return res.status(404).json({ error: "Employee not found" });
+    }
+
+    res.json(employees[0]);
+  } catch (error) {
+    console.error("Error fetching employee profile:", error);
+    res.status(500).json({ error: "Failed to fetch employee profile" });
   }
 };

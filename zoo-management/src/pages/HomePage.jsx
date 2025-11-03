@@ -3,11 +3,11 @@ import { CustomerHighlights } from "../components/CustomerHighlights";
 import { OperationalDashboard } from "../components/OperationalDashboard";
 import { ZooMap } from "../components/ZooMap";
 
-export function HomePage({ onNavigate }) {
+export function HomePage() {
   return (
     <div>
       <HeroSection />
-      <CustomerHighlights onNavigate={onNavigate} />
+      <CustomerHighlights />
       <OperationalDashboard />
 
       {/* Zoo Map Section */}

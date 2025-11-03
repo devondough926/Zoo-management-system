@@ -1,4 +1,3 @@
-// Removed type-only imports; mockData exports data arrays (e.g., customers, purchases)
 import {
   ShoppingCart,
   Ticket,
@@ -16,6 +15,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Card,
   CardContent,
@@ -36,13 +36,11 @@ import {
 import { ScrollArea } from "../components/ui/scroll-area";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
-// Removed type-only imports; use runtime values from context instead
 import { useData } from "../data/DataContext";
-import { authAPI, purchasesAPI } from "../services/customerAPI";
+import { authAPI, purchasesAPI, membershipAPI } from "../services/customerAPI";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { useHeroImage } from "../utils/heroImages";
 
-// Helper function to format numbers with commas
 const formatNumber = (num) => {
   return num.toLocaleString("en-US", {
     minimumFractionDigits: 2,
@@ -50,15 +48,10 @@ const formatNumber = (num) => {
   });
 };
 
-// Helper function to format datetime
 const formatDateTime = (dateString) => {
   if (!dateString) return "N/A";
 
-  // Remove 'T' and treat as MySQL datetime (local time, not UTC)
   let dateStr = dateString.replace("T", " ");
-
-  // Parse the date string manually to avoid timezone issues
-  // MySQL format: YYYY-MM-DD HH:mm:ss
   const parts = dateStr.match(
     /(\d{4})-(\d{2})-(\d{2})\s(\d{2}):(\d{2}):(\d{2})/
   );
@@ -66,11 +59,8 @@ const formatDateTime = (dateString) => {
   if (!parts) return "Invalid Date";
 
   const [, year, month, day, hour, minute, second] = parts;
-
-  // Create date in local timezone (not UTC)
   const date = new Date(year, month - 1, day, hour, minute, second);
 
-  // Check if date is valid
   if (isNaN(date.getTime())) return "Invalid Date";
 
   return date.toLocaleString("en-US", {
@@ -83,32 +73,29 @@ const formatDateTime = (dateString) => {
   });
 };
 
-export function CustomerDashboard({ user, onNavigate }) {
+export function CustomerDashboard({ user }) {
+  const navigate = useNavigate();
   const {
     purchases,
     tickets,
     purchaseItems,
     purchaseConcessionItems,
-    memberships,
     items,
     concessionItems,
   } = useData();
   const heroImage = useHeroImage("customer");
-  const membership =
-    memberships.find(
-      (m) => m.Customer_ID === user.Customer_ID && m.Membership_Status
-    ) || null;
 
-  // Backend connection state
   const [isBackendConnected, setIsBackendConnected] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [backendPurchases, setBackendPurchases] = useState([]);
   const [purchasesLoading, setPurchasesLoading] = useState(false);
+  const [membership, setMembership] = useState(null);
 
-  // Check backend connection on mount
+  // Check backend connection and fetch membership on mount
   useEffect(() => {
     checkBackendConnection();
     fetchPurchaseHistory();
+    fetchMembership();
   }, []);
 
   const checkBackendConnection = async () => {
@@ -125,14 +112,26 @@ export function CustomerDashboard({ user, onNavigate }) {
       setBackendPurchases(history);
     } catch (error) {
       console.error("Error fetching purchase history:", error);
-      // Fall back to local data if backend fails
       setBackendPurchases([]);
     } finally {
       setPurchasesLoading(false);
     }
   };
 
-  // Use backend purchases if available, otherwise use local purchases
+  const fetchMembership = async () => {
+    if (!user || !user.Customer_ID) return;
+
+    try {
+      const membershipData = await membershipAPI.getMembership(
+        user.Customer_ID
+      );
+      setMembership(membershipData);
+    } catch (error) {
+      console.error("Error fetching membership:", error);
+      setMembership(null);
+    }
+  };
+
   const displayPurchases =
     backendPurchases.length > 0
       ? backendPurchases
@@ -144,23 +143,23 @@ export function CustomerDashboard({ user, onNavigate }) {
   );
   const recentPurchases = customerPurchases.slice(0, 3);
 
-  // Helper function to get customer-specific purchase number
-  // Sorted chronologically (oldest = #1, newest = highest number)
   const getCustomerPurchaseNumber = (purchaseId) => {
-    const sortedPurchases = purchases
-      .filter((p) => p.Customer_ID === user.Customer_ID)
-      .sort(
-        (a, b) =>
-          new Date(a.Purchase_Date).getTime() -
-          new Date(b.Purchase_Date).getTime()
-      );
+    const purchase = displayPurchases.find((p) => p.Purchase_ID === purchaseId);
+    if (purchase && purchase.Order_Number) {
+      return purchase.Order_Number;
+    }
+
+    const sortedPurchases = displayPurchases.sort(
+      (a, b) =>
+        new Date(a.Purchase_Date).getTime() -
+        new Date(b.Purchase_Date).getTime()
+    );
     const index = sortedPurchases.findIndex(
       (p) => p.Purchase_ID === purchaseId
     );
     return index !== -1 ? index + 1 : sortedPurchases.length + 1;
   };
 
-  // Edit Profile State
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [profileData, setProfileData] = useState({
     firstName: user.First_Name,
@@ -169,26 +168,47 @@ export function CustomerDashboard({ user, onNavigate }) {
     phone: user.Phone,
   });
 
-  // Password State
   const [showPassword, setShowPassword] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [passwordData, setPasswordData] = useState({
-    currentPassword: "",
     newPassword: "",
     confirmPassword: "",
   });
 
-  // Order History Dialog State
   const [orderHistoryOpen, setOrderHistoryOpen] = useState(false);
-
-  // Purchase Detail Dialog State
   const [selectedPurchase, setSelectedPurchase] = useState(null);
+  const [selectedPurchaseDetails, setSelectedPurchaseDetails] = useState(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+
+  useEffect(() => {
+    const fetchDetails = async () => {
+      if (!selectedPurchase) {
+        setSelectedPurchaseDetails(null);
+        return;
+      }
+
+      setDetailsLoading(true);
+      try {
+        const details = await purchasesAPI.getDetails(
+          selectedPurchase.Purchase_ID
+        );
+        console.log("Fetched purchase details:", details);
+        setSelectedPurchaseDetails(details);
+      } catch (error) {
+        console.error("Error fetching purchase details:", error);
+        setSelectedPurchaseDetails(null);
+      } finally {
+        setDetailsLoading(false);
+      }
+    };
+
+    fetchDetails();
+  }, [selectedPurchase]);
 
   const handleSaveProfile = async () => {
     setIsLoading(true);
 
     try {
-      // Try to update profile via backend
       try {
         const response = await authAPI.updateProfile(user.Customer_ID, {
           firstName: profileData.firstName,
@@ -197,7 +217,6 @@ export function CustomerDashboard({ user, onNavigate }) {
           phone: profileData.phone,
         });
 
-        // Update local user object
         user.First_Name = response.customer.First_Name;
         user.Last_Name = response.customer.Last_Name;
         user.Email = response.customer.Email;
@@ -205,7 +224,6 @@ export function CustomerDashboard({ user, onNavigate }) {
 
         toast.success("Profile updated successfully!");
       } catch (error) {
-        // Fallback: Update locally if backend fails
         user.First_Name = profileData.firstName;
         user.Last_Name = profileData.lastName;
         user.Email = profileData.email;
@@ -235,26 +253,17 @@ export function CustomerDashboard({ user, onNavigate }) {
     setIsLoading(true);
 
     try {
-      // Try to change password via backend
       try {
         await authAPI.changePassword(user.Customer_ID, {
-          currentPassword: passwordData.currentPassword,
           newPassword: passwordData.newPassword,
         });
 
+        // Update the user object with new password
+        user.Customer_Password = passwordData.newPassword;
+
         toast.success("Password changed successfully!");
       } catch (error) {
-        // Fallback: Validate and update locally if backend fails
-        if (
-          user.Customer_Password &&
-          user.Customer_Password !== passwordData.currentPassword
-        ) {
-          toast.error("Current password is incorrect!");
-          setIsLoading(false);
-          return;
-        }
-
-        // Update locally
+        // Fallback: update local state even if backend fails
         if (user.Customer_Password) {
           user.Customer_Password = passwordData.newPassword;
         }
@@ -263,7 +272,6 @@ export function CustomerDashboard({ user, onNavigate }) {
       }
 
       setPasswordData({
-        currentPassword: "",
         newPassword: "",
         confirmPassword: "",
       });
@@ -276,23 +284,18 @@ export function CustomerDashboard({ user, onNavigate }) {
   };
 
   const handleRenewMembership = () => {
-    // Navigate to tickets page membership section
-    if (onNavigate) {
-      onNavigate("tickets");
-      // Scroll to memberships section after navigation
-      setTimeout(() => {
-        const membershipsSection = document.getElementById("memberships");
-        if (membershipsSection) {
-          membershipsSection.scrollIntoView({
-            behavior: "smooth",
-            block: "start",
-          });
-        }
-      }, 100);
-    }
+    navigate("/tickets");
+    setTimeout(() => {
+      const membershipsSection = document.getElementById("memberships");
+      if (membershipsSection) {
+        membershipsSection.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }
+    }, 100);
   };
 
-  // Check if membership is expired
   const isMembershipExpired = membership
     ? new Date(membership.End_Date) < new Date()
     : false;
@@ -403,7 +406,7 @@ export function CustomerDashboard({ user, onNavigate }) {
                   access!
                 </p>
                 <Button
-                  onClick={() => onNavigate && onNavigate("tickets")}
+                  onClick={() => navigate("/tickets")}
                   className="bg-yellow-400 text-yellow-900 hover:bg-yellow-300 hover:scale-105 transition-transform shadow-lg font-semibold w-fit"
                 >
                   <Crown className="h-4 w-4 mr-2" />
@@ -425,7 +428,7 @@ export function CustomerDashboard({ user, onNavigate }) {
             <Card className="shadow-lg border-none bg-white">
               <CardContent className="pt-6 text-center">
                 <button
-                  onClick={() => onNavigate && onNavigate("tickets")}
+                  onClick={() => navigate("/tickets")}
                   className="w-20 h-20 bg-gradient-to-br from-green-100 to-green-200 rounded-2xl flex items-center justify-center mx-auto mb-4 hover:from-green-600 hover:to-green-700 hover:scale-110 transition-all duration-300 shadow-lg cursor-pointer group rounded-xl"
                 >
                   <Ticket className="h-10 w-10 text-green-600 group-hover:text-white transition-colors" />
@@ -442,7 +445,7 @@ export function CustomerDashboard({ user, onNavigate }) {
             <Card className="shadow-lg border-none bg-white">
               <CardContent className="pt-6 text-center">
                 <button
-                  onClick={() => onNavigate && onNavigate("shop")}
+                  onClick={() => navigate("/shop")}
                   className="w-20 h-20 bg-gradient-to-br from-green-100 to-green-200 rounded-2xl flex items-center justify-center mx-auto mb-4 hover:from-green-600 hover:to-green-700 hover:scale-110 transition-all duration-300 shadow-lg cursor-pointer group rounded-xl"
                 >
                   <ShoppingBag className="h-10 w-10 text-emerald-600 group-hover:text-white transition-colors" />
@@ -582,7 +585,7 @@ export function CustomerDashboard({ user, onNavigate }) {
                     </p>
                     <Button
                       className="bg-green-600 hover:bg-green-700 text-white cursor-pointer font-semibold"
-                      onClick={() => onNavigate && onNavigate("shop")}
+                      onClick={() => navigate("/shop")}
                     >
                       Start Shopping
                     </Button>
@@ -815,7 +818,7 @@ export function CustomerDashboard({ user, onNavigate }) {
                       <Button
                         size="sm"
                         className="bg-purple-600 hover:bg-purple-700 text-white cursor-pointer font-semibold"
-                        onClick={() => onNavigate && onNavigate("tickets")}
+                        onClick={() => navigate("/tickets")}
                       >
                         Get Membership
                       </Button>
@@ -864,7 +867,7 @@ export function CustomerDashboard({ user, onNavigate }) {
                     <div className="flex items-center space-x-2">
                       <Input
                         type={showPassword ? "text" : "password"}
-                        value={user.Customer_Password}
+                        value={user.Customer_Password || ""}
                         disabled
                         className="max-w-xs"
                       />
@@ -891,21 +894,6 @@ export function CustomerDashboard({ user, onNavigate }) {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    <div>
-                      <Label htmlFor="currentPassword">Current Password</Label>
-                      <Input
-                        id="currentPassword"
-                        type="password"
-                        value={passwordData.currentPassword}
-                        onChange={(e) =>
-                          setPasswordData({
-                            ...passwordData,
-                            currentPassword: e.target.value,
-                          })
-                        }
-                        className="border-2 border-gray-300 focus:border-blue-500"
-                      />
-                    </div>
                     <div>
                       <Label htmlFor="newPassword">New Password</Label>
                       <Input
@@ -951,7 +939,6 @@ export function CustomerDashboard({ user, onNavigate }) {
                         onClick={() => {
                           setIsChangingPassword(false);
                           setPasswordData({
-                            currentPassword: "",
                             newPassword: "",
                             confirmPassword: "",
                           });
@@ -988,187 +975,146 @@ export function CustomerDashboard({ user, onNavigate }) {
             </DialogDescription>
           </DialogHeader>
           <ScrollArea className="max-h-[65vh] pr-4">
-            {selectedPurchase && (
-              <div className="space-y-6">
-                {/* Purchase Summary */}
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="space-y-4">
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Order Number:</span>
-                        <span className="font-medium">
-                          #
-                          {getCustomerPurchaseNumber(
-                            selectedPurchase.Purchase_ID
-                          )}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Date & Time:</span>
-                        <span className="font-medium">
-                          {formatDateTime(selectedPurchase.Purchase_Date)}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Payment Method:</span>
-                        <Badge variant="secondary">
-                          {selectedPurchase.Payment_Method}
-                        </Badge>
-                      </div>
-
-                      <div className="border-t pt-4">
+            {detailsLoading ? (
+              <div className="text-center py-12">
+                <RefreshCw className="h-8 w-8 text-gray-400 mx-auto mb-2 animate-spin" />
+                <p className="text-gray-600">Loading order details...</p>
+              </div>
+            ) : (
+              selectedPurchase && (
+                <div className="space-y-6">
+                  {/* Purchase Summary */}
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="space-y-4">
                         <div className="flex justify-between">
-                          <span className="font-medium">Total Amount:</span>
-                          <span className="text-2xl font-semibold text-green-600">
-                            ${Number(selectedPurchase.Total_Amount).toFixed(2)}
+                          <span className="text-gray-600">Order Number:</span>
+                          <span className="font-medium">
+                            #
+                            {getCustomerPurchaseNumber(
+                              selectedPurchase.Purchase_ID
+                            )}
                           </span>
                         </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Date & Time:</span>
+                          <span className="font-medium">
+                            {formatDateTime(selectedPurchase.Purchase_Date)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Payment Method:</span>
+                          <Badge variant="secondary">
+                            {selectedPurchase.Payment_Method}
+                          </Badge>
+                        </div>
+
+                        <div className="border-t pt-4">
+                          <div className="flex justify-between">
+                            <span className="font-medium">Total Amount:</span>
+                            <span className="text-2xl font-semibold text-green-600">
+                              $
+                              {Number(selectedPurchase.Total_Amount).toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                    </CardContent>
+                  </Card>
 
-                {/* Tickets included in this purchase */}
-                {(() => {
-                  const purchaseTickets = tickets.filter(
-                    (t) => t.Purchase_ID === selectedPurchase.Purchase_ID
-                  );
-                  return (
-                    purchaseTickets.length > 0 && (
-                      <div>
-                        <h3 className="font-medium mb-3">Tickets</h3>
-                        <div className="space-y-2">
-                          {(() => {
-                            // Group tickets by type and compute totals
-                            const grouped = purchaseTickets.reduce((acc, t) => {
-                              const type = t.Ticket_Type || "Unknown";
-                              const price = Number(t.Price) || 0;
-                              const quantity = Number(t.Quantity) || 1;
-                              if (!acc[type])
-                                acc[type] = {
-                                  Ticket_Type: type,
-                                  count: 0,
-                                  price,
-                                };
-                              acc[type].count += quantity;
-                              acc[type].price = price;
-                              return acc;
-                            }, {});
+                  {/* Tickets included in this purchase */}
+                  {(() => {
+                    // Use backend details if available, otherwise fall back to mock data
+                    const purchaseTickets =
+                      selectedPurchaseDetails?.tickets ||
+                      tickets.filter(
+                        (t) => t.Purchase_ID === selectedPurchase.Purchase_ID
+                      );
 
-                            return Object.values(grouped).map((g) => (
-                              <Card key={g.Ticket_Type}>
+                    return (
+                      purchaseTickets.length > 0 && (
+                        <div>
+                          <h3 className="font-medium mb-3">Tickets</h3>
+                          <div className="space-y-2">
+                            {(() => {
+                              // Group tickets by type and compute totals
+                              const grouped = purchaseTickets.reduce(
+                                (acc, t) => {
+                                  const type = t.Ticket_Type || "Unknown";
+                                  const price = Number(t.Price) || 0;
+                                  const quantity = Number(t.Quantity) || 1;
+                                  if (!acc[type])
+                                    acc[type] = {
+                                      Ticket_Type: type,
+                                      count: 0,
+                                      price,
+                                    };
+                                  acc[type].count += quantity;
+                                  acc[type].price = price;
+                                  return acc;
+                                },
+                                {}
+                              );
+
+                              return Object.values(grouped).map((g) => (
+                                <Card key={g.Ticket_Type}>
+                                  <CardContent className="p-4">
+                                    <div className="flex justify-between items-center">
+                                      <div>
+                                        <p className="font-medium">
+                                          {g.Ticket_Type} Ticket
+                                        </p>
+                                        <p className="text-sm text-gray-600">
+                                          Quantity: {g.count}
+                                        </p>
+                                      </div>
+                                      <div className="text-right">
+                                        <p className="font-semibold text-green-600">
+                                          $
+                                          {(Number(g.price) * g.count).toFixed(
+                                            2
+                                          )}
+                                        </p>
+                                        <p className="text-xs text-gray-500">
+                                          ${Number(g.price).toFixed(2)} each
+                                        </p>
+                                      </div>
+                                    </div>
+                                  </CardContent>
+                                </Card>
+                              ));
+                            })()}
+                          </div>
+                        </div>
+                      )
+                    );
+                  })()}
+
+                  {/* Membership included in this purchase */}
+                  {(() => {
+                    const membershipItems = purchaseItems.filter(
+                      (pi) =>
+                        pi.Purchase_ID === selectedPurchase.Purchase_ID &&
+                        pi.Item_ID === 9000
+                    );
+                    return (
+                      membershipItems.length > 0 && (
+                        <div>
+                          <h3 className="font-medium mb-3">Membership</h3>
+                          <div className="space-y-2">
+                            {membershipItems.map((purchaseItem, index) => (
+                              <Card key={`membership-${index}`}>
                                 <CardContent className="p-4">
                                   <div className="flex justify-between items-center">
                                     <div>
                                       <p className="font-medium">
-                                        {g.Ticket_Type} Ticket
-                                      </p>
-                                      <p className="text-sm text-gray-600">
-                                        Quantity: {g.count}
-                                      </p>
-                                    </div>
-                                    <div className="text-right">
-                                      <p className="font-semibold text-green-600">
-                                        $
-                                        {(Number(g.price) * g.count).toFixed(2)}
-                                      </p>
-                                      <p className="text-xs text-gray-500">
-                                        ${Number(g.price).toFixed(2)} / per
-                                      </p>
-                                    </div>
-                                  </div>
-                                </CardContent>
-                              </Card>
-                            ));
-                          })()}
-                        </div>
-                      </div>
-                    )
-                  );
-                })()}
-
-                {/* Membership included in this purchase */}
-                {(() => {
-                  const membershipItems = purchaseItems.filter(
-                    (pi) =>
-                      pi.Purchase_ID === selectedPurchase.Purchase_ID &&
-                      pi.Item_ID === 9000
-                  );
-                  return (
-                    membershipItems.length > 0 && (
-                      <div>
-                        <h3 className="font-medium mb-3">Membership</h3>
-                        <div className="space-y-2">
-                          {membershipItems.map((purchaseItem, index) => (
-                            <Card key={`membership-${index}`}>
-                              <CardContent className="p-4">
-                                <div className="flex justify-between items-center">
-                                  <div>
-                                    <p className="font-medium">
-                                      Annual Membership
-                                    </p>
-                                    <p className="text-sm text-gray-600">
-                                      Quantity: {purchaseItem.Quantity}
-                                    </p>
-                                    <p className="text-sm text-gray-600">
-                                      1 Year Unlimited Access
-                                    </p>
-                                  </div>
-                                  <div className="text-right">
-                                    <p className="font-semibold text-green-600">
-                                      $
-                                      {(
-                                        Number(purchaseItem.Unit_Price) *
-                                        purchaseItem.Quantity
-                                      ).toFixed(2)}
-                                    </p>
-                                    <p className="text-xs text-gray-500">
-                                      $
-                                      {Number(purchaseItem.Unit_Price).toFixed(
-                                        2
-                                      )}{" "}
-                                      / per
-                                    </p>
-                                  </div>
-                                </div>
-                              </CardContent>
-                            </Card>
-                          ))}
-                        </div>
-                      </div>
-                    )
-                  );
-                })()}
-
-                {/* Gift Shop Items included in this purchase */}
-                {(() => {
-                  const purchaseGiftItems = purchaseItems.filter(
-                    (pi) =>
-                      pi.Purchase_ID === selectedPurchase.Purchase_ID &&
-                      pi.Item_ID !== 9000
-                  );
-                  return (
-                    purchaseGiftItems.length > 0 && (
-                      <div>
-                        <h3 className="font-medium mb-3">Gift Shop Items</h3>
-                        <div className="space-y-2">
-                          {purchaseGiftItems.map((purchaseItem) => {
-                            const item = items.find(
-                              (i) => i.Item_ID === purchaseItem.Item_ID
-                            );
-                            return (
-                              <Card key={purchaseItem.Item_ID}>
-                                <CardContent className="p-4">
-                                  <div className="flex justify-between items-center">
-                                    <div>
-                                      <p className="font-medium">
-                                        {item?.Item_Name}
+                                        Annual Membership
                                       </p>
                                       <p className="text-sm text-gray-600">
                                         Quantity: {purchaseItem.Quantity}
                                       </p>
                                       <p className="text-sm text-gray-600">
-                                        Item ID: #{item?.Item_ID}
+                                        1 Year Unlimited Access
                                       </p>
                                     </div>
                                     <div className="text-right">
@@ -1190,105 +1136,221 @@ export function CustomerDashboard({ user, onNavigate }) {
                                   </div>
                                 </CardContent>
                               </Card>
-                            );
-                          })}
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    )
-                  );
-                })()}
+                      )
+                    );
+                  })()}
 
-                {/* Concession Items included in this purchase */}
-                {(() => {
-                  const purchaseConcessions = purchaseConcessionItems.filter(
-                    (pci) => pci.Purchase_ID === selectedPurchase.Purchase_ID
-                  );
-                  return (
-                    purchaseConcessions.length > 0 && (
-                      <div>
-                        <h3 className="font-medium mb-3">Food & Beverages</h3>
-                        <div className="space-y-2">
-                          {purchaseConcessions.map(
-                            (purchaseConcession, index) => {
-                              const item = concessionItems.find(
-                                (ci) =>
-                                  ci.Concession_Item_ID ===
-                                  purchaseConcession.Concession_Item_ID
-                              );
+                  {/* Gift Shop Items included in this purchase */}
+                  {(() => {
+                    // Use backend details if available, otherwise fall back to mock data
+                    const purchaseGiftItems =
+                      selectedPurchaseDetails?.purchaseItems ||
+                      purchaseItems.filter(
+                        (pi) =>
+                          pi.Purchase_ID === selectedPurchase.Purchase_ID &&
+                          pi.Item_ID !== 9000
+                      );
+
+                    return (
+                      purchaseGiftItems.length > 0 && (
+                        <div>
+                          <h3 className="font-medium mb-3">Gift Shop Items</h3>
+                          <div className="space-y-2">
+                            {purchaseGiftItems.map((purchaseItem, index) => {
+                              // Backend data already includes Item_Name
+                              const itemName =
+                                purchaseItem.Item_Name ||
+                                items.find(
+                                  (i) => i.Item_ID === purchaseItem.Item_ID
+                                )?.Item_Name;
+
                               return (
-                                <Card
-                                  key={`${purchaseConcession.Concession_Item_ID}-${index}`}
-                                >
+                                <Card key={purchaseItem.Item_ID || index}>
                                   <CardContent className="p-4">
                                     <div className="flex justify-between items-center">
                                       <div>
                                         <p className="font-medium">
-                                          {item?.Item_Name}
+                                          {itemName}
                                         </p>
                                         <p className="text-sm text-gray-600">
-                                          Quantity:{" "}
-                                          {purchaseConcession.Quantity}
-                                        </p>
-                                        <p className="text-sm text-gray-600">
-                                          Item ID: #{item?.Concession_Item_ID}
+                                          Quantity: {purchaseItem.Quantity}
                                         </p>
                                       </div>
                                       <div className="text-right">
                                         <p className="font-semibold text-green-600">
                                           $
                                           {(
-                                            Number(
-                                              purchaseConcession.Unit_Price
-                                            ) * purchaseConcession.Quantity
+                                            Number(purchaseItem.Unit_Price) *
+                                            purchaseItem.Quantity
                                           ).toFixed(2)}
                                         </p>
                                         <p className="text-xs text-gray-500">
                                           $
                                           {Number(
-                                            purchaseConcession.Unit_Price
+                                            purchaseItem.Unit_Price
                                           ).toFixed(2)}{" "}
-                                          / per
+                                          each
                                         </p>
                                       </div>
                                     </div>
                                   </CardContent>
                                 </Card>
                               );
-                            }
-                          )}
+                            })}
+                          </div>
                         </div>
-                      </div>
-                    )
-                  );
-                })()}
+                      )
+                    );
+                  })()}
 
-                {/* Customer Info */}
-                <div>
-                  <h3 className="font-medium mb-3">Customer Information</h3>
-                  <Card>
-                    <CardContent className="p-4">
-                      <div className="space-y-2">
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Customer ID:</span>
-                          <span className="font-medium">
-                            #{selectedPurchase.Customer_ID}
-                          </span>
+                  {/* Concession Items included in this purchase */}
+                  {(() => {
+                    // Use backend details if available, otherwise fall back to mock data
+                    const purchaseConcessions =
+                      selectedPurchaseDetails?.concessionItems ||
+                      purchaseConcessionItems.filter(
+                        (pci) =>
+                          pci.Purchase_ID === selectedPurchase.Purchase_ID
+                      );
+
+                    return (
+                      purchaseConcessions.length > 0 && (
+                        <div>
+                          <h3 className="font-medium mb-3">Food & Beverages</h3>
+                          <div className="space-y-2">
+                            {purchaseConcessions.map(
+                              (purchaseConcession, index) => {
+                                // Backend data already includes Item_Name
+                                const itemName =
+                                  purchaseConcession.Item_Name ||
+                                  concessionItems.find(
+                                    (ci) =>
+                                      ci.Concession_Item_ID ===
+                                      purchaseConcession.Concession_Item_ID
+                                  )?.Item_Name;
+
+                                return (
+                                  <Card
+                                    key={`${purchaseConcession.Concession_Item_ID}-${index}`}
+                                  >
+                                    <CardContent className="p-4">
+                                      <div className="flex justify-between items-center">
+                                        <div>
+                                          <p className="font-medium">
+                                            {itemName}
+                                          </p>
+                                          <p className="text-sm text-gray-600">
+                                            Quantity:{" "}
+                                            {purchaseConcession.Quantity}
+                                          </p>
+                                        </div>
+                                        <div className="text-right">
+                                          <p className="font-semibold text-green-600">
+                                            $
+                                            {(
+                                              Number(
+                                                purchaseConcession.Unit_Price
+                                              ) * purchaseConcession.Quantity
+                                            ).toFixed(2)}
+                                          </p>
+                                          <p className="text-xs text-gray-500">
+                                            $
+                                            {Number(
+                                              purchaseConcession.Unit_Price
+                                            ).toFixed(2)}{" "}
+                                            each
+                                          </p>
+                                        </div>
+                                      </div>
+                                    </CardContent>
+                                  </Card>
+                                );
+                              }
+                            )}
+                          </div>
                         </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Name:</span>
-                          <span className="font-medium">
-                            {user.First_Name} {user.Last_Name}
-                          </span>
+                      )
+                    );
+                  })()}
+
+                  {/* No items message */}
+                  {(() => {
+                    const hasTickets =
+                      selectedPurchaseDetails?.tickets?.length > 0 ||
+                      tickets.filter(
+                        (t) => t.Purchase_ID === selectedPurchase.Purchase_ID
+                      ).length > 0;
+                    const hasGiftItems =
+                      selectedPurchaseDetails?.purchaseItems?.length > 0 ||
+                      purchaseItems.filter(
+                        (pi) =>
+                          pi.Purchase_ID === selectedPurchase.Purchase_ID &&
+                          pi.Item_ID !== 9000
+                      ).length > 0;
+                    const hasConcessions =
+                      selectedPurchaseDetails?.concessionItems?.length > 0 ||
+                      purchaseConcessionItems.filter(
+                        (pci) =>
+                          pci.Purchase_ID === selectedPurchase.Purchase_ID
+                      ).length > 0;
+                    const hasMembership =
+                      purchaseItems.filter(
+                        (pi) =>
+                          pi.Purchase_ID === selectedPurchase.Purchase_ID &&
+                          pi.Item_ID === 9000
+                      ).length > 0;
+
+                    return (
+                      !hasTickets &&
+                      !hasGiftItems &&
+                      !hasConcessions &&
+                      !hasMembership && (
+                        <Card className="bg-gray-50">
+                          <CardContent className="p-6 text-center">
+                            <p className="text-gray-600">
+                              No items found for this purchase
+                            </p>
+                            <p className="text-sm text-gray-500 mt-1">
+                              The purchase may have been processed without item
+                              details
+                            </p>
+                          </CardContent>
+                        </Card>
+                      )
+                    );
+                  })()}
+
+                  {/* Customer Info */}
+                  <div>
+                    <h3 className="font-medium mb-3">Customer Information</h3>
+                    <Card>
+                      <CardContent className="p-4">
+                        <div className="space-y-2">
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Customer ID:</span>
+                            <span className="font-medium">
+                              #{selectedPurchase.Customer_ID}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Name:</span>
+                            <span className="font-medium">
+                              {user.First_Name} {user.Last_Name}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Email:</span>
+                            <span className="font-medium">{user.Email}</span>
+                          </div>
                         </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Email:</span>
-                          <span className="font-medium">{user.Email}</span>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
+                      </CardContent>
+                    </Card>
+                  </div>
                 </div>
-              </div>
+              )
             )}
           </ScrollArea>
         </DialogContent>

@@ -4,7 +4,6 @@ import { Button } from "../components/ui/button";
 import { Stethoscope, Salad, Trees } from "lucide-react";
 import { animalsAPI, enclosuresAPI } from "../services/customerAPI";
 import { getAnimalImage } from "../utils/imageMapping";
-import { useOptimizedFetch } from "../hooks/useOptimizedFetch";
 import { AnimalCard } from "../components/AnimalCard";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { useHeroImage } from "../utils/heroImages";
@@ -12,33 +11,32 @@ import { preloadImages } from "../utils/imagePreloader";
 
 export function AnimalsPage() {
   const [selectedHabitat, setSelectedHabitat] = useState("All Animals");
+  const [animals, setAnimals] = useState([]);
+  const [enclosures, setEnclosures] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const heroImage = useHeroImage("animals");
 
-  // Optimized data fetching with caching
-  const {
-    data: animalsData,
-    loading: animalsLoading,
-    error: animalsError,
-  } = useOptimizedFetch(
-    "animals",
-    () => animalsAPI.getAll(),
-    { cacheTime: 5 * 60 * 1000 } // Cache for 5 minutes
-  );
-
-  const {
-    data: enclosuresData,
-    loading: enclosuresLoading,
-    error: enclosuresError,
-  } = useOptimizedFetch("enclosures", () => enclosuresAPI.getAll(), {
-    cacheTime: 5 * 60 * 1000,
-  });
-
-  // Ensure we always have arrays (handle null/undefined from cache)
-  const animals = animalsData || [];
-  const enclosures = enclosuresData || [];
-
-  const loading = animalsLoading || enclosuresLoading;
-  const error = animalsError || enclosuresError;
+  // Fetch data without caching
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const [animalsData, enclosuresData] = await Promise.all([
+          animalsAPI.getAll(),
+          enclosuresAPI.getAll(),
+        ]);
+        setAnimals(animalsData || []);
+        setEnclosures(enclosuresData || []);
+        setError(null);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
 
   // Memoize habitats list - only recalculate when enclosures change
   const habitats = useMemo(() => {
