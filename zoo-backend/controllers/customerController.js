@@ -422,6 +422,26 @@ export const createPurchase = async (req, res) => {
 
     // Handle membership if included
     if (membership) {
+      // Fetch authoritative membership price from Config table
+      const [configRows] = await connection.query(
+        `SELECT Config_Value FROM Config WHERE Config_Key = ? LIMIT 1`,
+        ["membership_annual"]
+      );
+
+      const membershipPrice =
+        configRows && configRows.length > 0
+          ? parseFloat(configRows[0].Config_Value)
+          : membership.price || 149.99;
+
+      // Insert membership as a purchase item for revenue tracking (Item_ID 9000)
+      await connection.query(
+        `
+        INSERT INTO Purchase_Item (Purchase_ID, Item_ID, Quantity, Unit_Price)
+        VALUES (?, 9000, 1, ?)
+      `,
+        [purchaseId, membershipPrice]
+      );
+
       // Check if customer already has a membership
       const [existingMembership] = await connection.query(
         `
@@ -450,7 +470,7 @@ export const createPurchase = async (req, res) => {
       }
 
       if (existingMembership.length > 0) {
-        // Update existing membership
+        // Update existing membership with authoritative price
         await connection.query(
           `
           UPDATE Membership
@@ -459,16 +479,16 @@ export const createPurchase = async (req, res) => {
               Price = ?
           WHERE Customer_ID = ?
         `,
-          [endDate, membership.price, customerId]
+          [endDate, membershipPrice, customerId]
         );
       } else {
-        // Create new membership
+        // Create new membership with authoritative price
         await connection.query(
           `
           INSERT INTO Membership (Customer_ID, Membership_Status, Start_Date, End_Date, Price)
           VALUES (?, 1, ?, ?, ?)
         `,
-          [customerId, startDate, endDate, membership.price]
+          [customerId, startDate, endDate, membershipPrice]
         );
       }
     }

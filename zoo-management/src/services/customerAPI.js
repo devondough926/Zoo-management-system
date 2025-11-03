@@ -1,6 +1,14 @@
 const API_BASE_URL =
   import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
+// Helper to add credentials to fetch options
+const fetchWithCredentials = (url, options = {}) => {
+  return fetch(url, {
+    ...options,
+    credentials: "include",
+  });
+};
+
 // Data caching removed - only images are cached
 
 export const authAPI = {
@@ -9,6 +17,7 @@ export const authAPI = {
       const response = await fetch(`${API_BASE_URL}/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify(userData),
       });
 
@@ -30,6 +39,7 @@ export const authAPI = {
       const response = await fetch(`${API_BASE_URL}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ email, password }),
       });
 
@@ -51,6 +61,7 @@ export const authAPI = {
       const response = await fetch(`${API_BASE_URL}/auth/employee/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ email, password }),
       });
 
@@ -67,10 +78,50 @@ export const authAPI = {
     }
   },
 
+  logout: async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/logout`, {
+        method: "POST",
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to logout");
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error("Logout error:", error);
+      throw error;
+    }
+  },
+
+  validateSession: async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/session`, {
+        method: "GET",
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        return null;
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error("Session validation error:", error);
+      return null;
+    }
+  },
+
   getProfile: async (customerId) => {
     try {
       const response = await fetch(
-        `${API_BASE_URL}/auth/profile/${customerId}`
+        `${API_BASE_URL}/auth/profile/${customerId}`,
+        {
+          credentials: "include",
+        }
       );
 
       if (!response.ok) {
@@ -92,6 +143,7 @@ export const authAPI = {
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify(profileData),
         }
       );
@@ -116,6 +168,7 @@ export const authAPI = {
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify(passwordData),
         }
       );
@@ -150,14 +203,18 @@ export const authAPI = {
 
 export const exhibitsAPI = {
   getAll: async () => {
-    const response = await fetch(`${API_BASE_URL}/customer/exhibits`);
+    const response = await fetchWithCredentials(
+      `${API_BASE_URL}/customer/exhibits`
+    );
     if (!response.ok) throw new Error("Failed to fetch exhibits");
     const data = await response.json();
     return data;
   },
 
   getById: async (id) => {
-    const response = await fetch(`${API_BASE_URL}/customer/exhibits/${id}`);
+    const response = await fetchWithCredentials(
+      `${API_BASE_URL}/customer/exhibits/${id}`
+    );
     if (!response.ok) throw new Error("Failed to fetch exhibit");
     const data = await response.json();
     return data;
@@ -166,14 +223,16 @@ export const exhibitsAPI = {
 
 export const activitiesAPI = {
   getAll: async () => {
-    const response = await fetch(`${API_BASE_URL}/customer/activities`);
+    const response = await fetchWithCredentials(
+      `${API_BASE_URL}/customer/activities`
+    );
     if (!response.ok) throw new Error("Failed to fetch activities");
     const data = await response.json();
     return data;
   },
 
   getByExhibit: async (exhibitId) => {
-    const response = await fetch(
+    const response = await fetchWithCredentials(
       `${API_BASE_URL}/customer/exhibits/${exhibitId}/activities`
     );
     if (!response.ok) throw new Error("Failed to fetch exhibit activities");
@@ -182,7 +241,9 @@ export const activitiesAPI = {
   },
 
   getTodaysSchedule: async () => {
-    const response = await fetch(`${API_BASE_URL}/customer/schedule/today`);
+    const response = await fetchWithCredentials(
+      `${API_BASE_URL}/customer/schedule/today`
+    );
     if (!response.ok) throw new Error("Failed to fetch today's schedule");
     const data = await response.json();
     return data;
@@ -191,7 +252,9 @@ export const activitiesAPI = {
 
 export const animalsAPI = {
   getAll: async () => {
-    const response = await fetch(`${API_BASE_URL}/customer/animals`);
+    const response = await fetchWithCredentials(
+      `${API_BASE_URL}/customer/animals`
+    );
     if (!response.ok) throw new Error("Failed to fetch animals");
     const data = await response.json();
     return data;
@@ -200,7 +263,9 @@ export const animalsAPI = {
 
 export const enclosuresAPI = {
   getAll: async () => {
-    const response = await fetch(`${API_BASE_URL}/customer/enclosures`);
+    const response = await fetchWithCredentials(
+      `${API_BASE_URL}/customer/enclosures`
+    );
     if (!response.ok) throw new Error("Failed to fetch enclosures");
     const data = await response.json();
     return data;
@@ -219,7 +284,7 @@ export const formatTime = (time) => {
 export const purchasesAPI = {
   getHistory: async (customerId) => {
     try {
-      const response = await fetch(
+      const response = await fetchWithCredentials(
         `${API_BASE_URL}/customer/purchases/history/${customerId}`
       );
       if (!response.ok) throw new Error("Failed to fetch purchase history");
@@ -233,7 +298,7 @@ export const purchasesAPI = {
 
   getDetails: async (purchaseId) => {
     try {
-      const response = await fetch(
+      const response = await fetchWithCredentials(
         `${API_BASE_URL}/customer/purchases/details/${purchaseId}`
       );
       if (!response.ok) throw new Error("Failed to fetch purchase details");
@@ -247,11 +312,14 @@ export const purchasesAPI = {
 
   create: async (purchaseData) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/customer/purchases`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(purchaseData),
-      });
+      const response = await fetchWithCredentials(
+        `${API_BASE_URL}/customer/purchases`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(purchaseData),
+        }
+      );
 
       const data = await response.json();
 
@@ -270,7 +338,7 @@ export const purchasesAPI = {
 export const membershipAPI = {
   getMembership: async (customerId) => {
     try {
-      const response = await fetch(
+      const response = await fetchWithCredentials(
         `${API_BASE_URL}/customer/membership/${customerId}`
       );
       if (!response.ok) throw new Error("Failed to fetch membership");

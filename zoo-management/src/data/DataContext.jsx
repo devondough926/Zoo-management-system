@@ -9,12 +9,13 @@
  * All additions, updates, and deletions are automatically reflected
  * across all pages and portals in real-time.
  *
- * Note: Items and concessionItems are temporarily loaded from mock data
- * until backend integration is complete.
+ * Note: Animals, items, and concessionItems are temporarily loaded from mock data
+ * for staff portals (Zookeeper, Veterinarian) until backend integration is complete.
  */
 
 import { createContext, useContext, useState } from "react";
 import {
+  mockAnimals,
   items as mockItems,
   concessionItems as mockConcessionItems,
 } from "./mockData";
@@ -22,7 +23,7 @@ import {
 const DataContext = createContext(undefined);
 
 export function DataProvider({ children }) {
-  const [animals, setAnimals] = useState([]);
+  const [animals, setAnimals] = useState(mockAnimals);
   const [items, setItems] = useState(mockItems);
   const [concessionItems, setConcessionItems] = useState(mockConcessionItems);
   const [purchases, setPurchases] = useState([]);

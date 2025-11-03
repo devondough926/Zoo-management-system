@@ -7,6 +7,8 @@ import {
   changeCustomerPassword,
   loginEmployee,
   getEmployeeProfile,
+  logout,
+  validateSession,
 } from "../controllers/authController.js";
 
 const router = express.Router();
@@ -23,5 +25,9 @@ router.put("/profile/:customerId/password", changeCustomerPassword);
 // Employee authentication routes
 router.post("/employee/login", loginEmployee);
 router.get("/employee/profile/:employeeId", getEmployeeProfile);
+
+// Session management routes
+router.post("/logout", logout);
+router.get("/session", validateSession);
 
 export default router;
