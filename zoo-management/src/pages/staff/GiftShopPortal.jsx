@@ -59,11 +59,10 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
     purchases,
     purchaseItems,
   } = useData();
-  // All gift shops under management (Gift Shop Worker manages all shops)
+
   const allShops = giftShops;
   const [showRevenueAllTime, setShowRevenueAllTime] = useState(false);
 
-  // Edit dialog state
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [editForm, setEditForm] = useState({
@@ -73,7 +72,6 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
     imageFile: null,
   });
 
-  // Add dialog state
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [addForm, setAddForm] = useState({
     name: "",
@@ -82,17 +80,15 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
     imageFile: null,
   });
 
-  // Delete dialog state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState(null);
 
-  // Calculate revenue from actual purchases
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
   const todayPurchaseItems = purchaseItems.filter((pi) => {
     const purchase = purchases.find((p) => p.Purchase_ID === pi.Purchase_ID);
-    if (!purchase || pi.Item_ID === 9000) return false; // Exclude memberships
+    if (!purchase || pi.Item_ID === 9000) return false;
     const purchaseDate = new Date(purchase.Purchase_Date);
     purchaseDate.setHours(0, 0, 0, 0);
     return purchaseDate.getTime() === today.getTime();
@@ -110,19 +106,14 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
     0
   );
 
-  // Top selling items with mock quantities (top 3 only)
   const topItems = [
-    { item: shopItems[0], quantity: 156, rank: 1 }, // Plush Elephant
-    { item: shopItems[1], quantity: 143, rank: 2 }, // Zoo T-Shirt
-    { item: shopItems[5], quantity: 128, rank: 3 }, // Plush Tiger
-  ].filter((t) => t.item); // Filter out any undefined items
+    { item: shopItems[0], quantity: 156, rank: 1 },
+    { item: shopItems[1], quantity: 143, rank: 2 },
+    { item: shopItems[5], quantity: 128, rank: 3 },
+  ].filter((t) => t.item);
 
-  // Get top selling item today
   const topSellingItemToday = topItems[0] || null;
 
-  // Bottom selling items with mock quantities (bottom 3 only)
-  // Note: ShopPage has 32 items (8 per category × 4 categories), but mockData.items only has initial 8
-  // We use 32 as the total to match the public shop page
   const totalItemCount = 32;
   const actualItemCount = shopItems.length;
   const bottomItems =
@@ -132,21 +123,21 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
             item: shopItems[Math.min(7, actualItemCount - 1)],
             quantity: 18,
             rank: totalItemCount,
-          }, // Last place
+          },
           {
             item: shopItems[Math.min(3, actualItemCount - 2)],
             quantity: 27,
             rank: totalItemCount - 1,
-          }, // 2nd to last
+          },
           {
             item: shopItems[Math.min(4, actualItemCount - 3)],
             quantity: 35,
             rank: totalItemCount - 2,
-          }, // 3rd to last
+          },
         ].filter((t) => t.item)
-      : []; // Filter out any undefined items
+      : [];
 
-  const handleEditClick = (item) => {
+   const handleEditClick = (item) => {
     setEditingItem(item);
     setEditForm({
       name: item.Item_Name,
@@ -157,7 +148,7 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
     setEditDialogOpen(true);
   };
 
-  const handleEditSave = () => {
+  const handleEditSave = async () => {
     if (!editingItem) return;
 
     if (!editForm.name || !editForm.price) {
@@ -165,51 +156,47 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
       return;
     }
 
-    // Create a URL for the image file if provided, otherwise keep existing image
-    const imageUrl = editForm.imageFile
-      ? URL.createObjectURL(editForm.imageFile)
-      : editingItem.image;
-
-    updateItem(editingItem.Item_ID, {
-      Item_Name: editForm.name,
-      Price: parseFloat(editForm.price),
-      ...(imageUrl && { image: imageUrl }),
-      Category: editForm.category,
-    });
-
-    setEditDialogOpen(false);
-    toast.success("Item updated successfully!");
+    try {
+      await updateItem(editingItem.Item_ID, {
+        Item_Name: editForm.name,
+        Price: parseFloat(editForm.price),
+        Category: editForm.category,
+      });
+      setEditDialogOpen(false);
+      toast.success("Item updated successfully!");
+    } catch (error) {
+      toast.error("Failed to update item. Please try again.");
+      console.error("Error updating item:", error);
+    }
   };
 
-  const handleAddItem = () => {
+  const handleAddItem = async () => {
     if (!addForm.name || !addForm.price) {
       toast.error("Please fill in all required fields");
       return;
     }
 
-    // Create a URL for the image file if provided
-    const imageUrl = addForm.imageFile
-      ? URL.createObjectURL(addForm.imageFile)
-      : undefined;
-
     const newItem = {
-      Item_ID: Math.max(...shopItems.map((i) => i.Item_ID)) + 1,
-      Shop_ID: 1, // Default to first shop
       Item_Name: addForm.name,
       Price: parseFloat(addForm.price),
       Category: addForm.category,
-      ...(imageUrl && { image: imageUrl }),
+      Shop_ID: 1,
     };
 
-    addItem(newItem);
-    setAddDialogOpen(false);
-    setAddForm({
-      name: "",
-      price: "",
-      category: giftShopCategories[0],
-      imageFile: null,
-    });
-    toast.success("New item added successfully!");
+    try {
+      await addItem(newItem);
+      setAddDialogOpen(false);
+      setAddForm({
+        name: "",
+        price: "",
+        category: giftShopCategories[0],
+        imageFile: null,
+      });
+      toast.success("New item added successfully!");
+    } catch (error) {
+      toast.error("Failed to add item. Please try again.");
+      console.error("Error adding item:", error);
+    }
   };
 
   const handleDeleteClick = (item) => {
@@ -217,18 +204,22 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
     setDeleteDialogOpen(true);
   };
 
-  const handleDeleteConfirm = () => {
+  const handleDeleteConfirm = async () => {
     if (!itemToDelete) return;
 
-    deleteItem(itemToDelete.Item_ID);
-    setDeleteDialogOpen(false);
-    setItemToDelete(null);
-    toast.success("Item removed successfully!");
+    try {
+      await deleteItem(itemToDelete.Item_ID);
+      setDeleteDialogOpen(false);
+      setItemToDelete(null);
+      toast.success("Item removed successfully!");
+    } catch (error) {
+      toast.error("Failed to delete item. Please try again.");
+      console.error("Error deleting item:", error);
+    }
   };
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <header className="bg-white border-b sticky top-0 z-50">
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
@@ -267,9 +258,7 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
         </div>
       </header>
 
-      {/* Main Content */}
       <div className="container mx-auto px-6 py-12">
-        {/* Stats Dashboard - Moved to Top */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <Card>
             <CardContent className="pt-6 text-center">
@@ -332,7 +321,6 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
           </Card>
         </div>
 
-        {/* Current Inventory */}
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -378,7 +366,7 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
                   <div className="flex items-center space-x-4">
                     <div className="text-right">
                       <p className="text-2xl font-semibold text-green-600">
-                        ${product.Price.toFixed(2)}
+                        ${parseFloat(product.Price).toFixed(2)}
                       </p>
                     </div>
                     <div className="flex space-x-2">
@@ -407,9 +395,7 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
           </CardContent>
         </Card>
 
-        {/* Selling Items Stats */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-8">
-          {/* Top Selling Items */}
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -456,7 +442,6 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
             </CardContent>
           </Card>
 
-          {/* Bottom Selling Items */}
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -505,7 +490,6 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
         </div>
       </div>
 
-      {/* Edit Dialog */}
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
@@ -586,7 +570,6 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
         </DialogContent>
       </Dialog>
 
-      {/* Add New Item Dialog */}
       <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
@@ -668,7 +651,6 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>

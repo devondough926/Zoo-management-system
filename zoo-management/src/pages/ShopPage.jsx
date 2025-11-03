@@ -203,12 +203,14 @@ export function ShopPage({ onNavigate, addToCart }) {
   // Pricing is handled centrally in CartPage (member discount applied at checkout)
 
   // Convert database items to ShopItem format
-  const shopItemsFromDb = dbItems.map((item) => ({
+  const shopItemsFromDb = dbItems
+  .filter((item) => item && item.Item_ID && item.Item_Name && item.Price)
+  .map((item) => ({
     id: item.Item_ID.toString(),
     name: item.Item_Name,
-    price: item.Price,
+    price: parseFloat(item.Price),
     category: item.Category || "Uncategorized",
-    image: item.image,
+    image: item.Image_URL || item.image,
   }));
 
   const filteredItems =

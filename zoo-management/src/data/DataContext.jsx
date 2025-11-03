@@ -10,10 +10,9 @@
  * across all pages and portals in real-time.
  */
 
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useState, useEffect } from "react";
 import {
   animals as initialAnimals,
-  items as initialItems,
   concessionItems as initialConcessionItems,
   purchases as initialPurchases,
   tickets as initialTickets,
@@ -24,9 +23,11 @@ import {
 
 const DataContext = createContext(undefined);
 
+const API_BASE_URL = "http://localhost:5000/api";
+
 export function DataProvider({ children }) {
   const [animals, setAnimals] = useState(initialAnimals);
-  const [items, setItems] = useState(initialItems);
+  const [items, setItems] = useState([]);
   const [concessionItems, setConcessionItems] = useState(
     initialConcessionItems
   );
@@ -37,6 +38,27 @@ export function DataProvider({ children }) {
     initialPurchaseConcessionItems
   );
   const [memberships, setMemberships] = useState(initialMemberships);
+
+  // Fetch shop items from backend on mount
+  useEffect(() => {
+    const fetchItems = async () => {
+      try {
+        console.log("Fetching shop items...");
+        const response = await fetch(`${API_BASE_URL}/shop/items`);
+        console.log("Response status:", response.status);
+        if (response.ok) {
+          const data = await response.json();
+          console.log("Fetched items:", data.length);
+          setItems(data);
+        } else {
+          console.error("Failed to fetch items, status:", response.status);
+        }
+      } catch (error) {
+        console.error("Error fetching items:", error);
+      }
+    };
+    fetchItems();
+  }, []);
 
   // Animal operations
   const addAnimal = (animal) => {
@@ -57,21 +79,57 @@ export function DataProvider({ children }) {
     );
   };
 
-  // Item operations
-  const addItem = (item) => {
-    setItems((prev) => [...prev, item]);
+  // Item operations - NOW WITH API CALLS
+  const addItem = async (item) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/shop/items`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(item),
+      });
+      if (response.ok) {
+        const newItem = await response.json();
+        setItems((prev) => [...prev, newItem]);
+        return newItem;
+      }
+    } catch (error) {
+      console.error("Error adding item:", error);
+      throw error;
+    }
   };
 
-  const updateItem = (itemId, updates) => {
-    setItems((prev) =>
-      prev.map((item) =>
-        item.Item_ID === itemId ? { ...item, ...updates } : item
-      )
-    );
+  const updateItem = async (itemId, updates) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/shop/items/${itemId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+      if (response.ok) {
+        const updatedItem = await response.json();
+        setItems((prev) =>
+          prev.map((item) => (item.Item_ID === itemId ? updatedItem : item))
+        );
+        return updatedItem;
+      }
+    } catch (error) {
+      console.error("Error updating item:", error);
+      throw error;
+    }
   };
 
-  const deleteItem = (itemId) => {
-    setItems((prev) => prev.filter((item) => item.Item_ID !== itemId));
+  const deleteItem = async (itemId) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/shop/items/${itemId}`, {
+        method: "DELETE",
+      });
+      if (response.ok) {
+        setItems((prev) => prev.filter((item) => item.Item_ID !== itemId));
+      }
+    } catch (error) {
+      console.error("Error deleting item:", error);
+      throw error;
+    }
   };
 
   // Concession item operations
