@@ -103,29 +103,29 @@ export function LoginPage({ onLogin }) {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-600 via-emerald-600 to-teal-700 p-6 relative">
+    <div className="fixed inset-0 bg-gradient-to-br from-green-600 via-emerald-600 to-teal-700 p-6 overflow-hidden">
       {/* Back to Home Button - Top Left */}
       <Button
         variant="ghost"
         onClick={() => navigate("/")}
-        className="absolute top-6 left-6 text-gray-800 bg-transparent hover:text-green-600 hover:bg-transparent transition-colors z-10 font-medium"
+        className="absolute top-6 left-6 text-white bg-white/10 hover:bg-white/20 hover:text-white transition-all duration-200 active:scale-95 z-10 font-medium backdrop-blur-sm border border-white/20"
       >
-        <ArrowLeft className="mr-2 h-4 w-4" />
+        <ArrowLeft className="mr-2 h-5 w-5" />
         Back to Home
       </Button>
 
       {/* Centered Container */}
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="h-screen flex items-center justify-center overflow-y-auto">
         <div className="w-full max-w-sm">
           {/* Logo with drop shadow for standout effect */}
-          <div className="flex flex-col items-center justify-center mb-6">
+          <div className="flex flex-col items-center justify-center mb-8">
             <div className="drop-shadow-2xl">
-              <ZooLogo size={60} className="filter drop-shadow-lg" />
+              <ZooLogo size={80} className="filter drop-shadow-lg" />
             </div>
-            <span className="text-3xl font-bold text-white mt-3 drop-shadow-lg">
+            <span className="text-5xl font-bold text-white mt-4 drop-shadow-lg">
               WildWood Zoo
             </span>
-            <p className="text-white/90 text-sm mt-1">
+            <p className="text-white/90 text-lg mt-2">
               Sign in to your account
             </p>
           </div>

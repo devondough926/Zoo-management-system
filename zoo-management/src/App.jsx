@@ -110,6 +110,11 @@ function AppContent() {
     document.title = `${pageTitle} | WildWood Zoo`;
   }, [location.pathname]);
 
+  // Scroll to top when location changes
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [location.pathname]);
+
   const handleLogin = (loggedInUser, type, userRole) => {
     login(loggedInUser, type, userRole);
 
