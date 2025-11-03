@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Card,
   CardContent,
@@ -19,8 +19,27 @@ import { useData } from "../data/DataContext";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { useHeroImage } from "../utils/heroImages";
 
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000/api";
+
 export function FoodPage({ addToCart }) {
-  const { concessionItems, memberships } = useData();
+  const { memberships } = useData();
+  const [concessionItems, setConcessionItems] = useState([]);
+
+  // Fetch concession items from backend on mount
+  useEffect(() => {
+    const fetchConcessionItems = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/food`);
+        if (!res.ok) throw new Error("Failed to fetch food items");
+        const data = await res.json();
+        setConcessionItems(data);
+      } catch (err) {
+        console.error("❌ Failed to load food items:", err);
+        toast.error("Failed to load food items");
+      }
+    };
+    fetchConcessionItems();
+  }, []);
   const { user, userType } = useAuth();
   const heroImage = useHeroImage("food");
 
@@ -70,7 +89,7 @@ export function FoodPage({ addToCart }) {
           id: item.Concession_Item_ID,
           name: item.Item_Name,
           price: item.Price,
-          image: item.image,
+          image: item.Image_URL,
         })),
       };
     });
@@ -238,7 +257,7 @@ export function FoodPage({ addToCart }) {
                                   {item.name}
                                 </h4>
                                 <span className="text-xl text-green-600 font-semibold">
-                                  ${item.price.toFixed(2)}
+                                  ${parseFloat(item.price || 0).toFixed(2)}
                                 </span>
                                 <Button
                                   className="w-full bg-green-600 hover:bg-green-700 cursor-pointer"

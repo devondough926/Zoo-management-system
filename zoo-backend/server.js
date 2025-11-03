@@ -8,6 +8,7 @@ import { testConnection } from "./config/database.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import customerRoutes from "./routes/customerRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
+import foodRoutes from "./routes/foodRoutes.js";
 import { isAzureConfigured } from "./middleware/azureUpload.js";
 
 dotenv.config();
@@ -43,6 +44,12 @@ app.use(morgan("dev"));
 app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+// ✅ Log every incoming API request for debugging
+app.use((req, res, next) => {
+  console.log(`[API] ${req.method} ${req.url}`);
+  next();
+});
+
 
 app.get("/health", (req, res) => {
   res.status(200).json({
@@ -56,6 +63,7 @@ app.get("/health", (req, res) => {
 app.use("/api/admin", adminRoutes);
 app.use("/api/customer", customerRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/food", foodRoutes);
 
 // 404 handler
 app.use((req, res) => {

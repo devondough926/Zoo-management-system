@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Card,
@@ -44,16 +44,38 @@ import { ZooLogo } from "../../components/ZooLogo";
 import { ImageWithFallback } from "../../components/figma/ImageWithFallback";
 import { useData } from "../../data/DataContext";
 
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000/api";
+
 export function ConcessionPortal({ user, onLogout }) {
   const navigate = useNavigate();
   const {
-    concessionItems: menuItems,
+    concessionItems: menuItemsFromContext,
     addConcessionItem,
     updateConcessionItem,
     deleteConcessionItem,
     purchases,
     purchaseConcessionItems,
   } = useData();
+  
+  // Local state for menu items fetched from backend
+  const [menuItems, setMenuItems] = useState([]);
+  
+  // Fetch menu items from backend on mount and when menuItemsFromContext changes
+  useEffect(() => {
+    const fetchMenu = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/food`);
+        if (!res.ok) throw new Error("Failed to fetch menu");
+        const data = await res.json();
+        setMenuItems(data);
+      } catch (err) {
+        console.error("❌ Failed to load menu:", err);
+        toast.error("Failed to load food items");
+      }
+    };
+    fetchMenu();
+  }, []); // Only fetch on mount
+  
   // All concession stands under management (Concession Worker manages all 4 stands)
   const allStands = concessionStands;
   const [showRevenueAllTime, setShowRevenueAllTime] = useState(false);
@@ -133,7 +155,7 @@ export function ConcessionPortal({ user, onLogout }) {
     setEditDialogOpen(true);
   };
 
-  const handleEditSave = () => {
+  const handleEditSave = async () => {
     if (!editingItem) return;
 
     if (!editForm.name || !editForm.price) {
@@ -141,45 +163,74 @@ export function ConcessionPortal({ user, onLogout }) {
       return;
     }
 
-    // Create a URL for the image file if provided, otherwise keep existing image
-    const imageUrl = editForm.imageFile
-      ? URL.createObjectURL(editForm.imageFile)
-      : editingItem.image;
+    try {
+      const formData = new FormData();
+      formData.append("Item_Name", editForm.name);
+      formData.append("Price", editForm.price);
+      if (editForm.imageFile) {
+        formData.append("image", editForm.imageFile);
+      }
 
-    updateConcessionItem(editingItem.Concession_Item_ID, {
-      Item_Name: editForm.name,
-      Price: parseFloat(editForm.price),
-      ...(imageUrl && { image: imageUrl }),
-    });
+      const res = await fetch(`${API_BASE}/food/${editingItem.Concession_Item_ID}`, {
+        method: "PUT",
+        body: formData,
+      });
 
-    setEditDialogOpen(false);
-    toast.success("Item updated successfully!");
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || "Update failed");
+      }
+
+      // Refresh menu to get updated Image_URL from backend
+      const updated = await fetch(`${API_BASE}/food`);
+      const newList = await updated.json();
+      setMenuItems(newList);
+
+      setEditDialogOpen(false);
+      toast.success("Item updated successfully!");
+    } catch (err) {
+      console.error("❌ Error updating item:", err);
+      toast.error(err.message || "Failed to update item");
+    }
   };
 
-  const handleAddItem = () => {
+  const handleAddItem = async () => {
     if (!addForm.name || !addForm.price) {
       toast.error("Please fill in all required fields");
       return;
     }
 
-    // Create a URL for the image file if provided
-    const imageUrl = addForm.imageFile
-      ? URL.createObjectURL(addForm.imageFile)
-      : undefined;
+    try {
+      const formData = new FormData();
+      formData.append("Item_Name", addForm.name);
+      formData.append("Price", addForm.price);
+      formData.append("Stand_ID", addForm.standId);
+      if (addForm.imageFile) {
+        formData.append("image", addForm.imageFile);
+      }
 
-    const newItem = {
-      Concession_Item_ID:
-        Math.max(...menuItems.map((i) => i.Concession_Item_ID)) + 1,
-      Stand_ID: parseInt(addForm.standId),
-      Item_Name: addForm.name,
-      Price: parseFloat(addForm.price),
-      ...(imageUrl && { image: imageUrl }),
-    };
+      const res = await fetch(`${API_BASE}/food`, {
+        method: "POST",
+        body: formData,
+      });
 
-    addConcessionItem(newItem);
-    setAddDialogOpen(false);
-    setAddForm({ name: "", price: "", standId: "1", imageFile: null });
-    toast.success("New item added successfully!");
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || "Upload failed");
+      }
+
+      // Refresh menu to get the new item with Image_URL from backend
+      const updated = await fetch(`${API_BASE}/food`);
+      const newList = await updated.json();
+      setMenuItems(newList);
+
+      setAddDialogOpen(false);
+      setAddForm({ name: "", price: "", standId: "1", imageFile: null });
+      toast.success("✅ Item added!");
+    } catch (err) {
+      console.error("❌ Error adding item:", err);
+      toast.error(err.message || "Failed to add item");
+    }
   };
 
   const handleDeleteClick = (item) => {
@@ -187,13 +238,31 @@ export function ConcessionPortal({ user, onLogout }) {
     setDeleteDialogOpen(true);
   };
 
-  const handleDeleteConfirm = () => {
+  const handleDeleteConfirm = async () => {
     if (!itemToDelete) return;
 
-    deleteConcessionItem(itemToDelete.Concession_Item_ID);
-    setDeleteDialogOpen(false);
-    setItemToDelete(null);
-    toast.success("Item removed successfully!");
+    try {
+      const res = await fetch(`${API_BASE}/food/${itemToDelete.Concession_Item_ID}`, {
+        method: "DELETE",
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || "Delete failed");
+      }
+
+      // Refresh menu to reflect deletion
+      const updated = await fetch(`${API_BASE}/food`);
+      const newList = await updated.json();
+      setMenuItems(newList);
+
+      setDeleteDialogOpen(false);
+      setItemToDelete(null);
+      toast.success("Item removed successfully!");
+    } catch (err) {
+      console.error("❌ Error deleting item:", err);
+      toast.error(err.message || "Failed to delete item");
+    }
   };
 
   return (
@@ -330,9 +399,9 @@ export function ConcessionPortal({ user, onLogout }) {
                 >
                   <div className="flex items-center space-x-4 flex-1">
                     <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden">
-                      {item.image ? (
+                      {item.Image_URL ? (
                         <ImageWithFallback
-                          src={item.image}
+                          src={item.Image_URL}
                           alt={item.Item_Name}
                           className="w-full h-full object-cover"
                         />
@@ -352,7 +421,7 @@ export function ConcessionPortal({ user, onLogout }) {
                   <div className="flex items-center space-x-4">
                     <div className="text-right">
                       <p className="text-2xl font-semibold text-green-600">
-                        ${item.Price.toFixed(2)}
+                        ${parseFloat(item.Price || 0).toFixed(2)}
                       </p>
                     </div>
                     <div className="flex space-x-2">
@@ -405,9 +474,9 @@ export function ConcessionPortal({ user, onLogout }) {
                         #{topItem.rank}
                       </div>
                       <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden">
-                        {topItem.item.image ? (
+                        {topItem.item.Image_URL ? (
                           <ImageWithFallback
-                            src={topItem.item.image}
+                            src={topItem.item.Image_URL}
                             alt={topItem.item.Item_Name}
                             className="w-full h-full object-cover"
                           />
@@ -452,9 +521,9 @@ export function ConcessionPortal({ user, onLogout }) {
                         #{bottomItem.rank}
                       </div>
                       <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden">
-                        {bottomItem.item.image ? (
+                        {bottomItem.item.Image_URL ? (
                           <ImageWithFallback
-                            src={bottomItem.item.image}
+                            src={bottomItem.item.Image_URL}
                             alt={bottomItem.item.Item_Name}
                             className="w-full h-full object-cover"
                           />
