@@ -3,52 +3,39 @@
  *
  * Manages user authentication for both customers and employees
  * Provides login, logout, and user state management
+ * Auth state is session-only (no localStorage) - relies on httpOnly cookies
  */
 
 import { createContext, useContext, useState, useEffect } from "react";
+import { authAPI } from "../services/customerAPI";
 
 const AuthContext = createContext(undefined);
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(() => {
-    try {
-      const savedUser = localStorage.getItem("currentUser");
-      return savedUser ? JSON.parse(savedUser) : null;
-    } catch {
-      return null;
-    }
-  });
+  const [user, setUser] = useState(null);
+  const [userType, setUserType] = useState(null);
+  const [role, setRole] = useState(null);
+  const [initialized, setInitialized] = useState(false);
 
-  const [userType, setUserType] = useState(() => {
-    try {
-      return localStorage.getItem("currentUserType") || null;
-    } catch {
-      return null;
-    }
-  });
-
-  const [role, setRole] = useState(() => {
-    try {
-      return localStorage.getItem("userRole") || null;
-    } catch {
-      return null;
-    }
-  });
-
-  // Persist user data to localStorage whenever it changes
+  // Check session on mount
   useEffect(() => {
-    if (user && userType) {
-      localStorage.setItem("currentUser", JSON.stringify(user));
-      localStorage.setItem("currentUserType", userType);
-      if (role) {
-        localStorage.setItem("userRole", role);
+    const checkSession = async () => {
+      try {
+        const sessionData = await authAPI.validateSession();
+        if (sessionData) {
+          setUser(sessionData.user);
+          setUserType(sessionData.userType);
+          setRole(sessionData.role);
+        }
+      } catch (error) {
+        console.error("Session check failed:", error);
+      } finally {
+        setInitialized(true);
       }
-    } else {
-      localStorage.removeItem("currentUser");
-      localStorage.removeItem("currentUserType");
-      localStorage.removeItem("userRole");
-    }
-  }, [user, userType, role]);
+    };
+
+    checkSession();
+  }, []);
 
   const login = (userData, type, userRole = null) => {
     setUser(userData);
@@ -56,23 +43,25 @@ export function AuthProvider({ children }) {
     setRole(userRole);
   };
 
-  const logout = () => {
-    setUser(null);
-    setUserType(null);
-    setRole(null);
-    localStorage.removeItem("currentUser");
-    localStorage.removeItem("currentUserType");
-    localStorage.removeItem("userRole");
-    localStorage.removeItem("cart");
-    localStorage.removeItem("currentPage");
+  const logout = async () => {
+    try {
+      // Call backend to clear httpOnly cookie
+      await authAPI.logout();
+    } catch (error) {
+      console.error("Logout API call failed:", error);
+    } finally {
+      // Always clear local state even if API fails
+      setUser(null);
+      setUserType(null);
+      setRole(null);
+      // Clear cart from localStorage (not auth-related but user-specific)
+      localStorage.removeItem("cart");
+      localStorage.removeItem("currentPage");
+    }
   };
 
   const updateUser = (updates) => {
-    setUser((prev) => {
-      const updated = { ...prev, ...updates };
-      localStorage.setItem("currentUser", JSON.stringify(updated));
-      return updated;
-    });
+    setUser((prev) => ({ ...prev, ...updates }));
   };
 
   const isAuthenticated = !!user && !!userType;
@@ -86,6 +75,7 @@ export function AuthProvider({ children }) {
         user,
         userType,
         role,
+        initialized,
         isAuthenticated,
         isCustomer,
         isEmployee,

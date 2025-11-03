@@ -4,8 +4,6 @@ import {
   ShoppingBag,
   Calendar,
   Receipt,
-  Eye,
-  EyeOff,
   X,
   RefreshCw,
   Wifi,
@@ -168,7 +166,6 @@ export function CustomerDashboard({ user }) {
     phone: user.Phone,
   });
 
-  const [showPassword, setShowPassword] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [passwordData, setPasswordData] = useState({
     newPassword: "",
@@ -253,23 +250,11 @@ export function CustomerDashboard({ user }) {
     setIsLoading(true);
 
     try {
-      try {
-        await authAPI.changePassword(user.Customer_ID, {
-          newPassword: passwordData.newPassword,
-        });
+      await authAPI.changePassword(user.Customer_ID, {
+        newPassword: passwordData.newPassword,
+      });
 
-        // Update the user object with new password
-        user.Customer_Password = passwordData.newPassword;
-
-        toast.success("Password changed successfully!");
-      } catch (error) {
-        // Fallback: update local state even if backend fails
-        if (user.Customer_Password) {
-          user.Customer_Password = passwordData.newPassword;
-        }
-
-        toast.success("Password changed successfully!");
-      }
+      toast.success("Password changed successfully!");
 
       setPasswordData({
         newPassword: "",
@@ -864,26 +849,9 @@ export function CustomerDashboard({ user }) {
               <CardContent>
                 {!isChangingPassword ? (
                   <div className="space-y-4">
-                    <div className="flex items-center space-x-2">
-                      <Input
-                        type={showPassword ? "text" : "password"}
-                        value={user.Customer_Password || ""}
-                        disabled
-                        className="max-w-xs"
-                      />
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="cursor-pointer"
-                      >
-                        {showPassword ? (
-                          <EyeOff className="h-4 w-4" />
-                        ) : (
-                          <Eye className="h-4 w-4" />
-                        )}
-                      </Button>
-                    </div>
+                    <p className="text-gray-600">
+                      Manage your account password and security settings.
+                    </p>
                     <Button
                       variant="outline"
                       onClick={() => setIsChangingPassword(true)}

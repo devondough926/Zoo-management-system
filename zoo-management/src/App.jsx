@@ -81,7 +81,7 @@ function ProtectedRoute({
 }
 
 function AppContent() {
-  const { user, userType, role, login, logout } = useAuth();
+  const { user, userType, role, login, logout, initialized } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -128,13 +128,6 @@ function AppContent() {
     } else if (type === "customer") {
       navigate("/customer-dashboard");
     }
-  };
-
-  const handleLogout = () => {
-    logout();
-    navigate("/");
-    setCart([]);
-    localStorage.removeItem("cart");
   };
 
   const addToCart = (item) => {
@@ -198,15 +191,15 @@ function AppContent() {
 
     switch (role) {
       case "veterinarian":
-        return <VeterinarianPortal user={employee} onLogout={handleLogout} />;
+        return <VeterinarianPortal user={employee} onLogout={logout} />;
       case "zookeeper":
-        return <ZookeeperPortal user={employee} onLogout={handleLogout} />;
+        return <ZookeeperPortal user={employee} onLogout={logout} />;
       case "giftshop":
-        return <GiftShopPortal user={employee} onLogout={handleLogout} />;
+        return <GiftShopPortal user={employee} onLogout={logout} />;
       case "concession":
-        return <ConcessionPortal user={employee} onLogout={handleLogout} />;
+        return <ConcessionPortal user={employee} onLogout={logout} />;
       case "supervisor":
-        return <ManagerPortal user={employee} onLogout={handleLogout} />;
+        return <ManagerPortal user={employee} onLogout={logout} />;
       default:
         return <Navigate to="/" replace />;
     }
@@ -222,10 +215,22 @@ function AppContent() {
   // Calculate total cart items
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
+  // Show loading state while checking session
+  if (!initialized) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-emerald-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-green-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen">
       {showNavAndFooter && (
-        <Navigation onLogout={handleLogout} cartCount={cartCount} />
+        <Navigation onLogout={logout} cartCount={cartCount} />
       )}
 
       <Routes>
@@ -288,7 +293,7 @@ function AppContent() {
           path="/admin-portal"
           element={
             <ProtectedRoute requireAuth requireEmployee>
-              <AdminPortal user={user} onLogout={handleLogout} />
+              <AdminPortal user={user} onLogout={logout} />
             </ProtectedRoute>
           }
         />
