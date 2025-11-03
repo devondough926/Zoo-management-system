@@ -14,17 +14,14 @@ import {
   UtensilsCrossed,
 } from "lucide-react";
 import { toast } from "sonner";
-import {
-  currentUser,
-  currentUserType,
-  concessionStands,
-} from "../data/mockData";
+import { useAuth } from "../contexts/AuthContext";
 import { useData } from "../data/DataContext";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { useHeroImage } from "../utils/heroImages";
 
 export function FoodPage({ addToCart }) {
   const { concessionItems, memberships } = useData();
+  const { user, userType } = useAuth();
   const heroImage = useHeroImage("food");
 
   // Zone mapping based on Location_ID from concessionStands in mockData
@@ -88,10 +85,9 @@ export function FoodPage({ addToCart }) {
 
   // Check if current user is a customer with active membership
   const hasMembership =
-    currentUser && currentUserType === "customer" && memberships
+    user && userType === "customer" && memberships
       ? memberships.some(
-          (m) =>
-            m.Customer_ID === currentUser.Customer_ID && m.Membership_Status
+          (m) => m.Customer_ID === user.Customer_ID && m.Membership_Status
         )
       : false;
 
@@ -247,7 +243,7 @@ export function FoodPage({ addToCart }) {
                                 <Button
                                   className="w-full bg-green-600 hover:bg-green-700 cursor-pointer"
                                   onClick={() => {
-                                    if (!currentUser) {
+                                    if (!user) {
                                       toast.error(
                                         "Please log in to add items to cart"
                                       );

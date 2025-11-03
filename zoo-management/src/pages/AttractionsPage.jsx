@@ -1,4 +1,4 @@
-import { useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Card,
   CardContent,
@@ -18,40 +18,38 @@ import {
 } from "lucide-react";
 import { exhibitsAPI, activitiesAPI } from "../services/customerAPI";
 import { getExhibitImage } from "../utils/imageMapping";
-import { useOptimizedFetch } from "../hooks/useOptimizedFetch";
 import { ExhibitCard } from "../components/ExhibitCard";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { useHeroImage } from "../utils/heroImages";
 import { preloadImages } from "../utils/imagePreloader";
 
 export function AttractionsPage() {
+  const [exhibits, setExhibits] = useState([]);
+  const [activities, setActivities] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const heroImage = useHeroImage("attractions");
 
-  // Optimized data fetching with caching
-  const {
-    data: exhibitsData,
-    loading: exhibitsLoading,
-    error: exhibitsError,
-  } = useOptimizedFetch(
-    "exhibits",
-    () => exhibitsAPI.getAll(),
-    { cacheTime: 5 * 60 * 1000 } // Cache for 5 minutes
-  );
-
-  const {
-    data: activitiesData,
-    loading: activitiesLoading,
-    error: activitiesError,
-  } = useOptimizedFetch("activities", () => activitiesAPI.getAll(), {
-    cacheTime: 5 * 60 * 1000,
-  });
-
-  // Ensure we always have arrays (handle null/undefined from cache)
-  const exhibits = exhibitsData || [];
-  const activities = activitiesData || [];
-
-  const loading = exhibitsLoading || activitiesLoading;
-  const error = exhibitsError || activitiesError;
+  // Fetch data without caching
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const [exhibitsData, activitiesData] = await Promise.all([
+          exhibitsAPI.getAll(),
+          activitiesAPI.getAll(),
+        ]);
+        setExhibits(exhibitsData || []);
+        setActivities(activitiesData || []);
+        setError(null);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
 
   // Memoize activities lookup - only recalculate when activities change
   const activitiesByExhibit = useMemo(() => {

@@ -8,35 +8,28 @@
  *
  * All additions, updates, and deletions are automatically reflected
  * across all pages and portals in real-time.
+ *
+ * Note: Items and concessionItems are temporarily loaded from mock data
+ * until backend integration is complete.
  */
 
 import { createContext, useContext, useState } from "react";
 import {
-  animals as initialAnimals,
-  items as initialItems,
-  concessionItems as initialConcessionItems,
-  purchases as initialPurchases,
-  tickets as initialTickets,
-  purchaseItems as initialPurchaseItems,
-  purchaseConcessionItems as initialPurchaseConcessionItems,
-  memberships as initialMemberships,
+  items as mockItems,
+  concessionItems as mockConcessionItems,
 } from "./mockData";
 
 const DataContext = createContext(undefined);
 
 export function DataProvider({ children }) {
-  const [animals, setAnimals] = useState(initialAnimals);
-  const [items, setItems] = useState(initialItems);
-  const [concessionItems, setConcessionItems] = useState(
-    initialConcessionItems
-  );
-  const [purchases, setPurchases] = useState(initialPurchases);
-  const [tickets, setTickets] = useState(initialTickets);
-  const [purchaseItems, setPurchaseItems] = useState(initialPurchaseItems);
-  const [purchaseConcessionItems, setPurchaseConcessionItems] = useState(
-    initialPurchaseConcessionItems
-  );
-  const [memberships, setMemberships] = useState(initialMemberships);
+  const [animals, setAnimals] = useState([]);
+  const [items, setItems] = useState(mockItems);
+  const [concessionItems, setConcessionItems] = useState(mockConcessionItems);
+  const [purchases, setPurchases] = useState([]);
+  const [tickets, setTickets] = useState([]);
+  const [purchaseItems, setPurchaseItems] = useState([]);
+  const [purchaseConcessionItems, setPurchaseConcessionItems] = useState([]);
+  const [memberships, setMemberships] = useState([]);
 
   // Animal operations
   const addAnimal = (animal) => {

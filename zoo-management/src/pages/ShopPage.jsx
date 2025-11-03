@@ -15,7 +15,8 @@ import {
   Gift,
 } from "lucide-react";
 import { toast } from "sonner";
-import { currentUser } from "../data/mockData";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
 import { useData } from "../data/DataContext";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { useHeroImage } from "../utils/heroImages";
@@ -195,8 +196,10 @@ const shopItems = [
   },
 ];
 
-export function ShopPage({ onNavigate, addToCart }) {
+export function ShopPage({ addToCart }) {
   const { items: dbItems } = useData();
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const [selectedCategory, setSelectedCategory] = useState("All");
   const heroImage = useHeroImage("shop");
 
@@ -217,11 +220,12 @@ export function ShopPage({ onNavigate, addToCart }) {
       : shopItemsFromDb.filter((item) => item.category === selectedCategory);
 
   const handleAddToCart = (product) => {
-    if (!currentUser) {
-      if (onNavigate) {
-        onNavigate("login");
-      }
-    } else if (addToCart) {
+    if (!user) {
+      navigate("/login");
+      return;
+    }
+
+    if (addToCart) {
       addToCart({
         id:
           parseInt(product.id.replace(/\D/g, "")) ||

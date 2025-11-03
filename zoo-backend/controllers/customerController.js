@@ -1,8 +1,9 @@
 import db from "../config/database.js";
 
-// ============================================
-// EXHIBITS - Customer View
-// ============================================
+const formatDateForResponse = (date) => {
+  if (!date) return null;
+  return new Date(date).toISOString().slice(0, 19).replace("T", " ");
+};
 
 export const getAllExhibits = async (req, res) => {
   try {
@@ -24,10 +25,7 @@ export const getAllExhibits = async (req, res) => {
     res.json(exhibits);
   } catch (error) {
     console.error("Error fetching exhibits:", error);
-    console.error("SQL Error details:", error.sqlMessage);
-    res
-      .status(500)
-      .json({ error: "Failed to fetch exhibits", details: error.message });
+    res.status(500).json({ error: "Failed to fetch exhibits" });
   }
 };
 
@@ -64,10 +62,6 @@ export const getExhibitById = async (req, res) => {
   }
 };
 
-// ============================================
-// ACTIVITIES - Customer View
-// ============================================
-
 export const getAllActivities = async (req, res) => {
   try {
     const [activities] = await db.query(`
@@ -88,10 +82,7 @@ export const getAllActivities = async (req, res) => {
     res.json(activities);
   } catch (error) {
     console.error("Error fetching activities:", error);
-    console.error("SQL Error details:", error.sqlMessage);
-    res
-      .status(500)
-      .json({ error: "Failed to fetch activities", details: error.message });
+    res.status(500).json({ error: "Failed to fetch activities" });
   }
 };
 
@@ -121,16 +112,9 @@ export const getActivitiesByExhibit = async (req, res) => {
   } catch (error) {
     console.error("Error fetching exhibit activities:", error);
     console.error("SQL Error details:", error.sqlMessage);
-    res.status(500).json({
-      error: "Failed to fetch exhibit activities",
-      details: error.message,
-    });
+    res.status(500).json({ error: "Failed to fetch exhibit activities" });
   }
 };
-
-// ============================================
-// TODAY'S SCHEDULE - Customer View
-// ============================================
 
 export const getTodaysSchedule = async (req, res) => {
   try {
@@ -172,10 +156,6 @@ export const getTodaysSchedule = async (req, res) => {
   }
 };
 
-// ============================================
-// ANIMALS - Customer View
-// ============================================
-
 export const getAllAnimals = async (req, res) => {
   try {
     const [animals] = await db.query(`
@@ -194,10 +174,6 @@ export const getAllAnimals = async (req, res) => {
   }
 };
 
-// ============================================
-// ENCLOSURES - Customer View
-// ============================================
-
 export const getAllEnclosures = async (req, res) => {
   try {
     const [enclosures] = await db.query(`
@@ -215,36 +191,35 @@ export const getAllEnclosures = async (req, res) => {
   }
 };
 
-// ============================================
-// PURCHASES - Customer View
-// ============================================
-
-// Get purchase history for a customer
 export const getPurchaseHistory = async (req, res) => {
   try {
     const { customerId } = req.params;
 
-    // Get all purchases for this customer
     const [purchases] = await db.query(
       `
       SELECT 
         Purchase_ID,
         Customer_ID,
-        DATE_FORMAT(Purchase_Date, '%Y-%m-%dT%H:%i:%s') as Purchase_Date,
+        Purchase_Date,
         CAST(Total_Amount AS DECIMAL(10,2)) as Total_Amount,
         Payment_Method
       FROM Purchase
       WHERE Customer_ID = ?
-      ORDER BY Purchase_Date DESC
+      ORDER BY Purchase_Date ASC, Purchase_ID ASC
     `,
       [customerId]
     );
 
-    // Convert Total_Amount to number for each purchase
-    const formattedPurchases = purchases.map((purchase) => ({
-      ...purchase,
-      Total_Amount: parseFloat(purchase.Total_Amount),
-    }));
+    // Calculate customer-specific order numbers (oldest = 1, newest = N)
+    // Then reverse the array to show newest first
+    const formattedPurchases = purchases
+      .map((purchase, index) => ({
+        ...purchase,
+        Order_Number: index + 1,
+        Purchase_Date: formatDateForResponse(purchase.Purchase_Date),
+        Total_Amount: parseFloat(purchase.Total_Amount),
+      }))
+      .reverse();
 
     res.json(formattedPurchases);
   } catch (error) {
@@ -253,7 +228,6 @@ export const getPurchaseHistory = async (req, res) => {
   }
 };
 
-// Get detailed information about a specific purchase
 export const getPurchaseDetails = async (req, res) => {
   try {
     const { purchaseId } = req.params;
@@ -264,7 +238,7 @@ export const getPurchaseDetails = async (req, res) => {
       SELECT 
         p.Purchase_ID,
         p.Customer_ID,
-        DATE_FORMAT(p.Purchase_Date, '%Y-%m-%dT%H:%i:%s') as Purchase_Date,
+        p.Purchase_Date,
         CAST(p.Total_Amount AS DECIMAL(10,2)) as Total_Amount,
         p.Payment_Method,
         c.First_Name,
@@ -281,7 +255,11 @@ export const getPurchaseDetails = async (req, res) => {
       return res.status(404).json({ error: "Purchase not found" });
     }
 
-    const purchase = purchases[0];
+    const purchase = {
+      ...purchases[0],
+      Purchase_Date: formatDateForResponse(purchases[0].Purchase_Date),
+      Total_Amount: parseFloat(purchases[0].Total_Amount),
+    };
 
     // Get tickets for this purchase
     const [tickets] = await db.query(
@@ -307,7 +285,6 @@ export const getPurchaseDetails = async (req, res) => {
         pi.Quantity,
         CAST(pi.Unit_Price AS DECIMAL(10,2)) as Unit_Price,
         i.Item_Name,
-        i.Item_Description,
         i.Image_URL
       FROM Purchase_Item pi
       JOIN Item i ON pi.Item_ID = i.Item_ID
@@ -324,20 +301,13 @@ export const getPurchaseDetails = async (req, res) => {
         pci.Concession_Item_ID,
         pci.Quantity,
         CAST(pci.Unit_Price AS DECIMAL(10,2)) as Unit_Price,
-        ci.Item_Name,
-        ci.Item_Description
+        ci.Item_Name
       FROM Purchase_Concession_Item pci
       JOIN Concession_Item ci ON pci.Concession_Item_ID = ci.Concession_Item_ID
       WHERE pci.Purchase_ID = ?
     `,
       [purchaseId]
     );
-
-    // Format numeric fields
-    const formattedPurchase = {
-      ...purchase,
-      Total_Amount: parseFloat(purchase.Total_Amount),
-    };
 
     const formattedTickets = tickets.map((t) => ({
       ...t,
@@ -355,14 +325,19 @@ export const getPurchaseDetails = async (req, res) => {
     }));
 
     res.json({
-      purchase: formattedPurchase,
+      purchase: purchase,
       tickets: formattedTickets,
       purchaseItems: formattedPurchaseItems,
       concessionItems: formattedConcessionItems,
     });
   } catch (error) {
     console.error("Error fetching purchase details:", error);
-    res.status(500).json({ error: "Failed to fetch purchase details" });
+    console.error("Error message:", error.message);
+    console.error("SQL Error:", error.sqlMessage);
+    res.status(500).json({
+      error: "Failed to fetch purchase details",
+      details: error.sqlMessage || error.message,
+    });
   }
 };
 
@@ -377,6 +352,7 @@ export const createPurchase = async (req, res) => {
       customerId,
       totalAmount,
       paymentMethod = "Card",
+      purchaseDate,
       tickets = [],
       items = [],
       concessionItems = [],
@@ -389,13 +365,18 @@ export const createPurchase = async (req, res) => {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
+    // Use provided purchaseDate or current time
+    // Convert client date to MySQL datetime format
+    const purchaseDateValue =
+      purchaseDate || new Date().toISOString().slice(0, 19).replace("T", " ");
+
     // Create the purchase record
     const [purchaseResult] = await connection.query(
       `
       INSERT INTO Purchase (Customer_ID, Purchase_Date, Total_Amount, Payment_Method)
-      VALUES (?, NOW(), ?, ?)
+      VALUES (?, ?, ?, ?)
     `,
-      [customerId, totalAmount, paymentMethod]
+      [customerId, purchaseDateValue, totalAmount, paymentMethod]
     );
 
     const purchaseId = purchaseResult.insertId;
@@ -500,7 +481,7 @@ export const createPurchase = async (req, res) => {
       SELECT 
         Purchase_ID,
         Customer_ID,
-        DATE_FORMAT(Purchase_Date, '%Y-%m-%dT%H:%i:%s') as Purchase_Date,
+        Purchase_Date,
         CAST(Total_Amount AS DECIMAL(10,2)) as Total_Amount,
         Payment_Method
       FROM Purchase
@@ -509,9 +490,15 @@ export const createPurchase = async (req, res) => {
       [purchaseId]
     );
 
+    const formattedPurchase = {
+      ...createdPurchase[0],
+      Purchase_Date: formatDateForResponse(createdPurchase[0].Purchase_Date),
+      Total_Amount: parseFloat(createdPurchase[0].Total_Amount),
+    };
+
     res.status(201).json({
       message: "Purchase created successfully",
-      purchase: createdPurchase[0],
+      purchase: formattedPurchase,
       purchaseId,
     });
   } catch (error) {
@@ -520,5 +507,41 @@ export const createPurchase = async (req, res) => {
     res.status(500).json({ error: "Failed to create purchase" });
   } finally {
     connection.release();
+  }
+};
+
+export const getMembership = async (req, res) => {
+  try {
+    const { customerId } = req.params;
+
+    const [memberships] = await db.query(
+      `
+      SELECT 
+        Customer_ID,
+        Price,
+        Start_Date,
+        End_Date,
+        Membership_Status
+      FROM Membership
+      WHERE Customer_ID = ?
+    `,
+      [customerId]
+    );
+
+    if (memberships.length === 0) {
+      return res.json(null);
+    }
+
+    const membership = memberships[0];
+    res.json({
+      Customer_ID: membership.Customer_ID,
+      Price: parseFloat(membership.Price),
+      Start_Date: membership.Start_Date,
+      End_Date: membership.End_Date,
+      Membership_Status: membership.Membership_Status === 1,
+    });
+  } catch (error) {
+    console.error("Error fetching membership:", error);
+    res.status(500).json({ error: "Failed to fetch membership" });
   }
 };

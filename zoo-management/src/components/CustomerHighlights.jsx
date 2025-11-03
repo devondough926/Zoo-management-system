@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
 import {
@@ -11,7 +12,6 @@ import {
 import { exhibitsAPI, activitiesAPI } from "../services/customerAPI";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { getExhibitImage } from "../utils/imageMapping";
-import { useOptimizedFetch } from "../hooks/useOptimizedFetch";
 import { preloadImages } from "../utils/imagePreloader";
 
 const membershipBenefits = [
@@ -21,39 +21,37 @@ const membershipBenefits = [
   "Quarterly members newsletter",
 ];
 
-export function CustomerHighlights({ onNavigate }) {
+export function CustomerHighlights() {
+  const navigate = useNavigate();
   const [eventsIndex, setEventsIndex] = useState(0);
   const [exhibitsIndex, setExhibitsIndex] = useState(0);
+  const [exhibits, setExhibits] = useState([]);
+  const [activities, setActivities] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   const itemsPerPage = 3;
 
-  // Optimized data fetching with caching
-  const {
-    data: exhibitsData,
-    loading: exhibitsLoading,
-    error: exhibitsError,
-  } = useOptimizedFetch(
-    "exhibits",
-    () => exhibitsAPI.getAll(),
-    { cacheTime: 5 * 60 * 1000 } // Cache for 5 minutes
-  );
-
-  const {
-    data: activitiesData,
-    loading: activitiesLoading,
-    error: activitiesError,
-  } = useOptimizedFetch(
-    "activities",
-    () => activitiesAPI.getAll(),
-    { cacheTime: 5 * 60 * 1000 } // Cache for 5 minutes
-  );
-
-  // Ensure we always have arrays (handle null/undefined from cache)
-  const exhibits = exhibitsData || [];
-  const activities = activitiesData || [];
-
-  const loading = exhibitsLoading || activitiesLoading;
-  const error = exhibitsError || activitiesError;
+  // Fetch data without caching
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const [exhibitsData, activitiesData] = await Promise.all([
+          exhibitsAPI.getAll(),
+          activitiesAPI.getAll(),
+        ]);
+        setExhibits(exhibitsData || []);
+        setActivities(activitiesData || []);
+        setError(null);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
 
   // Preload exhibit images for better performance
   useEffect(() => {
@@ -69,18 +67,16 @@ export function CustomerHighlights({ onNavigate }) {
   }, [exhibits]);
 
   const handleMembershipClick = () => {
-    if (onNavigate) {
-      onNavigate("tickets");
-      setTimeout(() => {
-        const membershipsSection = document.getElementById("memberships");
-        if (membershipsSection) {
-          membershipsSection.scrollIntoView({
-            behavior: "smooth",
-            block: "start",
-          });
-        }
-      }, 100);
-    }
+    navigate("/tickets");
+    setTimeout(() => {
+      const membershipsSection = document.getElementById("memberships");
+      if (membershipsSection) {
+        membershipsSection.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }
+    }, 100);
   };
 
   // Get visible items (3 consecutive items, wrapping around if needed)

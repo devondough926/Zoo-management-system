@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Card,
   CardContent,
@@ -43,7 +44,8 @@ import { ZooLogo } from "../../components/ZooLogo";
 import { ImageWithFallback } from "../../components/figma/ImageWithFallback";
 import { useData } from "../../data/DataContext";
 
-export function ConcessionPortal({ user, onLogout, onNavigate }) {
+export function ConcessionPortal({ user, onLogout }) {
+  const navigate = useNavigate();
   const {
     concessionItems: menuItems,
     addConcessionItem,
@@ -218,7 +220,7 @@ export function ConcessionPortal({ user, onLogout, onNavigate }) {
               </div>
               <Button
                 variant="outline"
-                onClick={() => onNavigate("food")}
+                onClick={() => navigate("/food")}
                 className="border-teal-600 text-teal-600 cursor-pointer"
               >
                 <Coffee className="h-4 w-4 mr-2" />

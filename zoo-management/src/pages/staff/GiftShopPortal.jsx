@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Card,
   CardContent,
@@ -50,7 +51,8 @@ const giftShopCategories = [
   "Decorations & Others",
 ];
 
-export function GiftShopPortal({ user, onLogout, onNavigate }) {
+export function GiftShopPortal({ user, onLogout }) {
+  const navigate = useNavigate();
   const {
     items: shopItems,
     addItem,
@@ -248,7 +250,7 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
               </div>
               <Button
                 variant="outline"
-                onClick={() => onNavigate("shop")}
+                onClick={() => navigate("/shop")}
                 className="border-teal-600 text-teal-600 cursor-pointer"
               >
                 <ShoppingBag className="h-4 w-4 mr-2" />
