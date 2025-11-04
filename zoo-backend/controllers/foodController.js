@@ -1,6 +1,67 @@
 import pool from "../config/database.js";
 import { uploadToAzure, deleteFromAzure } from "../middleware/azureUpload.js";
 
+// ✅ Get concession statistics (revenue, items sold, top item)
+export const getConcessionStats = async (req, res) => {
+  try {
+    // Today's revenue and items sold
+    const [todayStats] = await pool.query(
+      `SELECT 
+        COALESCE(SUM(pci.Quantity * pci.Unit_Price), 0) AS todayRevenue,
+        COALESCE(SUM(pci.Quantity), 0) AS itemsSoldToday
+      FROM Purchase_Concession_Item pci
+      JOIN Purchase p ON pci.Purchase_ID = p.Purchase_ID
+      WHERE DATE(p.Purchase_Date) = CURDATE()`
+    );
+
+    // All-time revenue
+    const [allTimeStats] = await pool.query(
+      `SELECT 
+        COALESCE(SUM(pci.Quantity * pci.Unit_Price), 0) AS allTimeRevenue
+      FROM Purchase_Concession_Item pci`
+    );
+
+    // Top-selling item today
+    const [topItemStats] = await pool.query(
+      `SELECT 
+        ci.Item_Name, 
+        COALESCE(SUM(pci.Quantity), 0) AS Quantity
+      FROM Purchase_Concession_Item pci
+      JOIN Concession_Item ci ON ci.Concession_Item_ID = pci.Concession_Item_ID
+      JOIN Purchase p ON pci.Purchase_ID = p.Purchase_ID
+      WHERE DATE(p.Purchase_Date) = CURDATE()
+      GROUP BY ci.Item_Name
+      ORDER BY Quantity DESC
+      LIMIT 1`
+    );
+
+    const todayRevenue = parseFloat(todayStats[0]?.todayRevenue || 0);
+    const itemsSoldToday = parseInt(todayStats[0]?.itemsSoldToday || 0);
+    const allTimeRevenue = parseFloat(allTimeStats[0]?.allTimeRevenue || 0);
+    
+    const topItemToday = topItemStats.length > 0
+      ? {
+          Item_Name: topItemStats[0].Item_Name,
+          Quantity: parseInt(topItemStats[0].Quantity || 0),
+        }
+      : null;
+
+    res.json({
+      todayRevenue,
+      allTimeRevenue,
+      itemsSoldToday,
+      topItemToday,
+    });
+  } catch (error) {
+    console.error("❌ Error fetching concession stats:", error);
+    console.error("Error details:", error.message);
+    if (error.sqlMessage) {
+      console.error("SQL Error:", error.sqlMessage);
+    }
+    res.status(500).json({ error: "Failed to fetch concession statistics" });
+  }
+};
+
 // ✅ Get all food items
 export const getAllFood = async (req, res) => {
   try {

@@ -102,40 +102,45 @@ export function ConcessionPortal({ user, onLogout }) {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState(null);
 
-  // Calculate revenue from actual purchases
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const todayPurchaseConcessionItems = purchaseConcessionItems.filter((pci) => {
-    const purchase = purchases.find((p) => p.Purchase_ID === pci.Purchase_ID);
-    if (!purchase) return false;
-    const purchaseDate = new Date(purchase.Purchase_Date);
-    purchaseDate.setHours(0, 0, 0, 0);
-    return purchaseDate.getTime() === today.getTime();
+  // Stats state for real backend data
+  const [stats, setStats] = useState({
+    todayRevenue: 0,
+    allTimeRevenue: 0,
+    itemsSoldToday: 0,
+    topItemToday: null,
   });
 
-  const todayRevenue = todayPurchaseConcessionItems.reduce(
-    (sum, pci) => sum + pci.Unit_Price * pci.Quantity,
-    0
-  );
-  const allTimeRevenue = purchaseConcessionItems.reduce(
-    (sum, pci) => sum + pci.Unit_Price * pci.Quantity,
-    0
-  );
-  const itemsSoldToday = todayPurchaseConcessionItems.reduce(
-    (sum, pci) => sum + pci.Quantity,
-    0
-  );
+  // Fetch stats from backend on mount and periodically
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/stats/concession`);
+        if (!res.ok) throw new Error("Failed to fetch stats");
+        const data = await res.json();
+        setStats(data);
+      } catch (err) {
+        console.error("❌ Failed to load stats:", err);
+        toast.error("Failed to load statistics");
+      }
+    };
+
+    // Fetch immediately
+    fetchStats();
+
+    // Refresh every 30 seconds
+    const interval = setInterval(fetchStats, 30000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   // Top selling items with mock quantities (top 3 only)
+  // Note: These are still using mock data for the "Top 3 Selling Items" section
+  // The "Top-Selling Item Today" card uses real data from stats.topItemToday
   const topItems = [
     { item: menuItems[17], quantity: 189, rank: 1 }, // Spaghetti & Meatballs
     { item: menuItems[0], quantity: 167, rank: 2 }, // Classic Cheeseburger
     { item: menuItems[6], quantity: 154, rank: 3 }, // Chocolate Sundae
   ].filter((t) => t.item); // Filter out any undefined items
-
-  // Get top selling item today
-  const topSellingItemToday = topItems[0] || null;
 
   // Bottom selling items with mock quantities (bottom 3 only)
   const totalItemCount = menuItems.length;
@@ -329,10 +334,10 @@ export function ConcessionPortal({ user, onLogout }) {
               <div className="text-3xl text-green-600 mb-2">
                 $
                 {showRevenueAllTime
-                  ? allTimeRevenue.toLocaleString("en-US", {
+                  ? stats.allTimeRevenue.toLocaleString("en-US", {
                       minimumFractionDigits: 2,
                     })
-                  : todayRevenue.toLocaleString("en-US", {
+                  : stats.todayRevenue.toLocaleString("en-US", {
                       minimumFractionDigits: 2,
                     })}
               </div>
@@ -345,7 +350,7 @@ export function ConcessionPortal({ user, onLogout }) {
           <Card>
             <CardContent className="pt-6 text-center">
               <div className="text-3xl text-green-600 mb-2">
-                {itemsSoldToday}
+                {stats.itemsSoldToday}
               </div>
               <p className="text-gray-700">Items Sold Today</p>
             </CardContent>
@@ -353,14 +358,14 @@ export function ConcessionPortal({ user, onLogout }) {
 
           <Card>
             <CardContent className="pt-6 text-center">
-              {topSellingItemToday ? (
+              {stats.topItemToday ? (
                 <>
                   <div className="text-2xl text-green-600 mb-2">
-                    {topSellingItemToday.item.Item_Name}
+                    {stats.topItemToday.Item_Name}
                   </div>
                   <p className="text-gray-700">Top-Selling Item Today</p>
                   <p className="text-sm text-gray-500">
-                    ({topSellingItemToday.quantity} sold)
+                    ({stats.topItemToday.Quantity} sold)
                   </p>
                 </>
               ) : (

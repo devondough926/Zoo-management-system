@@ -1,6 +1,11 @@
 import express from "express";
 import { upload } from "../middleware/azureUpload.js";
-import { getAllFood, addFood, updateFood, deleteFood } from "../controllers/foodController.js";
+import { 
+  getAllFood, 
+  addFood, 
+  updateFood, 
+  deleteFood
+} from "../controllers/foodController.js";
 
 const router = express.Router();
 

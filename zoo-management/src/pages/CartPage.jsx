@@ -68,7 +68,7 @@ export function CartPage({
     );
 
   const subtotal = cart.reduce(
-    (sum, item) => sum + item.price * item.quantity,
+    (sum, item) => sum + parseFloat(item.price || 0) * item.quantity,
     0
   );
 
@@ -76,7 +76,7 @@ export function CartPage({
   const memberDiscount = hasMembership
     ? cart
         .filter((item) => item.id < 9000 && item.type !== "ticket")
-        .reduce((sum, item) => sum + item.price * item.quantity * 0.1, 0)
+        .reduce((sum, item) => sum + parseFloat(item.price || 0) * item.quantity * 0.1, 0)
     : 0;
 
   const discountedSubtotal = subtotal - memberDiscount;
@@ -173,7 +173,8 @@ export function CartPage({
             });
           } else {
             // Apply member discount to eligible gift shop items
-            const unitPrice = hasMembership ? item.price * 0.9 : item.price;
+            const price = parseFloat(item.price || 0);
+            const unitPrice = hasMembership ? price * 0.9 : price;
             purchaseData.items.push({
               itemId: item.id,
               quantity: item.quantity,
@@ -182,7 +183,8 @@ export function CartPage({
           }
         } else if (item.type === "food") {
           // Apply member discount to eligible food items
-          const unitPrice = hasMembership ? item.price * 0.9 : item.price;
+          const price = parseFloat(item.price || 0);
+          const unitPrice = hasMembership ? price * 0.9 : price;
           purchaseData.concessionItems.push({
             concessionItemId: item.id,
             quantity: item.quantity,
@@ -216,16 +218,17 @@ export function CartPage({
             Ticket_ID: Math.random(), // Backend creates actual IDs
             Purchase_ID: response.purchaseId,
             Ticket_Type: ticketType,
-            Price: item.price,
+            Price: parseFloat(item.price || 0),
             Quantity: item.quantity,
           });
         } else if (item.type === "item") {
+          const price = parseFloat(item.price || 0);
           const unitPrice =
             item.id === 9000
               ? membershipPrice
               : hasMembership
-              ? item.price * 0.9
-              : item.price;
+              ? price * 0.9
+              : price;
           addPurchaseItem({
             Purchase_ID: response.purchaseId,
             Item_ID: item.id,
@@ -233,7 +236,8 @@ export function CartPage({
             Unit_Price: unitPrice,
           });
         } else if (item.type === "food") {
-          const unitPrice = hasMembership ? item.price * 0.9 : item.price;
+          const price = parseFloat(item.price || 0);
+          const unitPrice = hasMembership ? price * 0.9 : price;
           addPurchaseConcessionItem({
             Purchase_ID: response.purchaseId,
             Concession_Item_ID: item.id,
@@ -353,7 +357,7 @@ export function CartPage({
             Ticket_ID: nextTicketId++,
             Purchase_ID: newPurchaseId,
             Ticket_Type: ticketType,
-            Price: item.price,
+            Price: parseFloat(item.price || 0),
             Quantity: item.quantity,
           });
         } else if (item.type === "item") {
@@ -365,7 +369,8 @@ export function CartPage({
               Unit_Price: membershipPrice,
             });
           } else {
-            const unitPrice = hasMembership ? item.price * 0.9 : item.price;
+            const price = parseFloat(item.price || 0);
+            const unitPrice = hasMembership ? price * 0.9 : price;
             addPurchaseItem({
               Purchase_ID: newPurchaseId,
               Item_ID: item.id,
@@ -374,9 +379,10 @@ export function CartPage({
             });
           }
         } else if (item.type === "food") {
+          const price = parseFloat(item.price || 0);
           const concessionUnitPrice = hasMembership
-            ? item.price * 0.9
-            : item.price;
+            ? price * 0.9
+            : price;
           addPurchaseConcessionItem({
             Purchase_ID: newPurchaseId,
             Concession_Item_ID: item.id,
@@ -507,7 +513,7 @@ export function CartPage({
                             <div className="flex-1">
                               <h3 className="font-medium">{item.name}</h3>
                               <p className="text-sm text-gray-600">
-                                ${item.price.toFixed(2)} each
+                                ${parseFloat(item.price || 0).toFixed(2)} each
                               </p>
                               <p className="text-xs text-gray-500 mt-1">
                                 {item.id === 9000
@@ -543,7 +549,7 @@ export function CartPage({
                               </div>
 
                               <span className="text-lg text-green-600 font-semibold min-w-[80px] text-right">
-                                ${(item.price * item.quantity).toFixed(2)}
+                                ${(parseFloat(item.price || 0) * item.quantity).toFixed(2)}
                               </span>
 
                               <Button

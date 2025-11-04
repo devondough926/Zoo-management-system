@@ -9,6 +9,7 @@ import adminRoutes from "./routes/adminRoutes.js";
 import customerRoutes from "./routes/customerRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
 import foodRoutes from "./routes/foodRoutes.js";
+import statsRoutes from "./routes/statsRoutes.js";
 import { isAzureConfigured } from "./middleware/azureUpload.js";
 
 dotenv.config();
@@ -64,6 +65,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/customer", customerRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/food", foodRoutes);
+app.use("/api/stats", statsRoutes);
 
 // 404 handler
 app.use((req, res) => {
