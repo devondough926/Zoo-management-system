@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Card,
@@ -32,7 +32,7 @@ import { useData } from "../data/DataContext";
 import { usePricing } from "../data/PricingContext";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { useHeroImage } from "../utils/heroImages";
-import { purchasesAPI } from "../services/customerAPI";
+import { purchasesAPI, membershipAPI } from "../services/customerAPI";
 
 export function CartPage({
   cart,
@@ -59,13 +59,35 @@ export function CartPage({
   const [showClearDialog, setShowClearDialog] = useState(false);
   const [showCheckoutDialog, setShowCheckoutDialog] = useState(false);
 
-  // Check if current user has an active membership
+  // Track membership fetched directly from backend for current user
+  const [backendMembership, setBackendMembership] = useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+    const fetchMembership = async () => {
+      if (!user || !("Customer_ID" in user)) return;
+      try {
+        const m = await membershipAPI.getMembership(user.Customer_ID);
+        if (mounted) setBackendMembership(m);
+      } catch (err) {
+        if (mounted) setBackendMembership(null);
+      }
+    };
+
+    fetchMembership();
+    return () => {
+      mounted = false;
+    };
+  }, [user]);
+
+  // Check if current user has an active membership (DataContext OR backend)
   const hasMembership =
     user &&
     "Customer_ID" in user &&
-    memberships.some(
+    (memberships.some(
       (m) => m.Customer_ID === user.Customer_ID && m.Membership_Status
-    );
+    ) ||
+      (backendMembership && backendMembership.Membership_Status));
 
   const subtotal = cart.reduce(
     (sum, item) => sum + parseFloat(item.price || 0) * item.quantity,
@@ -75,8 +97,12 @@ export function CartPage({
   // Apply 10% member discount to items and food (not tickets or memberships)
   const memberDiscount = hasMembership
     ? cart
-        .filter((item) => item.id < 9000 && item.type !== "ticket")
-        .reduce((sum, item) => sum + parseFloat(item.price || 0) * item.quantity * 0.1, 0)
+        .filter((item) => item.type !== "ticket" && item.type !== "membership")
+        .reduce(
+          (sum, item) =>
+            sum + parseFloat(item.price || 0) * item.quantity * 0.1,
+          0
+        )
     : 0;
 
   const discountedSubtotal = subtotal - memberDiscount;
@@ -85,7 +111,7 @@ export function CartPage({
 
   const handleIncreaseQuantity = (item) => {
     // Prevent increasing membership quantity beyond 1
-    if (item.id === 9000) {
+    if (item.type === "membership") {
       toast.error("You can only have one membership in the cart!");
       return;
     }
@@ -127,7 +153,7 @@ export function CartPage({
       return;
     }
 
-    const hasMembershipInCart = cart.some((item) => item.id === 9000);
+    const hasMembershipInCart = cart.some((item) => item.type === "membership");
 
     try {
       // Get current local datetime in ISO format
@@ -160,29 +186,22 @@ export function CartPage({
             price: item.price,
             quantity: item.quantity,
           });
+        } else if (item.type === "membership") {
+          // Handle membership separately
+          purchaseData.membership = {
+            price: membershipPrice,
+          };
         } else if (item.type === "item") {
-          if (item.id === 9000) {
-            // Handle membership
-            purchaseData.membership = {
-              price: membershipPrice,
-            };
-            purchaseData.items.push({
-              itemId: item.id,
-              quantity: item.quantity,
-              unitPrice: membershipPrice,
-            });
-          } else {
-            // Apply member discount to eligible gift shop items
-            const price = parseFloat(item.price || 0);
-            const unitPrice = hasMembership ? price * 0.9 : price;
-            purchaseData.items.push({
-              itemId: item.id,
-              quantity: item.quantity,
-              unitPrice: unitPrice,
-            });
-          }
+          // Apply member discount to gift shop items
+          const price = parseFloat(item.price || 0);
+          const unitPrice = hasMembership ? price * 0.9 : price;
+          purchaseData.items.push({
+            itemId: item.id,
+            quantity: item.quantity,
+            unitPrice: unitPrice,
+          });
         } else if (item.type === "food") {
-          // Apply member discount to eligible food items
+          // Apply member discount to food items
           const price = parseFloat(item.price || 0);
           const unitPrice = hasMembership ? price * 0.9 : price;
           purchaseData.concessionItems.push({
@@ -221,14 +240,12 @@ export function CartPage({
             Price: parseFloat(item.price || 0),
             Quantity: item.quantity,
           });
+        } else if (item.type === "membership") {
+          // Membership handled separately by backend
+          // No need to add to Purchase_Item table
         } else if (item.type === "item") {
           const price = parseFloat(item.price || 0);
-          const unitPrice =
-            item.id === 9000
-              ? membershipPrice
-              : hasMembership
-              ? price * 0.9
-              : price;
+          const unitPrice = hasMembership ? price * 0.9 : price;
           addPurchaseItem({
             Purchase_ID: response.purchaseId,
             Item_ID: item.id,
@@ -360,29 +377,21 @@ export function CartPage({
             Price: parseFloat(item.price || 0),
             Quantity: item.quantity,
           });
+        } else if (item.type === "membership") {
+          // Membership handled separately by backend
+          // No need to add to Purchase_Item table
         } else if (item.type === "item") {
-          if (item.id === 9000) {
-            addPurchaseItem({
-              Purchase_ID: newPurchaseId,
-              Item_ID: item.id,
-              Quantity: item.quantity,
-              Unit_Price: membershipPrice,
-            });
-          } else {
-            const price = parseFloat(item.price || 0);
-            const unitPrice = hasMembership ? price * 0.9 : price;
-            addPurchaseItem({
-              Purchase_ID: newPurchaseId,
-              Item_ID: item.id,
-              Quantity: item.quantity,
-              Unit_Price: unitPrice,
-            });
-          }
+          const price = parseFloat(item.price || 0);
+          const unitPrice = hasMembership ? price * 0.9 : price;
+          addPurchaseItem({
+            Purchase_ID: newPurchaseId,
+            Item_ID: item.id,
+            Quantity: item.quantity,
+            Unit_Price: unitPrice,
+          });
         } else if (item.type === "food") {
           const price = parseFloat(item.price || 0);
-          const concessionUnitPrice = hasMembership
-            ? price * 0.9
-            : price;
+          const concessionUnitPrice = hasMembership ? price * 0.9 : price;
           addPurchaseConcessionItem({
             Purchase_ID: newPurchaseId,
             Concession_Item_ID: item.id,
@@ -516,7 +525,7 @@ export function CartPage({
                                 ${parseFloat(item.price || 0).toFixed(2)} each
                               </p>
                               <p className="text-xs text-gray-500 mt-1">
-                                {item.id === 9000
+                                {item.type === "membership"
                                   ? "Membership"
                                   : item.type === "ticket"
                                   ? "Ticket"
@@ -549,7 +558,10 @@ export function CartPage({
                               </div>
 
                               <span className="text-lg text-green-600 font-semibold min-w-[80px] text-right">
-                                ${(parseFloat(item.price || 0) * item.quantity).toFixed(2)}
+                                $
+                                {(
+                                  parseFloat(item.price || 0) * item.quantity
+                                ).toFixed(2)}
                               </span>
 
                               <Button

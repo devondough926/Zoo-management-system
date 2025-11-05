@@ -23,9 +23,10 @@ const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000/api";
 
 export function FoodPage({ addToCart }) {
   const { memberships } = useData();
+  const { user, userType } = useAuth();
+  const heroImage = useHeroImage("food");
   const [concessionItems, setConcessionItems] = useState([]);
 
-  // Fetch concession items from backend on mount
   useEffect(() => {
     const fetchConcessionItems = async () => {
       try {
@@ -40,14 +41,7 @@ export function FoodPage({ addToCart }) {
     };
     fetchConcessionItems();
   }, []);
-  const { user, userType } = useAuth();
-  const heroImage = useHeroImage("food");
 
-  // Zone mapping based on Location_ID from concessionStands in mockData
-  // Stand 1 (Safari Grill) -> Location 1 -> Zone A
-  // Stand 2 (Polar Cafe) -> Location 4 -> Zone D
-  // Stand 3 (Rainforest Refreshments) -> Location 3 -> Zone C
-  // Stand 4 (Desert Diner) -> Location 2 -> Zone B
   const standInfo = useMemo(() => {
     return [
       {
@@ -59,7 +53,7 @@ export function FoodPage({ addToCart }) {
       {
         id: 2,
         name: "Polar Cafe",
-        zone: "Zone D",
+        zone: "Zone B",
         specialty: "Ice Cream & Desserts",
       },
       {
@@ -71,13 +65,12 @@ export function FoodPage({ addToCart }) {
       {
         id: 4,
         name: "Desert Diner",
-        zone: "Zone B",
+        zone: "Zone D",
         specialty: "Pizza & Italian",
       },
     ];
   }, []);
 
-  // Group items by stand
   const itemsByStand = useMemo(() => {
     return standInfo.map((stand) => {
       const standItems = concessionItems.filter(
@@ -102,7 +95,6 @@ export function FoodPage({ addToCart }) {
     "Desert Diner": 0,
   });
 
-  // Check if current user is a customer with active membership
   const hasMembership =
     user && userType === "customer" && memberships
       ? memberships.some(
@@ -126,14 +118,13 @@ export function FoodPage({ addToCart }) {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Hero Section */}
       <section className="relative bg-gradient-to-br from-green-600 to-emerald-700 text-white py-16 overflow-hidden">
-        {/* Background Image */}
         <div className="absolute inset-0 z-0">
           <ImageWithFallback
             src={heroImage}
             alt="Zoo Food and Dining"
             className="w-full h-full object-cover"
+            priority={true}
           />
           <div
             className="absolute inset-0"
@@ -144,7 +135,6 @@ export function FoodPage({ addToCart }) {
           />
         </div>
 
-        {/* Content */}
         <div className="container mx-auto px-6 relative z-10">
           <h1 className="text-4xl md:text-5xl mb-4 drop-shadow-lg">
             Food & Dining
@@ -156,7 +146,6 @@ export function FoodPage({ addToCart }) {
         </div>
       </section>
 
-      {/* Food Stands Info */}
       <section className="py-16 bg-white">
         <div className="container mx-auto px-6">
           <h2 className="text-3xl mb-8 text-center">Our Concession Stands</h2>
@@ -184,7 +173,6 @@ export function FoodPage({ addToCart }) {
         </div>
       </section>
 
-      {/* Menu by Stand with Carousel */}
       <section className="py-16">
         <div className="container mx-auto px-6">
           <h2 className="text-3xl mb-8 text-center">Full Menu</h2>
@@ -196,7 +184,6 @@ export function FoodPage({ addToCart }) {
                 currentIndex + 4
               );
 
-              // If we don't have 4 items, wrap around
               if (displayedItems.length < 4 && stand.items.length > 0) {
                 displayedItems.push(
                   ...stand.items.slice(0, 4 - displayedItems.length)
