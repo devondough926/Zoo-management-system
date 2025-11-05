@@ -10,6 +10,7 @@ import {
   WifiOff,
   Check,
   Crown,
+  UtensilsCrossed,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useState, useEffect } from "react";
@@ -49,6 +50,7 @@ const formatNumber = (num) => {
 const formatDateTime = (dateString) => {
   if (!dateString) return "N/A";
 
+  // Remove 'T' and extract components
   let dateStr = dateString.replace("T", " ");
   const parts = dateStr.match(
     /(\d{4})-(\d{2})-(\d{2})\s(\d{2}):(\d{2}):(\d{2})/
@@ -57,18 +59,38 @@ const formatDateTime = (dateString) => {
   if (!parts) return "Invalid Date";
 
   const [, year, month, day, hour, minute, second] = parts;
-  const date = new Date(year, month - 1, day, hour, minute, second);
 
-  if (isNaN(date.getTime())) return "Invalid Date";
+  // Parse components as integers
+  const yearNum = parseInt(year);
+  const monthNum = parseInt(month);
+  const dayNum = parseInt(day);
+  const hourNum = parseInt(hour);
+  const minuteNum = parseInt(minute);
 
-  return date.toLocaleString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  });
+  // Format month name
+  const monthNames = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ];
+  const monthName = monthNames[monthNum - 1];
+
+  // Convert to 12-hour format
+  const isPM = hourNum >= 12;
+  const hour12 = hourNum % 12 || 12;
+  const ampm = isPM ? "PM" : "AM";
+
+  // Format: Nov 4, 2025, 12:29 PM
+  return `${monthName} ${dayNum}, ${yearNum}, ${hour12}:${minute} ${ampm}`;
 };
 
 export function CustomerDashboard({ user }) {
@@ -444,22 +466,39 @@ export function CustomerDashboard({ user }) {
               </CardContent>
             </Card>
 
+            <Card className="shadow-lg border-none bg-white">
+              <CardContent className="pt-6 text-center">
+                <button
+                  onClick={() => navigate("/food")}
+                  className="w-20 h-20 bg-gradient-to-br from-green-100 to-green-200 rounded-2xl flex items-center justify-center mx-auto mb-4 hover:from-green-600 hover:to-green-700 hover:scale-110 transition-all duration-300 shadow-lg cursor-pointer group rounded-xl"
+                >
+                  <UtensilsCrossed className="h-10 w-10 text-orange-600 group-hover:text-white transition-colors" />
+                </button>
+                <h3 className="mb-2 text-xl font-semibold text-gray-800">
+                  Order Food
+                </h3>
+                <p className="text-sm text-gray-600">
+                  Browse menu and order from concession stands
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </section>
+
+      {/* Recent Purchases */}
+      <section className="py-12 bg-gray-100">
+        <div className="container mx-auto px-6">
+          <div className="flex items-center justify-between mb-8">
+            <h2 className="text-3xl font-bold text-gray-800">
+              Recent Purchases
+            </h2>
             <Dialog open={orderHistoryOpen} onOpenChange={setOrderHistoryOpen}>
-              <Card className="shadow-lg border-none bg-white">
-                <CardContent className="pt-6 text-center">
-                  <DialogTrigger asChild>
-                    <button className="w-20 h-20 bg-gradient-to-br from-green-100 to-green-200 rounded-2xl flex items-center justify-center mx-auto mb-4 hover:from-green-600 hover:to-green-700 hover:scale-110 transition-all duration-300 shadow-lg cursor-pointer group rounded-xl">
-                      <Receipt className="h-10 w-10 text-blue-600 group-hover:text-white transition-colors" />
-                    </button>
-                  </DialogTrigger>
-                  <h3 className="mb-2 text-xl font-semibold text-gray-800">
-                    Order History
-                  </h3>
-                  <p className="text-sm text-gray-600">
-                    View all past purchases and receipts
-                  </p>
-                </CardContent>
-              </Card>
+              <DialogTrigger asChild>
+                <button className="text-green-600 hover:text-green-700 font-semibold underline cursor-pointer transition-colors">
+                  View All
+                </button>
+              </DialogTrigger>
               <DialogContent className="max-w-3xl max-h-[80vh]">
                 <DialogHeader>
                   <DialogTitle>Order History</DialogTitle>
@@ -515,15 +554,6 @@ export function CustomerDashboard({ user }) {
               </DialogContent>
             </Dialog>
           </div>
-        </div>
-      </section>
-
-      {/* Recent Purchases */}
-      <section className="py-12 bg-gray-100">
-        <div className="container mx-auto px-6">
-          <h2 className="text-3xl font-bold mb-8 text-gray-800">
-            Recent Purchases
-          </h2>
           <div className="max-w-4xl">
             <Card className="shadow-xl border-none bg-white">
               <CardContent className="p-6">

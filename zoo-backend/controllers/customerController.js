@@ -2,7 +2,24 @@ import db from "../config/database.js";
 
 const formatDateForResponse = (date) => {
   if (!date) return null;
-  return new Date(date).toISOString().slice(0, 19).replace("T", " ");
+
+  // If it's already a string in the correct format, return as-is
+  if (typeof date === "string") {
+    // Check if it matches YYYY-MM-DD HH:MM:SS format
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(date)) {
+      return date;
+    }
+  }
+
+  // For Date objects, format manually to avoid timezone conversion
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const seconds = String(date.getSeconds()).padStart(2, "0");
+
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 };
 
 export const getAllExhibits = async (req, res) => {
@@ -200,7 +217,7 @@ export const getPurchaseHistory = async (req, res) => {
       SELECT 
         Purchase_ID,
         Customer_ID,
-        Purchase_Date,
+        DATE_FORMAT(Purchase_Date, '%Y-%m-%d %H:%i:%s') as Purchase_Date,
         CAST(Total_Amount AS DECIMAL(10,2)) as Total_Amount,
         Payment_Method
       FROM Purchase
@@ -216,7 +233,6 @@ export const getPurchaseHistory = async (req, res) => {
       .map((purchase, index) => ({
         ...purchase,
         Order_Number: index + 1,
-        Purchase_Date: formatDateForResponse(purchase.Purchase_Date),
         Total_Amount: parseFloat(purchase.Total_Amount),
       }))
       .reverse();
@@ -433,15 +449,6 @@ export const createPurchase = async (req, res) => {
           ? parseFloat(configRows[0].Config_Value)
           : membership.price || 149.99;
 
-      // Insert membership as a purchase item for revenue tracking (Item_ID 9000)
-      await connection.query(
-        `
-        INSERT INTO Purchase_Item (Purchase_ID, Item_ID, Quantity, Unit_Price)
-        VALUES (?, 9000, 1, ?)
-      `,
-        [purchaseId, membershipPrice]
-      );
-
       // Check if customer already has a membership
       const [existingMembership] = await connection.query(
         `
@@ -553,12 +560,20 @@ export const getMembership = async (req, res) => {
     }
 
     const membership = memberships[0];
+    // Normalize Membership_Status which may be stored as numeric, boolean, or string (e.g., 'Active')
+    const rawStatus = membership.Membership_Status;
+    const normalizedStatus =
+      rawStatus === 1 ||
+      rawStatus === "1" ||
+      rawStatus === true ||
+      (typeof rawStatus === "string" && rawStatus.toLowerCase() === "active");
+
     res.json({
       Customer_ID: membership.Customer_ID,
       Price: parseFloat(membership.Price),
       Start_Date: membership.Start_Date,
       End_Date: membership.End_Date,
-      Membership_Status: membership.Membership_Status === 1,
+      Membership_Status: !!normalizedStatus,
     });
   } catch (error) {
     console.error("Error fetching membership:", error);

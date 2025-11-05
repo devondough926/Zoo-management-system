@@ -879,8 +879,7 @@ export const getRevenueData = async (req, res) => {
       SELECT COALESCE(SUM(pi.Unit_Price * pi.Quantity), 0) as revenue
       FROM Purchase_Item pi
       JOIN Purchase p ON pi.Purchase_ID = p.Purchase_ID
-      WHERE pi.Item_ID != 9000
-      ${dateFilter ? "AND " + dateFilter.replace("WHERE ", "") : ""}
+      ${dateFilter}
     `,
       params
     );
@@ -896,14 +895,13 @@ export const getRevenueData = async (req, res) => {
       params
     );
 
-    // Get membership revenue
+    // Get membership revenue from Membership table
     const [membershipRevenue] = await db.query(
       `
-      SELECT COALESCE(SUM(pi.Unit_Price * pi.Quantity), 0) as revenue
-      FROM Purchase_Item pi
-      JOIN Purchase p ON pi.Purchase_ID = p.Purchase_ID
-      WHERE pi.Item_ID = 9000
-      ${dateFilter ? "AND " + dateFilter.replace("WHERE ", "") : ""}
+      SELECT COALESCE(SUM(m.Price), 0) as revenue
+      FROM Membership m
+      JOIN Purchase p ON m.Purchase_ID = p.Purchase_ID
+      ${dateFilter}
     `,
       params
     );

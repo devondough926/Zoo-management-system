@@ -73,6 +73,9 @@ import {
   CreditCard,
   Map,
   Building2,
+  Filter,
+  AlertCircle,
+  Activity,
 } from "lucide-react";
 import { useData } from "../data/DataContext";
 import { toast } from "sonner";
@@ -133,12 +136,22 @@ export function AdminPortal({ user, onLogout }) {
   const [viewZoneEmployees, setViewZoneEmployees] = useState(null);
   const [isSalaryManagementOpen, setIsSalaryManagementOpen] = useState(false);
   const [supervisorSearch, setSupervisorSearch] = useState("");
+  const [staffSearch, setStaffSearch] = useState("");
   const [editingExhibit, setEditingExhibit] = useState(null);
   const [isAddAnimalOpen, setIsAddAnimalOpen] = useState(false);
   const [deleteConfirmAnimal, setDeleteConfirmAnimal] = useState(null);
   const [editingAnimal, setEditingAnimal] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [isSaving, setIsSaving] = useState(false);
+
+  // Health Status Report Filters
+  const [healthZoneFilter, setHealthZoneFilter] = useState("All");
+  const [healthEnclosureFilter, setHealthEnclosureFilter] = useState("All");
+  const [genderFilter, setGenderFilter] = useState("All");
+  const [ageFilter, setAgeFilter] = useState("All");
+
+  // Animal Management Filters
+  const [animalExhibitFilter, setAnimalExhibitFilter] = useState("All");
 
   const [salaries, setSalaries] = useState({
     2: 72000,
@@ -380,12 +393,52 @@ export function AdminPortal({ user, onLogout }) {
   };
 
   const sortedEmployees = useMemo(() => {
-    return [...allEmployees].sort((a, b) =>
-      a.Last_Name.localeCompare(b.Last_Name)
-    );
-  }, [allEmployees]);
+    let filtered = [...allEmployees];
 
-  const displayAnimals = allAnimalsDB;
+    // Apply search filter
+    if (staffSearch.trim()) {
+      const searchLower = staffSearch.toLowerCase();
+      filtered = filtered.filter((emp) => {
+        const firstName = emp.First_Name?.toLowerCase() || "";
+        const lastName = emp.Last_Name?.toLowerCase() || "";
+        const employeeId = emp.Employee_ID?.toString() || "";
+
+        return (
+          firstName.includes(searchLower) ||
+          lastName.includes(searchLower) ||
+          employeeId.includes(searchLower)
+        );
+      });
+    }
+
+    // Sort by last name
+    return filtered.sort((a, b) => a.Last_Name.localeCompare(b.Last_Name));
+  }, [allEmployees, staffSearch]);
+
+  const displayAnimals = useMemo(() => {
+    if (animalExhibitFilter === "All") {
+      return allAnimalsDB;
+    }
+    return allAnimalsDB.filter(
+      (animal) => animal.Enclosure_ID === animalExhibitFilter
+    );
+  }, [allAnimalsDB, animalExhibitFilter]);
+
+  // Group animals by exhibit
+  const animalsByExhibit = useMemo(() => {
+    const grouped = {};
+    displayAnimals.forEach((animal) => {
+      const enclosure = allEnclosures.find(
+        (e) => e.Enclosure_ID === animal.Enclosure_ID
+      );
+      const enclosureName = enclosure?.Enclosure_Name || "Unknown";
+      if (!grouped[enclosureName]) {
+        grouped[enclosureName] = [];
+      }
+      grouped[enclosureName].push(animal);
+    });
+    return grouped;
+  }, [displayAnimals, allEnclosures]);
 
   const ticketRevenue = revenueData?.ticketRevenue || 0;
   const membershipRevenue = revenueData?.membershipRevenue || 0;
@@ -393,7 +446,7 @@ export function AdminPortal({ user, onLogout }) {
   const foodRevenue = revenueData?.foodRevenue || 0;
   const totalRevenue = revenueData?.totalRevenue || 0;
 
-  const totalAnimals = displayAnimals.length;
+  const totalAnimals = allAnimalsDB.length;
   const totalEmployees = allEmployees.length;
   const activeMemb = allMemberships.filter((m) => m.Membership_Status).length;
 
@@ -1234,6 +1287,74 @@ export function AdminPortal({ user, onLogout }) {
           </Card>
         </section>
 
+        {/* Revenue Analytics Charts */}
+        <section id="analytics">
+          <h2 className="text-2xl mb-6 flex items-center gap-2">
+            <TrendingUp className="h-6 w-6" /> Analytics
+          </h2>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Bar Chart - Ticket Stats */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Ticket Statistics</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={ticketStats}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="type" />
+                    <YAxis
+                      allowDecimals={false}
+                      label={{
+                        value: "Amount",
+                        angle: -90,
+                        position: "insideLeft",
+                      }}
+                    />
+                    <Tooltip />
+                    <Legend />
+                    <Bar dataKey="sold" fill="#4CAF50" name="Tickets Sold" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            {/* Pie Chart */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Revenue Distribution</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie
+                      data={revenueBreakdown.map((item) => ({
+                        name: item.category,
+                        value: item.amount,
+                      }))}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={({ name, percent }) =>
+                        `${name}: ${(percent * 100).toFixed(0)}%`
+                      }
+                      outerRadius={80}
+                      fill="#8884d8"
+                      dataKey="value"
+                    >
+                      <Cell fill="#4CAF50" />
+                      <Cell fill="#9C27B0" />
+                      <Cell fill="#2196F3" />
+                      <Cell fill="#FF9800" />
+                    </Pie>
+                    <Tooltip formatter={(value) => `$${value.toFixed(2)}`} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          </div>
+        </section>
+
         {/* Pricing Management */}
         <section id="pricing">
           <div className="flex items-center justify-between mb-6">
@@ -1251,20 +1372,25 @@ export function AdminPortal({ user, onLogout }) {
 
           <Card>
             <CardContent className="pt-6">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Ticket Prices */}
-                <div>
-                  <h3 className="font-semibold mb-3 text-green-700">
-                    Day Pass Tickets
-                  </h3>
-                  <div className="space-y-2">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-semibold text-lg text-green-700 flex items-center gap-2">
+                      <Ticket className="h-5 w-5" />
+                      Day Pass Tickets
+                    </h3>
+                  </div>
+                  <div className="space-y-3">
                     {Object.entries(ticketPrices).map(([type, price]) => (
                       <div
                         key={type}
-                        className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-200"
+                        className="flex items-center justify-between p-4 bg-gradient-to-r from-green-50 to-green-100 rounded-xl border-2 border-green-300 hover:shadow-md transition-shadow"
                       >
-                        <span className="text-gray-700">{type}</span>
-                        <span className="font-semibold text-green-600">
+                        <span className="text-gray-800 font-medium capitalize">
+                          {type}
+                        </span>
+                        <span className="font-bold text-green-700 text-lg">
                           ${price.toFixed(2)}
                         </span>
                       </div>
@@ -1273,18 +1399,23 @@ export function AdminPortal({ user, onLogout }) {
                 </div>
 
                 {/* Membership Price */}
-                <div>
-                  <h3 className="font-semibold mb-3 text-purple-700">
-                    Annual Membership
-                  </h3>
-                  <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-gray-700">Annual Membership</span>
-                      <span className="font-semibold text-purple-600 text-xl">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-semibold text-lg text-purple-700 flex items-center gap-2">
+                      <Crown className="h-5 w-5" />
+                      Annual Membership
+                    </h3>
+                  </div>
+                  <div className="p-6 bg-gradient-to-br from-purple-50 via-purple-100 to-pink-50 rounded-xl border-2 border-purple-300 hover:shadow-md transition-shadow">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-gray-800 font-semibold text-lg">
+                        Annual Membership
+                      </span>
+                      <span className="font-bold text-purple-700 text-2xl">
                         ${membershipPrice.toFixed(2)}
                       </span>
                     </div>
-                    <p className="text-sm text-gray-600">
+                    <p className="text-sm text-gray-600 bg-white/50 p-2 rounded-lg">
                       Unlimited year-round access + benefits
                     </p>
                   </div>
@@ -1388,74 +1519,6 @@ export function AdminPortal({ user, onLogout }) {
               </div>
             </DialogContent>
           </Dialog>
-        </section>
-
-        {/* Revenue Analytics Charts */}
-        <section id="analytics">
-          <h2 className="text-2xl mb-6 flex items-center gap-2">
-            <TrendingUp className="h-6 w-6" /> Analytics
-          </h2>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Bar Chart - Ticket Stats */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Ticket Statistics</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={ticketStats}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="type" />
-                    <YAxis
-                      allowDecimals={false}
-                      label={{
-                        value: "Amount",
-                        angle: -90,
-                        position: "insideLeft",
-                      }}
-                    />
-                    <Tooltip />
-                    <Legend />
-                    <Bar dataKey="sold" fill="#4CAF50" name="Tickets Sold" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-
-            {/* Pie Chart */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Revenue Distribution</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <PieChart>
-                    <Pie
-                      data={revenueBreakdown.map((item) => ({
-                        name: item.category,
-                        value: item.amount,
-                      }))}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      label={({ name, percent }) =>
-                        `${name}: ${(percent * 100).toFixed(0)}%`
-                      }
-                      outerRadius={80}
-                      fill="#8884d8"
-                      dataKey="value"
-                    >
-                      <Cell fill="#4CAF50" />
-                      <Cell fill="#9C27B0" />
-                      <Cell fill="#2196F3" />
-                      <Cell fill="#FF9800" />
-                    </Pie>
-                    <Tooltip formatter={(value) => `$${value.toFixed(2)}`} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          </div>
         </section>
 
         {/* Zone Overview */}
@@ -1706,83 +1769,114 @@ export function AdminPortal({ user, onLogout }) {
           </div>
           <Card>
             <CardContent className="pt-6">
-              <p className="text-sm text-gray-600 mb-4">
-                Total Employees: {allEmployees.length}
-              </p>
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-sm text-gray-600">
+                  Total Employees: {allEmployees.length}
+                  {staffSearch.trim() && (
+                    <span className="ml-2 text-blue-600">
+                      (Showing {sortedEmployees.length} matching)
+                    </span>
+                  )}
+                </p>
+                <div className="relative w-80">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input
+                    placeholder="Search by name or ID..."
+                    value={staffSearch}
+                    onChange={(e) => setStaffSearch(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+              </div>
               <ScrollArea className="h-[600px] pr-4">
                 <div className="space-y-3">
-                  {sortedEmployees.map((emp) => (
-                    <div
-                      key={emp.Employee_ID}
-                      className="flex items-start justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors border border-gray-200"
-                    >
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-3 mb-2">
-                          <p className="font-medium text-lg">
-                            {emp.Last_Name}, {emp.First_Name}
-                          </p>
-                          <Badge
-                            className={
-                              isSupervisor(emp)
-                                ? "bg-purple-100 text-purple-800"
-                                : "bg-green-100 text-green-800"
-                            }
+                  {sortedEmployees.length > 0 ? (
+                    sortedEmployees.map((emp) => (
+                      <div
+                        key={emp.Employee_ID}
+                        className="flex items-start justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors border border-gray-200"
+                      >
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-3 mb-2">
+                            <p className="font-medium text-lg">
+                              {emp.Last_Name}, {emp.First_Name}
+                            </p>
+                            <Badge
+                              className={
+                                isSupervisor(emp)
+                                  ? "bg-purple-100 text-purple-800"
+                                  : "bg-green-100 text-green-800"
+                              }
+                            >
+                              {getEmployeeTitle(emp)}
+                            </Badge>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 text-sm text-gray-600">
+                            <div>
+                              <span className="font-medium">Email:</span>{" "}
+                              {emp.Email}
+                            </div>
+                            <div>
+                              <span className="font-medium">Employee ID:</span>{" "}
+                              {emp.Employee_ID}
+                            </div>
+                            <div>
+                              <span className="font-medium">Zone:</span>{" "}
+                              {getEmployeeZone(emp)}
+                            </div>
+                            <div>
+                              <span className="font-medium">Birthdate:</span>{" "}
+                              {formatDate(emp.Birthdate)}
+                            </div>
+                            <div>
+                              <span className="font-medium">Sex:</span>{" "}
+                              {emp.Sex}
+                            </div>
+                            <div>
+                              <span className="font-medium">Salary:</span> $
+                              {emp.Salary.toLocaleString()}
+                            </div>
+                            <div className="md:col-span-2">
+                              <span className="font-medium">Address:</span>{" "}
+                              {emp.Address}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 ml-4">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setEditingEmployee(emp)}
+                            className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 cursor-pointer"
+                            disabled={isSaving}
                           >
-                            {getEmployeeTitle(emp)}
-                          </Badge>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 text-sm text-gray-600">
-                          <div>
-                            <span className="font-medium">Email:</span>{" "}
-                            {emp.Email}
-                          </div>
-                          <div>
-                            <span className="font-medium">Employee ID:</span>{" "}
-                            {emp.Employee_ID}
-                          </div>
-                          <div>
-                            <span className="font-medium">Zone:</span>{" "}
-                            {getEmployeeZone(emp)}
-                          </div>
-                          <div>
-                            <span className="font-medium">Birthdate:</span>{" "}
-                            {formatDate(emp.Birthdate)}
-                          </div>
-                          <div>
-                            <span className="font-medium">Sex:</span> {emp.Sex}
-                          </div>
-                          <div>
-                            <span className="font-medium">Salary:</span> $
-                            {emp.Salary.toLocaleString()}
-                          </div>
-                          <div className="md:col-span-2">
-                            <span className="font-medium">Address:</span>{" "}
-                            {emp.Address}
-                          </div>
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setDeleteConfirmEmployee(emp)}
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50 cursor-pointer"
+                            disabled={isSaving}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 ml-4">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setEditingEmployee(emp)}
-                          className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 cursor-pointer"
-                          disabled={isSaving}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setDeleteConfirmEmployee(emp)}
-                          className="text-red-600 hover:text-red-700 hover:bg-red-50 cursor-pointer"
-                          disabled={isSaving}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-12">
+                      <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                      <p className="text-lg text-gray-600">
+                        No employees found
+                      </p>
+                      <p className="text-sm text-gray-500 mt-2">
+                        {staffSearch.trim()
+                          ? `No employees match "${staffSearch}"`
+                          : "No employees in the system"}
+                      </p>
                     </div>
-                  ))}
+                  )}
                 </div>
               </ScrollArea>
             </CardContent>
@@ -1792,7 +1886,8 @@ export function AdminPortal({ user, onLogout }) {
         <section id="exhibits">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-2xl flex items-center gap-2">
-              <Building2 className="h-6 w-6" /> Exhibit Management
+              <Building2 className="h-6 w-6 text-indigo-600" /> Exhibit
+              Management
             </h2>
           </div>
           <Card>
@@ -1804,7 +1899,7 @@ export function AdminPortal({ user, onLogout }) {
                 {allExhibitsDB.map((exhibit) => (
                   <Card
                     key={exhibit.Exhibit_ID}
-                    className="p-4 hover:shadow-md transition-shadow"
+                    className="p-4 bg-gradient-to-br from-indigo-50 to-purple-50 border-2 border-indigo-200"
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
@@ -1873,72 +1968,620 @@ export function AdminPortal({ user, onLogout }) {
               isSaving={isSaving}
             />
           </div>
-          <Card>
-            <CardContent className="pt-6">
-              <p className="text-sm text-gray-600 mb-4">
-                Manage zoo animals and their habitats
-              </p>
-              <ScrollArea className="h-[400px]">
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                  {displayAnimals.map((animal, index) => {
-                    const enclosure = allEnclosures.find(
-                      (e) => e.Enclosure_ID === animal.Enclosure_ID
-                    );
-                    // Generate a mock date added (based on animal ID for consistency)
-                    const daysAgo = (animal.Animal_ID * 13) % 365; // Pseudo-random but consistent
-                    const dateAdded = new Date();
-                    dateAdded.setDate(dateAdded.getDate() - daysAgo);
-                    const dateAddedString = formatDate(
-                      dateAdded.toISOString().split("T")[0]
-                    );
 
-                    return (
-                      <div
-                        key={animal.Animal_ID}
-                        className="p-4 bg-teal-50 rounded-lg border border-teal-200 flex items-center justify-between"
-                      >
-                        <div className="flex items-center space-x-4">
-                          <div className="flex items-center justify-center w-10 h-10 rounded-full bg-teal-600 text-white flex-shrink-0">
-                            <PawPrint className="h-5 w-5" />
-                          </div>
-                          <div>
-                            <p className="font-medium">{animal.Animal_Name}</p>
-                            <p className="text-sm text-gray-600">
-                              {animal.Species} •{" "}
-                              {animal.Gender === "M"
-                                ? "Male"
-                                : animal.Gender === "F"
-                                ? "Female"
-                                : "Unknown"}{" "}
-                              • ID: {animal.Animal_ID}
-                            </p>
-                            <p className="text-xs text-gray-500">
-                              Weight: {animal.Weight} lbs • Born:{" "}
-                              {formatDate(animal.Birthday)}
-                            </p>
-                            <p className="text-xs text-gray-500">
-                              Habitat: {enclosure?.Enclosure_Name || "Unknown"}{" "}
-                              • Added: {dateAddedString}
-                            </p>
-                          </div>
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="bg-blue-50 border-blue-300 text-blue-600 hover:bg-blue-100 cursor-pointer flex-shrink-0"
-                          onClick={() => setEditingAnimal(animal)}
-                          disabled={isSaving}
+          {/* Exhibit Filter */}
+          <Card className="mb-4">
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-4">
+                <div className="flex-1">
+                  <Label htmlFor="exhibit-filter">Filter by Exhibit</Label>
+                  <Select
+                    value={
+                      animalExhibitFilter === "All"
+                        ? "All"
+                        : animalExhibitFilter.toString()
+                    }
+                    onValueChange={(value) =>
+                      setAnimalExhibitFilter(
+                        value === "All" ? "All" : parseInt(value)
+                      )
+                    }
+                  >
+                    <SelectTrigger
+                      id="exhibit-filter"
+                      className="cursor-pointer"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="All">All Exhibits</SelectItem>
+                      {allEnclosures.map((enc) => (
+                        <SelectItem
+                          key={enc.Enclosure_ID}
+                          value={enc.Enclosure_ID.toString()}
                         >
-                          <Edit className="h-4 w-4 mr-2" />
-                          Edit
-                        </Button>
-                      </div>
-                    );
-                  })}
+                          {enc.Enclosure_Name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-              </ScrollArea>
+                {animalExhibitFilter !== "All" ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setAnimalExhibitFilter("All")}
+                    className="cursor-pointer mt-6"
+                  >
+                    Clear Filter
+                  </Button>
+                ) : (
+                  <div className="flex items-center gap-2 mt-6">
+                    <Filter className="h-5 w-5 text-gray-600" />
+                    <span className="font-semibold text-gray-700">Filter</span>
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
+
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-sm text-gray-600">
+                  Manage zoo animals organized by their exhibits
+                </p>
+              </div>
+              <div
+                className={
+                  Object.keys(animalsByExhibit).length > 2
+                    ? "max-h-[600px] overflow-y-auto pr-4"
+                    : ""
+                }
+              >
+                <div className="space-y-4">
+                  {Object.entries(animalsByExhibit).map(
+                    ([exhibitName, animals]) => (
+                      <Card
+                        key={exhibitName}
+                        className="overflow-hidden border-2 border-teal-200"
+                      >
+                        <CardHeader className="bg-gradient-to-r from-teal-50 to-cyan-50 pb-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="p-2 bg-teal-600 rounded-lg">
+                                <Building2 className="h-5 w-5 text-white" />
+                              </div>
+                              <div>
+                                <h3 className="font-bold text-lg text-teal-800">
+                                  {exhibitName}
+                                </h3>
+                                <p className="text-sm text-gray-600">
+                                  {animals.length}{" "}
+                                  {animals.length === 1 ? "animal" : "animals"}
+                                </p>
+                              </div>
+                            </div>
+                            <Badge
+                              variant="secondary"
+                              className="bg-teal-100 text-teal-700 border-teal-300"
+                            >
+                              {animals.length}
+                            </Badge>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="pt-4">
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                            {animals.map((animal) => {
+                              const enclosure = allEnclosures.find(
+                                (e) => e.Enclosure_ID === animal.Enclosure_ID
+                              );
+                              const daysAgo = (animal.Animal_ID * 13) % 365;
+                              const dateAdded = new Date();
+                              dateAdded.setDate(dateAdded.getDate() - daysAgo);
+                              const dateAddedString = formatDate(
+                                dateAdded.toISOString().split("T")[0]
+                              );
+
+                              return (
+                                <div
+                                  key={animal.Animal_ID}
+                                  style={{
+                                    padding: "1rem",
+                                    background:
+                                      "linear-gradient(to bottom right, #f0fdfa, #ecfeff)", // from-teal-50 to-cyan-50
+                                    borderRadius: "0.5rem", // rounded-lg
+                                    border: "1px solid #5eead4", // border-teal-300
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "space-between",
+                                    transition: "box-shadow 0.2s ease-in-out", // transition-shadow
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.boxShadow =
+                                      "0 4px 6px rgba(0, 0, 0, 0.1)"; // hover:shadow-md
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.boxShadow = "none";
+                                  }}
+                                >
+                                  <div className="flex items-center space-x-4">
+                                    <div className="flex items-center justify-center w-12 h-12 rounded-full bg-teal-600 text-white flex-shrink-0 shadow-md">
+                                      <PawPrint className="h-6 w-6" />
+                                    </div>
+                                    <div>
+                                      <p className="font-semibold text-gray-800">
+                                        {animal.Animal_Name}
+                                      </p>
+                                      <p className="text-sm text-gray-600">
+                                        {animal.Species} •{" "}
+                                        {animal.Gender === "M"
+                                          ? "Male"
+                                          : animal.Gender === "F"
+                                          ? "Female"
+                                          : "Unknown"}{" "}
+                                        • ID: {animal.Animal_ID}
+                                      </p>
+                                      <p className="text-xs text-gray-500">
+                                        Weight: {animal.Weight} lbs • Born:{" "}
+                                        {formatDate(animal.Birthday)}
+                                      </p>
+                                      <p className="text-xs text-gray-500">
+                                        Health: {animal.Health_Status} • Added:{" "}
+                                        {dateAddedString}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="bg-blue-50 border-blue-300 text-blue-600 hover:bg-blue-100 cursor-pointer flex-shrink-0"
+                                    onClick={() => setEditingAnimal(animal)}
+                                    disabled={isSaving}
+                                  >
+                                    <Edit className="h-4 w-4 mr-2" />
+                                    Edit
+                                  </Button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )
+                  )}
+
+                  {Object.keys(animalsByExhibit).length === 0 && (
+                    <div className="text-center py-12">
+                      <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                      <p className="text-lg text-gray-600">No animals found</p>
+                      <p className="text-sm text-gray-500 mt-2">
+                        {animalExhibitFilter !== "All"
+                          ? "Try selecting a different exhibit"
+                          : "Add animals to get started"}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </section>
+
+        {/* Animals Health Status Distribution Report */}
+        <section id="health-status">
+          <h2 className="text-2xl mb-6 flex items-center gap-2">
+            <Activity className="h-6 w-6 text-red-500" /> Animals Health Status
+            Distribution
+          </h2>
+
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle>Filter Animals by Health Criteria</CardTitle>
+                {healthZoneFilter !== "All" ||
+                healthEnclosureFilter !== "All" ||
+                genderFilter !== "All" ||
+                ageFilter !== "All" ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setHealthZoneFilter("All");
+                      setHealthEnclosureFilter("All");
+                      setGenderFilter("All");
+                      setAgeFilter("All");
+                    }}
+                    className="cursor-pointer"
+                  >
+                    Reset All Filters
+                  </Button>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <Filter className="h-5 w-5 text-gray-600" />
+                    <h3 className="font-semibold text-gray-700">Filters</h3>
+                  </div>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {/* Zone Filter */}
+                <div>
+                  <Label htmlFor="health-zone-filter">Zone</Label>
+                  <Select
+                    value={healthZoneFilter}
+                    onValueChange={(value) => {
+                      setHealthZoneFilter(value);
+                      setHealthEnclosureFilter("All");
+                    }}
+                  >
+                    <SelectTrigger
+                      id="health-zone-filter"
+                      className="cursor-pointer"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="All">All Zones</SelectItem>
+                      <SelectItem value="A">Zone A</SelectItem>
+                      <SelectItem value="B">Zone B</SelectItem>
+                      <SelectItem value="C">Zone C</SelectItem>
+                      <SelectItem value="D">Zone D</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Enclosure Filter */}
+                <div>
+                  <Label htmlFor="health-enclosure-filter">Enclosure</Label>
+                  <Select
+                    value={healthEnclosureFilter.toString()}
+                    onValueChange={(value) =>
+                      setHealthEnclosureFilter(
+                        value === "All" ? "All" : parseInt(value)
+                      )
+                    }
+                  >
+                    <SelectTrigger
+                      id="health-enclosure-filter"
+                      className="cursor-pointer"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="All">All Enclosures</SelectItem>
+                      {allEnclosures
+                        .filter((enc) => {
+                          if (healthZoneFilter === "All") return true;
+                          const location = allLocations.find(
+                            (loc) => loc.Location_ID === enc.Location_ID
+                          );
+                          return location?.Zone === healthZoneFilter;
+                        })
+                        .map((enc) => (
+                          <SelectItem
+                            key={enc.Enclosure_ID}
+                            value={enc.Enclosure_ID.toString()}
+                          >
+                            {enc.Enclosure_Name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Gender Filter */}
+                <div>
+                  <Label htmlFor="gender-filter">Gender</Label>
+                  <Select
+                    value={genderFilter}
+                    onValueChange={(value) => setGenderFilter(value)}
+                  >
+                    <SelectTrigger
+                      id="gender-filter"
+                      className="cursor-pointer"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="All">All Genders</SelectItem>
+                      <SelectItem value="M">Male</SelectItem>
+                      <SelectItem value="F">Female</SelectItem>
+                      <SelectItem value="U">Unknown</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Age Filter */}
+                <div>
+                  <Label htmlFor="age-filter">Age Range (years)</Label>
+                  <Select
+                    value={ageFilter}
+                    onValueChange={(value) => setAgeFilter(value)}
+                  >
+                    <SelectTrigger id="age-filter" className="cursor-pointer">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="All">All Ages</SelectItem>
+                      <SelectItem value="0-2">0-2 years</SelectItem>
+                      <SelectItem value="3-5">3-5 years</SelectItem>
+                      <SelectItem value="6-10">6-10 years</SelectItem>
+                      <SelectItem value="11+">11+ years</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Filtered Charts - Dynamic based on filters */}
+          {(() => {
+            // Helper function to calculate age in years
+            const calculateAge = (birthday) => {
+              const birthDate = new Date(birthday);
+              const today = new Date();
+              let age = today.getFullYear() - birthDate.getFullYear();
+              const monthDiff = today.getMonth() - birthDate.getMonth();
+              if (
+                monthDiff < 0 ||
+                (monthDiff === 0 && today.getDate() < birthDate.getDate())
+              ) {
+                age--;
+              }
+              return age;
+            };
+
+            // Filter animals based on selected filters
+            const filteredAnimals = allAnimalsDB.filter((animal) => {
+              // Zone filter
+              if (healthZoneFilter !== "All") {
+                const enclosure = allEnclosures.find(
+                  (e) => e.Enclosure_ID === animal.Enclosure_ID
+                );
+                const location = allLocations.find(
+                  (loc) => loc.Location_ID === enclosure?.Location_ID
+                );
+                if (location?.Zone !== healthZoneFilter) return false;
+              }
+
+              // Enclosure filter
+              if (
+                healthEnclosureFilter !== "All" &&
+                animal.Enclosure_ID !== healthEnclosureFilter
+              )
+                return false;
+
+              // Gender filter
+              if (genderFilter !== "All" && animal.Gender !== genderFilter)
+                return false;
+
+              // Age filter
+              if (ageFilter !== "All") {
+                const age = calculateAge(animal.Birthday);
+                if (ageFilter === "0-2" && (age < 0 || age > 2)) return false;
+                if (ageFilter === "3-5" && (age < 3 || age > 5)) return false;
+                if (ageFilter === "6-10" && (age < 6 || age > 10)) return false;
+                if (ageFilter === "11+" && age < 11) return false;
+              }
+
+              return true;
+            });
+
+            // Health status distribution for pie chart
+            const healthStatusData = [
+              {
+                name: "Excellent",
+                value: filteredAnimals.filter(
+                  (a) => a.Health_Status === "Excellent"
+                ).length,
+                fill: "#10B981",
+              },
+              {
+                name: "Good",
+                value: filteredAnimals.filter((a) => a.Health_Status === "Good")
+                  .length,
+                fill: "#4CAF50",
+              },
+              {
+                name: "Fair",
+                value: filteredAnimals.filter((a) => a.Health_Status === "Fair")
+                  .length,
+                fill: "#F59E0B",
+              },
+              {
+                name: "Needs Attention",
+                value: filteredAnimals.filter(
+                  (a) => a.Health_Status === "Needs Attention"
+                ).length,
+                fill: "#EF4444",
+              },
+            ].filter((item) => item.value > 0);
+
+            // Vaccination Status Distribution
+            const vaccinationData = [
+              {
+                name: "Vaccinated",
+                value: filteredAnimals.filter((a) => a.Is_Vaccinated).length,
+                fill: "#10B981",
+              },
+              {
+                name: "Not Vaccinated",
+                value: filteredAnimals.filter((a) => !a.Is_Vaccinated).length,
+                fill: "#EF4444",
+              },
+            ].filter((item) => item.value > 0);
+
+            return (
+              <div className="mt-6 space-y-6">
+                {/* Summary Card */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Filtered Results Summary</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                      <div className="text-center p-4 bg-blue-50 rounded-lg">
+                        <p className="text-sm text-gray-600 mb-1">
+                          Total Animals
+                        </p>
+                        <p className="text-3xl font-semibold text-blue-600">
+                          {filteredAnimals.length}
+                        </p>
+                      </div>
+                      <div className="text-center p-4 bg-green-50 rounded-lg">
+                        <p className="text-sm text-gray-600 mb-1">Excellent</p>
+                        <p className="text-3xl font-semibold text-green-600">
+                          {
+                            filteredAnimals.filter(
+                              (a) => a.Health_Status === "Excellent"
+                            ).length
+                          }
+                        </p>
+                      </div>
+                      <div className="text-center p-4 bg-teal-50 rounded-lg">
+                        <p className="text-sm text-gray-600 mb-1">Good</p>
+                        <p className="text-3xl font-semibold text-teal-600">
+                          {
+                            filteredAnimals.filter(
+                              (a) => a.Health_Status === "Good"
+                            ).length
+                          }
+                        </p>
+                      </div>
+                      <div
+                        className="text-center p-4 rounded-lg"
+                        style={{ backgroundColor: "#fefce8" }}
+                      >
+                        <p className="text-sm text-gray-600 mb-1">Fair</p>
+                        <p
+                          style={{
+                            fontSize: "1.875rem",
+                            fontWeight: 600,
+                            color: "#a16207",
+                          }}
+                        >
+                          {
+                            filteredAnimals.filter(
+                              (a) => a.Health_Status === "Fair"
+                            ).length
+                          }
+                        </p>
+                      </div>
+                      <div className="text-center p-4 bg-red-50 rounded-lg">
+                        <p className="text-sm text-gray-600 mb-1">
+                          Needs Attention
+                        </p>
+                        <p className="text-3xl font-semibold text-red-600">
+                          {
+                            filteredAnimals.filter(
+                              (a) => a.Health_Status === "Needs Attention"
+                            ).length
+                          }
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {filteredAnimals.length === 0 ? (
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="text-center py-12">
+                        <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                        <p className="text-lg text-gray-600">
+                          No animals found matching the selected filters
+                        </p>
+                        <p className="text-sm text-gray-500 mt-2">
+                          Try adjusting your filter criteria
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <>
+                    {/* Charts Grid */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      {/* Health Status Distribution - Pie Chart */}
+                      <Card>
+                        <CardHeader>
+                          <CardTitle>Health Status Distribution</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <ResponsiveContainer width="100%" height={300}>
+                            <PieChart>
+                              <Pie
+                                data={healthStatusData}
+                                cx="50%"
+                                cy="50%"
+                                labelLine={false}
+                                label={({ name, value, percent }) =>
+                                  `${name}: ${value} (${(percent * 100).toFixed(
+                                    0
+                                  )}%)`
+                                }
+                                outerRadius={80}
+                                fill="#8884d8"
+                                dataKey="value"
+                              >
+                                {healthStatusData.map((entry, index) => (
+                                  <Cell
+                                    key={`cell-${index}`}
+                                    fill={entry.fill}
+                                  />
+                                ))}
+                              </Pie>
+                              <Tooltip />
+                              <Legend />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        </CardContent>
+                      </Card>
+
+                      {/* Vaccination Status Distribution */}
+                      {vaccinationData.length > 0 && (
+                        <Card>
+                          <CardHeader>
+                            <CardTitle>Vaccination Status</CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <ResponsiveContainer width="100%" height={300}>
+                              <PieChart>
+                                <Pie
+                                  data={vaccinationData}
+                                  cx="50%"
+                                  cy="50%"
+                                  labelLine={false}
+                                  label={({ name, value, percent }) =>
+                                    `${name}: ${value} (${(
+                                      percent * 100
+                                    ).toFixed(0)}%)`
+                                  }
+                                  outerRadius={80}
+                                  fill="#8884d8"
+                                  dataKey="value"
+                                >
+                                  {vaccinationData.map((entry, index) => (
+                                    <Cell
+                                      key={`cell-${index}`}
+                                      fill={entry.fill}
+                                    />
+                                  ))}
+                                </Pie>
+                                <Tooltip />
+                                <Legend />
+                              </PieChart>
+                            </ResponsiveContainer>
+                          </CardContent>
+                        </Card>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })()}
         </section>
 
         {/* Zone Supervisor Assignment Dialog */}
