@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Card,
   CardContent,
@@ -14,24 +14,34 @@ import {
   UtensilsCrossed,
 } from "lucide-react";
 import { toast } from "sonner";
-import {
-  currentUser,
-  currentUserType,
-  concessionStands,
-} from "../data/mockData";
+import { useAuth } from "../contexts/AuthContext";
 import { useData } from "../data/DataContext";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { useHeroImage } from "../utils/heroImages";
 
-export function FoodPage({ addToCart }) {
-  const { concessionItems, memberships } = useData();
-  const heroImage = useHeroImage("food");
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000/api";
 
-  // Zone mapping based on Location_ID from concessionStands in mockData
-  // Stand 1 (Safari Grill) -> Location 1 -> Zone A
-  // Stand 2 (Polar Cafe) -> Location 4 -> Zone D
-  // Stand 3 (Rainforest Refreshments) -> Location 3 -> Zone C
-  // Stand 4 (Desert Diner) -> Location 2 -> Zone B
+export function FoodPage({ addToCart }) {
+  const { memberships } = useData();
+  const { user, userType } = useAuth();
+  const heroImage = useHeroImage("food");
+  const [concessionItems, setConcessionItems] = useState([]);
+
+  useEffect(() => {
+    const fetchConcessionItems = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/food`);
+        if (!res.ok) throw new Error("Failed to fetch food items");
+        const data = await res.json();
+        setConcessionItems(data);
+      } catch (err) {
+        console.error("❌ Failed to load food items:", err);
+        toast.error("Failed to load food items");
+      }
+    };
+    fetchConcessionItems();
+  }, []);
+
   const standInfo = useMemo(() => {
     return [
       {
@@ -43,7 +53,7 @@ export function FoodPage({ addToCart }) {
       {
         id: 2,
         name: "Polar Cafe",
-        zone: "Zone D",
+        zone: "Zone B",
         specialty: "Ice Cream & Desserts",
       },
       {
@@ -55,13 +65,12 @@ export function FoodPage({ addToCart }) {
       {
         id: 4,
         name: "Desert Diner",
-        zone: "Zone B",
+        zone: "Zone D",
         specialty: "Pizza & Italian",
       },
     ];
   }, []);
 
-  // Group items by stand
   const itemsByStand = useMemo(() => {
     return standInfo.map((stand) => {
       const standItems = concessionItems.filter(
@@ -73,7 +82,7 @@ export function FoodPage({ addToCart }) {
           id: item.Concession_Item_ID,
           name: item.Item_Name,
           price: item.Price,
-          image: item.image,
+          image: item.Image_URL,
         })),
       };
     });
@@ -86,12 +95,10 @@ export function FoodPage({ addToCart }) {
     "Desert Diner": 0,
   });
 
-  // Check if current user is a customer with active membership
   const hasMembership =
-    currentUser && currentUserType === "customer" && memberships
+    user && userType === "customer" && memberships
       ? memberships.some(
-          (m) =>
-            m.Customer_ID === currentUser.Customer_ID && m.Membership_Status
+          (m) => m.Customer_ID === user.Customer_ID && m.Membership_Status
         )
       : false;
 
@@ -111,14 +118,13 @@ export function FoodPage({ addToCart }) {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Hero Section */}
       <section className="relative bg-gradient-to-br from-green-600 to-emerald-700 text-white py-16 overflow-hidden">
-        {/* Background Image */}
         <div className="absolute inset-0 z-0">
           <ImageWithFallback
             src={heroImage}
             alt="Zoo Food and Dining"
             className="w-full h-full object-cover"
+            priority={true}
           />
           <div
             className="absolute inset-0"
@@ -129,7 +135,6 @@ export function FoodPage({ addToCart }) {
           />
         </div>
 
-        {/* Content */}
         <div className="container mx-auto px-6 relative z-10">
           <h1 className="text-4xl md:text-5xl mb-4 drop-shadow-lg">
             Food & Dining
@@ -141,7 +146,6 @@ export function FoodPage({ addToCart }) {
         </div>
       </section>
 
-      {/* Food Stands Info */}
       <section className="py-16 bg-white">
         <div className="container mx-auto px-6">
           <h2 className="text-3xl mb-8 text-center">Our Concession Stands</h2>
@@ -169,7 +173,6 @@ export function FoodPage({ addToCart }) {
         </div>
       </section>
 
-      {/* Menu by Stand with Carousel */}
       <section className="py-16">
         <div className="container mx-auto px-6">
           <h2 className="text-3xl mb-8 text-center">Full Menu</h2>
@@ -181,7 +184,6 @@ export function FoodPage({ addToCart }) {
                 currentIndex + 4
               );
 
-              // If we don't have 4 items, wrap around
               if (displayedItems.length < 4 && stand.items.length > 0) {
                 displayedItems.push(
                   ...stand.items.slice(0, 4 - displayedItems.length)
@@ -242,12 +244,12 @@ export function FoodPage({ addToCart }) {
                                   {item.name}
                                 </h4>
                                 <span className="text-xl text-green-600 font-semibold">
-                                  ${item.price.toFixed(2)}
+                                  ${parseFloat(item.price || 0).toFixed(2)}
                                 </span>
                                 <Button
                                   className="w-full bg-green-600 hover:bg-green-700 cursor-pointer"
                                   onClick={() => {
-                                    if (!currentUser) {
+                                    if (!user) {
                                       toast.error(
                                         "Please log in to add items to cart"
                                       );

@@ -1,4 +1,3 @@
-import { Separator } from "./ui/separator";
 import { MapPin, Phone, Mail, Clock } from "lucide-react";
 
 export function Footer() {
@@ -8,11 +7,15 @@ export function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8 max-w-3xl mx-auto">
           {/* Contact Information */}
           <div>
-            <h3 className="text-lg font-semibold mb-4 text-center">Contact Information</h3>
+            <h3 className="text-lg font-semibold mb-4 text-center">
+              Contact Information
+            </h3>
             <div className="space-y-3">
               <div className="flex items-center space-x-2 justify-center md:justify-start">
                 <MapPin className="h-4 w-4" />
-                <span className="text-sm">123 Wildlife Drive, Conservation City, ST 12345</span>
+                <span className="text-sm">
+                  123 Wildlife Drive, Conservation City, ST 12345
+                </span>
               </div>
               <div className="flex items-center space-x-2 justify-center md:justify-start">
                 <Phone className="h-4 w-4" />
@@ -27,7 +30,9 @@ export function Footer() {
 
           {/* Zoo Hours */}
           <div>
-            <h3 className="text-lg font-semibold mb-4 text-center">Zoo Hours</h3>
+            <h3 className="text-lg font-semibold mb-4 text-center">
+              Zoo Hours
+            </h3>
             <div className="space-y-2">
               <div className="flex items-center space-x-2 justify-center md:justify-start">
                 <Clock className="h-4 w-4" />
@@ -37,19 +42,6 @@ export function Footer() {
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-
-        <Separator className="bg-gray-700 mb-6" />
-
-        <div className="flex flex-col md:flex-row justify-between items-center">
-          <p className="text-sm text-gray-400 mb-4 md:mb-0">
-            © 2025 WildWood Zoo. All rights reserved.
-          </p>
-          <div className="flex space-x-6 text-sm text-gray-400">
-            <span>Privacy Policy</span>
-            <span>Terms of Service</span>
-            <span>Accessibility</span>
           </div>
         </div>
       </div>

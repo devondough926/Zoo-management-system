@@ -3,46 +3,49 @@ import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 import dotenv from "dotenv";
+import cookieParser from "cookie-parser";
 import { testConnection } from "./config/database.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import customerRoutes from "./routes/customerRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
 import shopRoutes from "./routes/shopRoutes.js";
 import { isAzureConfigured } from "./middleware/azureUpload.js";
+
 dotenv.config();
+
 const app = express();
 const PORT = process.env.PORT || 5000;
+
 // Middleware
 app.use(
   helmet({
-    crossOriginResourcePolicy: { policy: "cross-origin" }, // Allow cross-origin images
+    crossOriginResourcePolicy: { policy: "cross-origin" },
   })
 );
-// TEMPORARY: Force CORS headers for development
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
-  }
-  next();
-});
 
 app.use(
   cors({
-    origin: true,
+    origin: function (origin, callback) {
+      if (!origin || /^http:\/\/localhost:\d+$/.test(origin)) {
+        return callback(null, true);
+      }
+
+      const allowedOrigins = [process.env.CLIENT_URL].filter(Boolean);
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      callback(null, false);
+    },
     credentials: true,
   })
 );
 
 app.use(morgan("dev"));
+app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-// Note: Image uploads are stored in Azure Blob Storage, not locally
-// Images are served directly from Azure CDN URLs stored in the database
-// Health check
+
 app.get("/health", (req, res) => {
   res.status(200).json({
     status: "OK",
@@ -50,33 +53,33 @@ app.get("/health", (req, res) => {
     timestamp: new Date().toISOString(),
   });
 });
-// Add all routes here
+
 app.use("/api/admin", adminRoutes);
 app.use("/api/customer", customerRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/shop", shopRoutes);
-// 404 handler
+
 app.use((req, res) => {
   res.status(404).json({
     error: "Route not found",
     path: req.originalUrl,
   });
 });
-// Error handler
+
 app.use((err, req, res, next) => {
   console.error("Error:", err);
   res.status(err.status || 500).json({
     error: err.message || "Internal server error",
   });
 });
-// Start server
+
 const startServer = async () => {
   try {
     const dbConnected = await testConnection();
     if (!dbConnected) {
       console.error("[WARNING] Server starting without database connection");
     }
-    // Check Azure configuration
+
     if (isAzureConfigured()) {
       console.log("[SUCCESS] Azure Blob Storage is configured");
     } else {
@@ -84,6 +87,7 @@ const startServer = async () => {
         "[WARNING] Azure Blob Storage is NOT configured - image uploads will fail"
       );
     }
+
     app.listen(PORT, () => {
       console.log(`\n[SERVER] Running on port ${PORT}`);
       console.log(`Environment: ${process.env.NODE_ENV || "development"}`);
@@ -99,4 +103,5 @@ const startServer = async () => {
     process.exit(1);
   }
 };
+
 startServer();

@@ -1,4 +1,12 @@
 import { useState, useEffect } from "react";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  useNavigate,
+  useLocation,
+} from "react-router-dom";
 import { toast } from "sonner";
 
 // Components
@@ -27,114 +35,99 @@ import { AdminPortal } from "./pages/AdminPortal.jsx";
 // Login
 import { LoginPage } from "./pages/LoginPage";
 
-import {
-  currentUser,
-  currentUserType,
-  setCurrentUser,
-  getEmployeeRole,
-  isAdmin,
-} from "./data/mockData";
 import { Toaster } from "./components/ui/sonner";
 import { DataProvider } from "./data/DataContext";
 import { PricingProvider } from "./data/PricingContext";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
 
 // Page titles mapping
 const PAGE_TITLES = {
-  home: "Home",
-  animals: "Animals",
-  attractions: "Exhibits",
-  shop: "Gift Shop",
-  food: "Food & Dining",
-  tickets: "Tickets & Pricing",
-  cart: "Shopping Cart",
-  "customer-dashboard": "My Dashboard",
-  "order-history": "Order History",
-  "staff-portal": "Staff Portal",
-  "admin-portal": "Admin Portal",
-  login: "Login",
+  "/": "Home",
+  "/animals": "Animals",
+  "/attractions": "Exhibits",
+  "/shop": "Gift Shop",
+  "/food": "Food & Dining",
+  "/tickets": "Tickets & Pricing",
+  "/cart": "Shopping Cart",
+  "/customer-dashboard": "My Dashboard",
+  "/order-history": "Order History",
+  "/staff-portal": "Staff Portal",
+  "/admin-portal": "Admin Portal",
+  "/login": "Login",
 };
 
-export default function App() {
-  // Initialize currentPage from localStorage or default to "home"
-  const [currentPage, setCurrentPage] = useState(() => {
-    const savedPage = localStorage.getItem("currentPage");
-    // If no user is logged in and the saved page is a protected portal, redirect to home
-    if (
-      !currentUser &&
-      (savedPage === "admin-portal" ||
-        savedPage === "staff-portal" ||
-        savedPage === "customer-dashboard")
-    ) {
-      return "home";
-    }
-    return savedPage || "home";
-  });
-  const [user, setUser] = useState(currentUser);
-  const [userType, setUserType] = useState(currentUserType);
+// Protected Route Component
+function ProtectedRoute({
+  children,
+  requireAuth = true,
+  requireCustomer = false,
+  requireEmployee = false,
+}) {
+  const { isAuthenticated, userType } = useAuth();
+
+  if (requireAuth && !isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (requireCustomer && userType !== "customer") {
+    return <Navigate to="/" replace />;
+  }
+
+  if (requireEmployee && userType !== "employee") {
+    return <Navigate to="/" replace />;
+  }
+
+  return children;
+}
+
+function AppContent() {
+  const { user, userType, role, login, logout, initialized } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+
   const [pageKey, setPageKey] = useState(0);
 
-  // Cart state
-  const [cart, setCart] = useState([]);
-
-  // Save currentPage to localStorage whenever it changes
-  useEffect(() => {
-    localStorage.setItem("currentPage", currentPage);
-  }, [currentPage]);
-
-  // Update document title when page changes
-  useEffect(() => {
-    const pageTitle = PAGE_TITLES[currentPage] || currentPage;
-    document.title = `${pageTitle} | WildWood Zoo`;
-  }, [currentPage]);
-
-  // Validate current page when user state changes
-  useEffect(() => {
-    // If no user is logged in and we're on a protected page, redirect to home
-    if (
-      !user &&
-      (currentPage === "admin-portal" ||
-        currentPage === "staff-portal" ||
-        currentPage === "customer-dashboard" ||
-        currentPage === "order-history")
-    ) {
-      setCurrentPage("home");
+  const [cart, setCart] = useState(() => {
+    try {
+      const savedCart = localStorage.getItem("cart");
+      return savedCart ? JSON.parse(savedCart) : [];
+    } catch {
+      return [];
     }
-  }, [user, currentPage]);
+  });
 
-  const handleLogin = (loggedInUser, type) => {
-    setCurrentUser(loggedInUser, type);
-    setUser(loggedInUser);
-    setUserType(type);
+  useEffect(() => {
+    if (cart.length > 0) {
+      localStorage.setItem("cart", JSON.stringify(cart));
+    } else {
+      localStorage.removeItem("cart");
+    }
+  }, [cart]);
+
+  // Update document title when location changes
+  useEffect(() => {
+    const pageTitle = PAGE_TITLES[location.pathname] || "WildWood Zoo";
+    document.title = `${pageTitle} | WildWood Zoo`;
+  }, [location.pathname]);
+
+  // Scroll to top when location changes
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [location.pathname]);
+
+  const handleLogin = (loggedInUser, type, userRole) => {
+    login(loggedInUser, type, userRole);
 
     // Navigate based on type and role
     if (type === "employee") {
-      const employee = loggedInUser;
-      if (isAdmin(employee)) {
-        setCurrentPage("admin-portal");
+      if (userRole === "admin" || userRole === "supervisor") {
+        navigate("/admin-portal");
       } else {
-        setCurrentPage("staff-portal");
+        navigate("/staff-portal");
       }
     } else if (type === "customer") {
-      setCurrentPage("customer-dashboard");
+      navigate("/customer-dashboard");
     }
-  };
-
-  const handleLogout = () => {
-    setCurrentUser(null, null);
-    setUser(null);
-    setUserType(null);
-    setCurrentPage("home");
-    setCart([]); // Clear cart on logout
-  };
-
-  const handleNavigate = (page) => {
-    setCurrentPage(page);
-    // Increment page key to force remount of certain pages
-    if (page === "animals" || page === "attractions") {
-      setPageKey((prev) => prev + 1);
-    }
-    // Scroll to top when navigating
-    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const addToCart = (item) => {
@@ -192,136 +185,139 @@ export default function App() {
     setCart([]);
   };
 
-  const renderPage = () => {
-    // Staff Portal - route to appropriate staff page based on job title
-    if (currentPage === "staff-portal" && user && userType === "employee") {
-      const employee = user;
-      const role = getEmployeeRole(employee);
+  // Staff Portal Router Component
+  const StaffPortalRouter = () => {
+    const employee = user;
 
-      switch (role) {
-        case "Veterinarian":
-          return <VeterinarianPortal user={employee} onLogout={handleLogout} />;
-        case "Zookeeper":
-          return <ZookeeperPortal user={employee} onLogout={handleLogout} />;
-        case "Gift Shop Worker":
-          return (
-            <GiftShopPortal
-              user={employee}
-              onLogout={handleLogout}
-              onNavigate={handleNavigate}
-            />
-          );
-        case "Concession Worker":
-          return (
-            <ConcessionPortal
-              user={employee}
-              onLogout={handleLogout}
-              onNavigate={handleNavigate}
-            />
-          );
-        case "Supervisor":
-          return <ManagerPortal user={employee} onLogout={handleLogout} />;
-        default:
-          return <HomePage onNavigate={handleNavigate} />;
-      }
-    }
-
-    // Admin Portal
-    if (currentPage === "admin-portal" && user && userType === "employee") {
-      return (
-        <AdminPortal
-          user={user}
-          onLogout={handleLogout}
-          onNavigate={handleNavigate}
-        />
-      );
-    }
-
-    // Login Page
-    if (currentPage === "login") {
-      return (
-        <LoginPage
-          onLogin={handleLogin}
-          onBack={() => setCurrentPage("home")}
-        />
-      );
-    }
-
-    // Public and Customer Pages
-    switch (currentPage) {
-      case "home":
-        return <HomePage onNavigate={handleNavigate} />;
-      case "animals":
-        return <AnimalsPage key={pageKey} />;
-      case "attractions":
-        return <AttractionsPage key={pageKey} />;
-      case "shop":
-        return <ShopPage onNavigate={handleNavigate} addToCart={addToCart} />;
-      case "food":
-        return <FoodPage addToCart={addToCart} />;
-      case "tickets":
-        return (
-          <TicketsPage
-            onNavigate={handleNavigate}
-            addToCart={addToCart}
-            cart={cart}
-          />
-        );
-      case "customer-dashboard":
-        return user && userType === "customer" ? (
-          <CustomerDashboard user={user} onNavigate={handleNavigate} />
-        ) : (
-          <HomePage onNavigate={handleNavigate} />
-        );
-      case "cart":
-        return (
-          <CartPage
-            cart={cart}
-            removeFromCart={removeFromCart}
-            updateCartQuantity={updateCartQuantity}
-            clearCart={clearCart}
-            onNavigate={handleNavigate}
-          />
-        );
-      case "order-history":
-        return user && userType === "customer" ? (
-          <OrderHistoryPage user={user} />
-        ) : (
-          <HomePage onNavigate={handleNavigate} />
-        );
+    switch (role) {
+      case "veterinarian":
+        return <VeterinarianPortal user={employee} onLogout={logout} />;
+      case "zookeeper":
+        return <ZookeeperPortal user={employee} onLogout={logout} />;
+      case "giftshop":
+        return <GiftShopPortal user={employee} onLogout={logout} />;
+      case "concession":
+        return <ConcessionPortal user={employee} onLogout={logout} />;
+      case "supervisor":
+        return <ManagerPortal user={employee} onLogout={logout} />;
       default:
-        return <HomePage onNavigate={handleNavigate} />;
+        return <Navigate to="/" replace />;
     }
   };
 
-  // Don't show nav/footer for staff and admin portals
-  const showNavAndFooter =
-    currentPage !== "staff-portal" &&
-    currentPage !== "admin-portal" &&
-    currentPage !== "login";
+  // Don't show nav/footer for staff and admin portals and login page
+  const showNavAndFooter = ![
+    "/staff-portal",
+    "/admin-portal",
+    "/login",
+  ].includes(location.pathname);
 
   // Calculate total cart items
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
-  return (
-    <PricingProvider>
-      <DataProvider>
-        <div className="min-h-screen">
-          {showNavAndFooter && (
-            <Navigation
-              onNavigate={handleNavigate}
-              currentPage={currentPage}
-              user={user}
-              userType={userType}
-              onLogout={handleLogout}
-              cartCount={cartCount}
-            />
-          )}
-          {renderPage()}
-          {showNavAndFooter && <Footer />}
-          <Toaster />
+  // Show loading state while checking session
+  if (!initialized) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-emerald-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-green-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading...</p>
         </div>
-      </DataProvider>
-    </PricingProvider>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen">
+      {showNavAndFooter && (
+        <Navigation onLogout={logout} cartCount={cartCount} />
+      )}
+
+      <Routes>
+        {/* Public Routes - Accessible to everyone */}
+        <Route path="/" element={<HomePage />} />
+        <Route path="/animals" element={<AnimalsPage key={pageKey} />} />
+        <Route
+          path="/attractions"
+          element={<AttractionsPage key={pageKey} />}
+        />
+        <Route path="/shop" element={<ShopPage addToCart={addToCart} />} />
+        <Route path="/food" element={<FoodPage addToCart={addToCart} />} />
+        <Route
+          path="/tickets"
+          element={<TicketsPage addToCart={addToCart} cart={cart} />}
+        />
+        <Route
+          path="/cart"
+          element={
+            <CartPage
+              cart={cart}
+              removeFromCart={removeFromCart}
+              updateCartQuantity={updateCartQuantity}
+              clearCart={clearCart}
+            />
+          }
+        />
+
+        {/* Login Route */}
+        <Route path="/login" element={<LoginPage onLogin={handleLogin} />} />
+
+        {/* Customer Protected Routes */}
+        <Route
+          path="/customer-dashboard"
+          element={
+            <ProtectedRoute requireAuth requireCustomer>
+              <CustomerDashboard user={user} />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/order-history"
+          element={
+            <ProtectedRoute requireAuth requireCustomer>
+              <OrderHistoryPage user={user} />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Employee Protected Routes */}
+        <Route
+          path="/staff-portal"
+          element={
+            <ProtectedRoute requireAuth requireEmployee>
+              <StaffPortalRouter />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin-portal"
+          element={
+            <ProtectedRoute requireAuth requireEmployee>
+              <AdminPortal user={user} onLogout={logout} />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Catch all - redirect to home */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+
+      {showNavAndFooter && <Footer />}
+      <Toaster />
+    </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <PricingProvider>
+        <DataProvider>
+          <BrowserRouter>
+            <AppContent />
+          </BrowserRouter>
+        </DataProvider>
+      </PricingProvider>
+    </AuthProvider>
   );
 }

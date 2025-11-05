@@ -3,19 +3,28 @@ import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Clock, MapPin } from "lucide-react";
 import { ScrollArea } from "./ui/scroll-area";
 import { activitiesAPI, formatTime } from "../services/customerAPI";
-import { useOptimizedFetch } from "../hooks/useOptimizedFetch";
 
 export function OperationalDashboard() {
-  // Optimized data fetching with caching
-  const {
-    data: scheduleData,
-    loading,
-    error: fetchError,
-  } = useOptimizedFetch(
-    "todaysSchedule",
-    () => activitiesAPI.getTodaysSchedule(),
-    { cacheTime: 5 * 60 * 1000 } // Cache for 5 minutes
-  );
+  const [scheduleData, setScheduleData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(null);
+
+  // Fetch data without caching
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const data = await activitiesAPI.getTodaysSchedule();
+        setScheduleData(data || []);
+        setFetchError(null);
+      } catch (err) {
+        setFetchError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
 
   // Memoize formatted schedule to avoid recalculating on every render
   const todaysSchedule = useMemo(() => {

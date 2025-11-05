@@ -13,6 +13,7 @@ import {
   deleteEmployee,
   updateEmployeeSalary,
   getAllLocations,
+  getEmployeesByLocation,
   updateLocationSupervisor,
   getAllExhibits,
   getExhibitById,
@@ -47,6 +48,7 @@ router.patch("/employees/:id/salary", updateEmployeeSalary);
 
 // Location routes
 router.get("/locations", getAllLocations);
+router.get("/locations/:id/employees", getEmployeesByLocation);
 router.patch("/locations/:id/supervisor", updateLocationSupervisor);
 
 // Exhibit routes

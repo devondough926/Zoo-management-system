@@ -1,18 +1,23 @@
-// API service for Customer-facing pages
 const API_BASE_URL =
   import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
-// ============================================
-// AUTHENTICATION API
-// ============================================
+// Helper to add credentials to fetch options
+const fetchWithCredentials = (url, options = {}) => {
+  return fetch(url, {
+    ...options,
+    credentials: "include",
+  });
+};
+
+// Data caching removed - only images are cached
 
 export const authAPI = {
-  // Register a new customer
   register: async (userData) => {
     try {
       const response = await fetch(`${API_BASE_URL}/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify(userData),
       });
 
@@ -29,12 +34,12 @@ export const authAPI = {
     }
   },
 
-  // Login customer
   login: async (email, password) => {
     try {
       const response = await fetch(`${API_BASE_URL}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ email, password }),
       });
 
@@ -51,25 +56,86 @@ export const authAPI = {
     }
   },
 
-  // Get customer profile
+  loginEmployee: async (email, password) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/employee/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to login");
+      }
+
+      return data;
+    } catch (error) {
+      console.error("Employee login error:", error);
+      throw error;
+    }
+  },
+
+  logout: async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/logout`, {
+        method: "POST",
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to logout");
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error("Logout error:", error);
+      throw error;
+    }
+  },
+
+  validateSession: async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/session`, {
+        method: "GET",
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        return null;
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error("Session validation error:", error);
+      return null;
+    }
+  },
+
   getProfile: async (customerId) => {
     try {
       const response = await fetch(
-        `${API_BASE_URL}/auth/profile/${customerId}`
+        `${API_BASE_URL}/auth/profile/${customerId}`,
+        {
+          credentials: "include",
+        }
       );
 
       if (!response.ok) {
         throw new Error("Failed to fetch profile");
       }
 
-      return response.json();
+      const data = await response.json();
+      return data;
     } catch (error) {
       console.error("Get profile error:", error);
       throw error;
     }
   },
 
-  // Update customer profile
   updateProfile: async (customerId, profileData) => {
     try {
       const response = await fetch(
@@ -77,6 +143,7 @@ export const authAPI = {
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify(profileData),
         }
       );
@@ -94,7 +161,6 @@ export const authAPI = {
     }
   },
 
-  // Change customer password
   changePassword: async (customerId, passwordData) => {
     try {
       const response = await fetch(
@@ -102,6 +168,7 @@ export const authAPI = {
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify(passwordData),
         }
       );
@@ -119,7 +186,6 @@ export const authAPI = {
     }
   },
 
-  // Check if backend is connected
   checkConnection: async () => {
     try {
       const response = await fetch(
@@ -135,86 +201,77 @@ export const authAPI = {
   },
 };
 
-// ============================================
-// EXHIBITS API
-// ============================================
-
 export const exhibitsAPI = {
-  // Get all exhibits with their location info
   getAll: async () => {
-    const response = await fetch(`${API_BASE_URL}/customer/exhibits`);
+    const response = await fetchWithCredentials(
+      `${API_BASE_URL}/customer/exhibits`
+    );
     if (!response.ok) throw new Error("Failed to fetch exhibits");
-    return response.json();
+    const data = await response.json();
+    return data;
   },
 
-  // Get exhibit by ID
   getById: async (id) => {
-    const response = await fetch(`${API_BASE_URL}/customer/exhibits/${id}`);
+    const response = await fetchWithCredentials(
+      `${API_BASE_URL}/customer/exhibits/${id}`
+    );
     if (!response.ok) throw new Error("Failed to fetch exhibit");
-    return response.json();
+    const data = await response.json();
+    return data;
   },
 };
 
-// ============================================
-// ACTIVITIES API
-// ============================================
-
 export const activitiesAPI = {
-  // Get all exhibit activities
   getAll: async () => {
-    const response = await fetch(`${API_BASE_URL}/customer/activities`);
+    const response = await fetchWithCredentials(
+      `${API_BASE_URL}/customer/activities`
+    );
     if (!response.ok) throw new Error("Failed to fetch activities");
-    return response.json();
+    const data = await response.json();
+    return data;
   },
 
-  // Get activities for a specific exhibit
   getByExhibit: async (exhibitId) => {
-    const response = await fetch(
+    const response = await fetchWithCredentials(
       `${API_BASE_URL}/customer/exhibits/${exhibitId}/activities`
     );
     if (!response.ok) throw new Error("Failed to fetch exhibit activities");
-    return response.json();
+    const data = await response.json();
+    return data;
   },
 
-  // Get today's schedule (activities based on rotation)
   getTodaysSchedule: async () => {
-    const response = await fetch(`${API_BASE_URL}/customer/schedule/today`);
+    const response = await fetchWithCredentials(
+      `${API_BASE_URL}/customer/schedule/today`
+    );
     if (!response.ok) throw new Error("Failed to fetch today's schedule");
-    return response.json();
+    const data = await response.json();
+    return data;
   },
 };
-
-// ============================================
-// ANIMALS API
-// ============================================
 
 export const animalsAPI = {
-  // Get all animals with their enclosure info
   getAll: async () => {
-    const response = await fetch(`${API_BASE_URL}/customer/animals`);
+    const response = await fetchWithCredentials(
+      `${API_BASE_URL}/customer/animals`
+    );
     if (!response.ok) throw new Error("Failed to fetch animals");
-    return response.json();
+    const data = await response.json();
+    return data;
   },
 };
-
-// ============================================
-// ENCLOSURES API
-// ============================================
 
 export const enclosuresAPI = {
-  // Get all enclosures
   getAll: async () => {
-    const response = await fetch(`${API_BASE_URL}/customer/enclosures`);
+    const response = await fetchWithCredentials(
+      `${API_BASE_URL}/customer/enclosures`
+    );
     if (!response.ok) throw new Error("Failed to fetch enclosures");
-    return response.json();
+    const data = await response.json();
+    return data;
   },
 };
 
-// ============================================
-// HELPER FUNCTIONS
-// ============================================
-
-// Format time from 24-hour to 12-hour format
 export const formatTime = (time) => {
   if (!time) return "";
   const [hours, minutes] = time.split(":");
@@ -222,4 +279,73 @@ export const formatTime = (time) => {
   const period = hour >= 12 ? "PM" : "AM";
   const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
   return `${displayHour}:${minutes} ${period}`;
+};
+
+export const purchasesAPI = {
+  getHistory: async (customerId) => {
+    try {
+      const response = await fetchWithCredentials(
+        `${API_BASE_URL}/customer/purchases/history/${customerId}`
+      );
+      if (!response.ok) throw new Error("Failed to fetch purchase history");
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error("Get purchase history error:", error);
+      throw error;
+    }
+  },
+
+  getDetails: async (purchaseId) => {
+    try {
+      const response = await fetchWithCredentials(
+        `${API_BASE_URL}/customer/purchases/details/${purchaseId}`
+      );
+      if (!response.ok) throw new Error("Failed to fetch purchase details");
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error("Get purchase details error:", error);
+      throw error;
+    }
+  },
+
+  create: async (purchaseData) => {
+    try {
+      const response = await fetchWithCredentials(
+        `${API_BASE_URL}/customer/purchases`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(purchaseData),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to create purchase");
+      }
+
+      return data;
+    } catch (error) {
+      console.error("Create purchase error:", error);
+      throw error;
+    }
+  },
+};
+
+export const membershipAPI = {
+  getMembership: async (customerId) => {
+    try {
+      const response = await fetchWithCredentials(
+        `${API_BASE_URL}/customer/membership/${customerId}`
+      );
+      if (!response.ok) throw new Error("Failed to fetch membership");
+      return await response.json();
+    } catch (error) {
+      console.error("Get membership error:", error);
+      return null;
+    }
+  },
 };

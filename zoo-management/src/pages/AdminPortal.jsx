@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Card,
   CardContent,
@@ -49,12 +50,6 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import {
-  employeeRecords,
-  locations,
-  jobTitles,
-  enclosures,
-} from "../data/mockData";
-import {
   LogOut,
   DollarSign,
   Users,
@@ -78,13 +73,15 @@ import {
   CreditCard,
   Map,
   Building2,
+  Filter,
+  AlertCircle,
+  Activity,
 } from "lucide-react";
 import { useData } from "../data/DataContext";
 import { toast } from "sonner";
 import { ZooLogo } from "../components/ZooLogo";
 import { EditExhibitDialog } from "../components/ExhibitDialogs";
 import { usePricing } from "../data/PricingContext";
-import { clearSpecificCache } from "../hooks/useOptimizedFetch";
 import {
   employeeAPI,
   locationAPI,
@@ -97,11 +94,11 @@ import {
   getDateRange,
 } from "../services/adminAPI";
 
-// API Base URL for direct fetch calls (for image uploads)
 const API_BASE_URL =
   import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
-export function AdminPortal({ user, onLogout, onNavigate }) {
+export function AdminPortal({ user, onLogout }) {
+  const navigate = useNavigate();
   const {
     animals,
     addAnimal,
@@ -139,50 +136,123 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
   const [viewZoneEmployees, setViewZoneEmployees] = useState(null);
   const [isSalaryManagementOpen, setIsSalaryManagementOpen] = useState(false);
   const [supervisorSearch, setSupervisorSearch] = useState("");
+  const [staffSearch, setStaffSearch] = useState("");
   const [editingExhibit, setEditingExhibit] = useState(null);
   const [isAddAnimalOpen, setIsAddAnimalOpen] = useState(false);
   const [deleteConfirmAnimal, setDeleteConfirmAnimal] = useState(null);
   const [editingAnimal, setEditingAnimal] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(new Date());
-
-  // Loading state for async save/update operations
   const [isSaving, setIsSaving] = useState(false);
 
-  // Salary state for each job type (5 shared login roles)
+  // Health Status Report Filters
+  const [healthZoneFilter, setHealthZoneFilter] = useState("All");
+  const [healthEnclosureFilter, setHealthEnclosureFilter] = useState("All");
+  const [genderFilter, setGenderFilter] = useState("All");
+  const [ageFilter, setAgeFilter] = useState("All");
+
+  // Animal Management Filters
+  const [animalExhibitFilter, setAnimalExhibitFilter] = useState("All");
+
   const [salaries, setSalaries] = useState({
-    2: 72000, // Supervisor
-    3: 72000, // Veterinarian
-    4: 45000, // Zookeeper
-    5: 32000, // Concession Worker
-    6: 35000, // Gift Shop Worker
+    2: 72000,
+    3: 72000,
+    4: 45000,
+    5: 32000,
+    6: 35000,
   });
 
-  // Temporary salary state for editing
   const [tempSalaries, setTempSalaries] = useState({ ...salaries });
-
-  // Pricing state for tickets and memberships
   const [isPricingManagementOpen, setIsPricingManagementOpen] = useState(false);
   const [tempTicketPrices, setTempTicketPrices] = useState({ ...ticketPrices });
   const [tempMembershipPrice, setTempMembershipPrice] =
     useState(membershipPrice);
 
-  // Load all data from database on mount
   useEffect(() => {
-    loadAllData();
+    loadInitialData();
   }, []);
 
-  // Reload revenue data when range changes
   useEffect(() => {
     if (!isLoading) {
       loadRevenueData();
     }
   }, [revenueRange]);
 
+  const loadInitialData = async () => {
+    try {
+      setIsLoading(true);
+
+      const [
+        locationsData,
+        jobTitlesData,
+        enclosuresData,
+        membershipsData,
+        employeesData,
+        exhibitsData,
+        animalsData,
+      ] = await Promise.all([
+        locationAPI.getAll(),
+        referenceAPI.getJobTitles(),
+        referenceAPI.getEnclosures(),
+        transactionAPI.getMemberships(),
+        employeeAPI.getAll(),
+        exhibitAPI.getAll(),
+        animalAPI.getAll(),
+      ]);
+
+      setAllLocations(locationsData);
+      setAllJobTitles(jobTitlesData);
+      setAllEnclosures(enclosuresData);
+      setAllMemberships(membershipsData);
+      setAllEmployees(employeesData);
+      setAllExhibitsDB(exhibitsData);
+      setAllAnimalsDB(animalsData);
+
+      await loadRevenueData();
+
+      setLastUpdated(new Date());
+      toast.success("Dashboard loaded successfully!");
+    } catch (error) {
+      console.error("Error loading data:", error);
+      toast.error("Failed to load data from database");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const loadEmployees = async () => {
+    try {
+      const employeesData = await employeeAPI.getAll();
+      setAllEmployees(employeesData);
+    } catch (error) {
+      console.error("Error loading employees:", error);
+      toast.error("Failed to load employees");
+    }
+  };
+
+  const loadExhibits = async () => {
+    try {
+      const exhibitsData = await exhibitAPI.getAll();
+      setAllExhibitsDB(exhibitsData);
+    } catch (error) {
+      console.error("Error loading exhibits:", error);
+      toast.error("Failed to load exhibits");
+    }
+  };
+
+  const loadAnimals = async () => {
+    try {
+      const animalsData = await animalAPI.getAll();
+      setAllAnimalsDB(animalsData);
+    } catch (error) {
+      console.error("Error loading animals:", error);
+      toast.error("Failed to load animals");
+    }
+  };
+
   const loadAllData = async () => {
     try {
       setIsLoading(true);
 
-      // Load all data in parallel
       const [
         employeesData,
         locationsData,
@@ -209,7 +279,6 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
       setAllEnclosures(enclosuresData);
       setAllMemberships(membershipsData);
 
-      // Load revenue data
       await loadRevenueData();
 
       setLastUpdated(new Date());
@@ -233,30 +302,25 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
     }
   };
 
-  // Update supervisor salaries on mount and when locations change
   useEffect(() => {
     setAllEmployees((prevEmployees) =>
       prevEmployees.map((emp) => {
-        // Check if this employee is a supervisor of any zone
         const isSupervisor = allLocations.some(
           (loc) => loc.Supervisor_ID === emp.Employee_ID
         );
 
         if (isSupervisor) {
-          // Employee is a supervisor, use supervisor salary
           return { ...emp, Salary: salaries[2] };
         }
         return emp;
       })
     );
-  }, []); // Only run on mount
+  }, []);
 
-  // Helper function to filter data by date range
   const filterByDateRange = (dateString) => {
     const date = new Date(dateString);
     const now = new Date();
 
-    // Reset time parts to compare just dates
     const dateOnly = new Date(
       date.getFullYear(),
       date.getMonth(),
@@ -283,21 +347,21 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
     }
   };
 
-  // Helper function to format date as MM/DD/YYYY
   const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    const year = date.getFullYear();
+    if (!dateString) return "N/A";
+
+    let dateStr = dateString.replace("T", " ").split(" ")[0];
+    const parts = dateStr.match(/(\d{4})-(\d{2})-(\d{2})/);
+    if (!parts) return "Invalid Date";
+
+    const [, year, month, day] = parts;
     return `${month}/${day}/${year}`;
   };
 
-  // Helper function to format numbers with commas
   const formatNumber = (num) => {
     return num.toLocaleString("en-US");
   };
 
-  // Helper function to format last updated time
   const formatLastUpdated = () => {
     const hours = lastUpdated.getHours();
     const minutes = String(lastUpdated.getMinutes()).padStart(2, "0");
@@ -306,12 +370,10 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
     return `${displayHours}:${minutes} ${ampm}`;
   };
 
-  // Helper function to check if employee is a supervisor
   const isSupervisor = (emp) => {
     return allLocations.some((loc) => loc.Supervisor_ID === emp.Employee_ID);
   };
 
-  // Helper function to get employee's display title (with Supervisor override)
   const getEmployeeTitle = (emp) => {
     if (isSupervisor(emp)) {
       return "Supervisor";
@@ -319,48 +381,72 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
     return emp.Title || "Unknown";
   };
 
-  // Helper function to get employee zone
   const getEmployeeZone = (emp) => {
-    // If employee has a direct zone assignment, show it
     if (emp.Zone) return `Zone ${emp.Zone}`;
 
-    // Check if employee is a supervisor of a zone
     const supervisedZone = allLocations.find(
       (loc) => loc.Supervisor_ID === emp.Employee_ID
     );
     if (supervisedZone) return `Zone ${supervisedZone.Zone}`;
 
-    // Otherwise, find zone by supervisor chain
-    const supervisor = allEmployees.find(
-      (e) => e.Employee_ID === emp.Supervisor_ID
-    );
-    if (supervisor) {
-      const supZone = allLocations.find(
-        (loc) => loc.Supervisor_ID === supervisor.Employee_ID
-      );
-      if (supZone) return `Zone ${supZone.Zone}`;
-    }
-
     return "Not Assigned";
   };
 
-  // Sort employees alphabetically by last name
   const sortedEmployees = useMemo(() => {
-    return [...allEmployees].sort((a, b) =>
-      a.Last_Name.localeCompare(b.Last_Name)
+    let filtered = [...allEmployees];
+
+    // Apply search filter
+    if (staffSearch.trim()) {
+      const searchLower = staffSearch.toLowerCase();
+      filtered = filtered.filter((emp) => {
+        const firstName = emp.First_Name?.toLowerCase() || "";
+        const lastName = emp.Last_Name?.toLowerCase() || "";
+        const employeeId = emp.Employee_ID?.toString() || "";
+
+        return (
+          firstName.includes(searchLower) ||
+          lastName.includes(searchLower) ||
+          employeeId.includes(searchLower)
+        );
+      });
+    }
+
+    // Sort by last name
+    return filtered.sort((a, b) => a.Last_Name.localeCompare(b.Last_Name));
+  }, [allEmployees, staffSearch]);
+
+  const displayAnimals = useMemo(() => {
+    if (animalExhibitFilter === "All") {
+      return allAnimalsDB;
+    }
+    return allAnimalsDB.filter(
+      (animal) => animal.Enclosure_ID === animalExhibitFilter
     );
-  }, [allEmployees]);
+  }, [allAnimalsDB, animalExhibitFilter]);
 
-  const displayAnimals = allAnimalsDB;
+  // Group animals by exhibit
+  const animalsByExhibit = useMemo(() => {
+    const grouped = {};
+    displayAnimals.forEach((animal) => {
+      const enclosure = allEnclosures.find(
+        (e) => e.Enclosure_ID === animal.Enclosure_ID
+      );
+      const enclosureName = enclosure?.Enclosure_Name || "Unknown";
+      if (!grouped[enclosureName]) {
+        grouped[enclosureName] = [];
+      }
+      grouped[enclosureName].push(animal);
+    });
+    return grouped;
+  }, [displayAnimals, allEnclosures]);
 
-  // Calculate statistics from database with revenue data from API
   const ticketRevenue = revenueData?.ticketRevenue || 0;
   const membershipRevenue = revenueData?.membershipRevenue || 0;
   const giftShopRevenue = revenueData?.giftShopRevenue || 0;
   const foodRevenue = revenueData?.foodRevenue || 0;
   const totalRevenue = revenueData?.totalRevenue || 0;
 
-  const totalAnimals = displayAnimals.length;
+  const totalAnimals = allAnimalsDB.length;
   const totalEmployees = allEmployees.length;
   const activeMemb = allMemberships.filter((m) => m.Membership_Status).length;
 
@@ -392,7 +478,6 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
     },
   ];
 
-  // Ticket stats from revenue data
   const ticketStats = useMemo(
     () => [
       {
@@ -421,7 +506,6 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
     try {
       await employeeAPI.delete(emp.Employee_ID);
 
-      // Reload employees and locations
       const [employeesData, locationsData] = await Promise.all([
         employeeAPI.getAll(),
         locationAPI.getAll(),
@@ -434,7 +518,6 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
     } catch (error) {
       console.error("Error deleting employee:", error);
 
-      // Show specific error message if available
       const errorMessage =
         error.response?.data?.error ||
         error.message ||
@@ -451,7 +534,6 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
     if (isSaving) return;
     setIsSaving(true);
     try {
-      // Find the location object for the selected zone
       const zoneLocation = allLocations.find(
         (loc) => loc.Zone === formData.zone
       );
@@ -465,7 +547,7 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
         salary: salaries[parseInt(formData.jobId)],
         email: formData.email,
         address: formData.address,
-        supervisorId: zoneLocation ? zoneLocation.Supervisor_ID : null,
+        locationId: zoneLocation ? zoneLocation.Location_ID : null,
       };
 
       await employeeAPI.update(employeeId, employeeData);
@@ -504,7 +586,7 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
         salary: salaries[parseInt(formData.jobId)],
         email: formData.email,
         address: formData.address,
-        supervisorId: zoneLocation ? zoneLocation.Supervisor_ID : null,
+        locationId: zoneLocation ? zoneLocation.Location_ID : null,
       };
 
       await employeeAPI.create(employeeData);
@@ -629,10 +711,6 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
     }
   };
 
-  // ============================================
-  // EXHIBIT HANDLERS
-  // ============================================
-
   const handleUpdateExhibit = async (formData) => {
     if (!editingExhibit || isSaving) return;
     setIsSaving(true);
@@ -706,9 +784,6 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
       const exhibitsData = await exhibitAPI.getAll();
       setAllExhibitsDB(exhibitsData);
 
-      // Clear exhibits and activities cache (activities are tied to exhibits)
-      clearSpecificCache("exhibits", "activities", "todaysSchedule");
-
       setEditingExhibit(null);
       toast.success(`Successfully updated exhibit: ${formData.name}!`);
     } catch (error) {
@@ -725,12 +800,8 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
     try {
       await exhibitAPI.removeImage(exhibitId);
 
-      // Reload exhibits to get fresh data
       const exhibitsData = await exhibitAPI.getAll();
       setAllExhibitsDB(exhibitsData);
-
-      // Clear exhibits and activities cache (activities are tied to exhibits)
-      clearSpecificCache("exhibits", "activities", "todaysSchedule");
 
       toast.success("Image removed successfully!");
     } catch (error) {
@@ -740,10 +811,6 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
       setIsSaving(false);
     }
   };
-
-  // ============================================
-  // ANIMAL HANDLERS
-  // ============================================
 
   const handleAddAnimal = async (formData) => {
     if (isSaving) return;
@@ -812,9 +879,6 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
           (e) => e.Enclosure_ID === newAnimal.Enclosure_ID
         ),
       });
-
-      // Clear only animals and enclosures cache
-      clearSpecificCache("animals", "enclosures");
 
       setIsAddAnimalOpen(false);
       toast.success(
@@ -905,12 +969,8 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
         }
       }
 
-      // Reload animals to get fresh data including updated image URL
       const animalsData = await animalAPI.getAll();
       setAllAnimalsDB(animalsData);
-
-      // Clear only animals and enclosures cache
-      clearSpecificCache("animals", "enclosures");
 
       setEditingAnimal(null);
       toast.success(
@@ -930,12 +990,8 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
     try {
       await animalAPI.removeImage(animalId);
 
-      // Reload animals to get fresh data
       const animalsData = await animalAPI.getAll();
       setAllAnimalsDB(animalsData);
-
-      // Clear only animals and enclosures cache
-      clearSpecificCache("animals", "enclosures");
 
       toast.success("Image removed successfully!");
     } catch (error) {
@@ -956,11 +1012,7 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
       const animalsData = await animalAPI.getAll();
       setAllAnimalsDB(animalsData);
 
-      // Also delete from context
       deleteAnimal(animal.Animal_ID);
-
-      // Clear only animals and enclosures cache
-      clearSpecificCache("animals", "enclosures");
 
       setDeleteConfirmAnimal(null);
       toast.success(`Successfully removed ${animal.Animal_Name} from the zoo.`);
@@ -989,13 +1041,10 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
 
   // Get employees in a specific zone
   const getZoneEmployees = (location) => {
+    // Filter employees by their Zone from employee_location table
     return allEmployees.filter((emp) => {
-      if (location.Supervisor_ID === emp.Employee_ID) return true;
-      const supervisor = allEmployees.find(
-        (e) => e.Employee_ID === emp.Supervisor_ID
-      );
-      if (supervisor && location.Supervisor_ID === supervisor.Employee_ID)
-        return true;
+      // Employee is in this zone if their Zone matches
+      if (emp.Zone === location.Zone) return true;
       return false;
     });
   };
@@ -1044,7 +1093,7 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
               </div>
               <Button
                 variant="outline"
-                onClick={() => onNavigate("home")}
+                onClick={() => navigate("/")}
                 className="border-teal-600 text-teal-600 cursor-pointer"
               >
                 <Home className="h-4 w-4 mr-2" />
@@ -1238,6 +1287,74 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
           </Card>
         </section>
 
+        {/* Revenue Analytics Charts */}
+        <section id="analytics">
+          <h2 className="text-2xl mb-6 flex items-center gap-2">
+            <TrendingUp className="h-6 w-6" /> Analytics
+          </h2>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Bar Chart - Ticket Stats */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Ticket Statistics</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={ticketStats}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="type" />
+                    <YAxis
+                      allowDecimals={false}
+                      label={{
+                        value: "Amount",
+                        angle: -90,
+                        position: "insideLeft",
+                      }}
+                    />
+                    <Tooltip />
+                    <Legend />
+                    <Bar dataKey="sold" fill="#4CAF50" name="Tickets Sold" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            {/* Pie Chart */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Revenue Distribution</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie
+                      data={revenueBreakdown.map((item) => ({
+                        name: item.category,
+                        value: item.amount,
+                      }))}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={({ name, percent }) =>
+                        `${name}: ${(percent * 100).toFixed(0)}%`
+                      }
+                      outerRadius={80}
+                      fill="#8884d8"
+                      dataKey="value"
+                    >
+                      <Cell fill="#4CAF50" />
+                      <Cell fill="#9C27B0" />
+                      <Cell fill="#2196F3" />
+                      <Cell fill="#FF9800" />
+                    </Pie>
+                    <Tooltip formatter={(value) => `$${value.toFixed(2)}`} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          </div>
+        </section>
+
         {/* Pricing Management */}
         <section id="pricing">
           <div className="flex items-center justify-between mb-6">
@@ -1255,20 +1372,25 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
 
           <Card>
             <CardContent className="pt-6">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Ticket Prices */}
-                <div>
-                  <h3 className="font-semibold mb-3 text-green-700">
-                    Day Pass Tickets
-                  </h3>
-                  <div className="space-y-2">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-semibold text-lg text-green-700 flex items-center gap-2">
+                      <Ticket className="h-5 w-5" />
+                      Day Pass Tickets
+                    </h3>
+                  </div>
+                  <div className="space-y-3">
                     {Object.entries(ticketPrices).map(([type, price]) => (
                       <div
                         key={type}
-                        className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-200"
+                        className="flex items-center justify-between p-4 bg-gradient-to-r from-green-50 to-green-100 rounded-xl border-2 border-green-300 hover:shadow-md transition-shadow"
                       >
-                        <span className="text-gray-700">{type}</span>
-                        <span className="font-semibold text-green-600">
+                        <span className="text-gray-800 font-medium capitalize">
+                          {type}
+                        </span>
+                        <span className="font-bold text-green-700 text-lg">
                           ${price.toFixed(2)}
                         </span>
                       </div>
@@ -1277,18 +1399,23 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
                 </div>
 
                 {/* Membership Price */}
-                <div>
-                  <h3 className="font-semibold mb-3 text-purple-700">
-                    Annual Membership
-                  </h3>
-                  <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-gray-700">Annual Membership</span>
-                      <span className="font-semibold text-purple-600 text-xl">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-semibold text-lg text-purple-700 flex items-center gap-2">
+                      <Crown className="h-5 w-5" />
+                      Annual Membership
+                    </h3>
+                  </div>
+                  <div className="p-6 bg-gradient-to-br from-purple-50 via-purple-100 to-pink-50 rounded-xl border-2 border-purple-300 hover:shadow-md transition-shadow">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-gray-800 font-semibold text-lg">
+                        Annual Membership
+                      </span>
+                      <span className="font-bold text-purple-700 text-2xl">
                         ${membershipPrice.toFixed(2)}
                       </span>
                     </div>
-                    <p className="text-sm text-gray-600">
+                    <p className="text-sm text-gray-600 bg-white/50 p-2 rounded-lg">
                       Unlimited year-round access + benefits
                     </p>
                   </div>
@@ -1392,74 +1519,6 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
               </div>
             </DialogContent>
           </Dialog>
-        </section>
-
-        {/* Revenue Analytics Charts */}
-        <section id="analytics">
-          <h2 className="text-2xl mb-6 flex items-center gap-2">
-            <TrendingUp className="h-6 w-6" /> Analytics
-          </h2>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Bar Chart - Ticket Stats */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Ticket Statistics</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={ticketStats}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="type" />
-                    <YAxis
-                      allowDecimals={false}
-                      label={{
-                        value: "Amount",
-                        angle: -90,
-                        position: "insideLeft",
-                      }}
-                    />
-                    <Tooltip />
-                    <Legend />
-                    <Bar dataKey="sold" fill="#4CAF50" name="Tickets Sold" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-
-            {/* Pie Chart */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Revenue Distribution</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <PieChart>
-                    <Pie
-                      data={revenueBreakdown.map((item) => ({
-                        name: item.category,
-                        value: item.amount,
-                      }))}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      label={({ name, percent }) =>
-                        `${name}: ${(percent * 100).toFixed(0)}%`
-                      }
-                      outerRadius={80}
-                      fill="#8884d8"
-                      dataKey="value"
-                    >
-                      <Cell fill="#4CAF50" />
-                      <Cell fill="#9C27B0" />
-                      <Cell fill="#2196F3" />
-                      <Cell fill="#FF9800" />
-                    </Pie>
-                    <Tooltip formatter={(value) => `$${value.toFixed(2)}`} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          </div>
         </section>
 
         {/* Zone Overview */}
@@ -1603,7 +1662,7 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
           <Card>
             <CardContent className="pt-6">
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                {jobTitles
+                {allJobTitles
                   .filter((j) => j.Job_ID !== 1)
                   .map((job) => {
                     const avgSalary = salaries[job.Job_ID] || 0;
@@ -1639,7 +1698,7 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
-                {jobTitles
+                {allJobTitles
                   .filter((j) => j.Job_ID !== 1)
                   .map((job) => {
                     const displayTitle =
@@ -1703,100 +1762,132 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
               onOpenChange={setIsAddEmployeeOpen}
               onAdd={handleAddEmployee}
               allEmployees={allEmployees}
+              allJobTitles={allJobTitles}
               salaries={salaries}
               isSaving={isSaving}
             />
           </div>
           <Card>
             <CardContent className="pt-6">
-              <p className="text-sm text-gray-600 mb-4">
-                Total Employees: {allEmployees.length}
-              </p>
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-sm text-gray-600">
+                  Total Employees: {allEmployees.length}
+                  {staffSearch.trim() && (
+                    <span className="ml-2 text-blue-600">
+                      (Showing {sortedEmployees.length} matching)
+                    </span>
+                  )}
+                </p>
+                <div className="relative w-80">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input
+                    placeholder="Search by name or ID..."
+                    value={staffSearch}
+                    onChange={(e) => setStaffSearch(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+              </div>
               <ScrollArea className="h-[600px] pr-4">
                 <div className="space-y-3">
-                  {sortedEmployees.map((emp) => (
-                    <div
-                      key={emp.Employee_ID}
-                      className="flex items-start justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors border border-gray-200"
-                    >
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-3 mb-2">
-                          <p className="font-medium text-lg">
-                            {emp.Last_Name}, {emp.First_Name}
-                          </p>
-                          <Badge
-                            className={
-                              isSupervisor(emp)
-                                ? "bg-purple-100 text-purple-800"
-                                : "bg-green-100 text-green-800"
-                            }
+                  {sortedEmployees.length > 0 ? (
+                    sortedEmployees.map((emp) => (
+                      <div
+                        key={emp.Employee_ID}
+                        className="flex items-start justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors border border-gray-200"
+                      >
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-3 mb-2">
+                            <p className="font-medium text-lg">
+                              {emp.Last_Name}, {emp.First_Name}
+                            </p>
+                            <Badge
+                              className={
+                                isSupervisor(emp)
+                                  ? "bg-purple-100 text-purple-800"
+                                  : "bg-green-100 text-green-800"
+                              }
+                            >
+                              {getEmployeeTitle(emp)}
+                            </Badge>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 text-sm text-gray-600">
+                            <div>
+                              <span className="font-medium">Email:</span>{" "}
+                              {emp.Email}
+                            </div>
+                            <div>
+                              <span className="font-medium">Employee ID:</span>{" "}
+                              {emp.Employee_ID}
+                            </div>
+                            <div>
+                              <span className="font-medium">Zone:</span>{" "}
+                              {getEmployeeZone(emp)}
+                            </div>
+                            <div>
+                              <span className="font-medium">Birthdate:</span>{" "}
+                              {formatDate(emp.Birthdate)}
+                            </div>
+                            <div>
+                              <span className="font-medium">Sex:</span>{" "}
+                              {emp.Sex}
+                            </div>
+                            <div>
+                              <span className="font-medium">Salary:</span> $
+                              {emp.Salary.toLocaleString()}
+                            </div>
+                            <div className="md:col-span-2">
+                              <span className="font-medium">Address:</span>{" "}
+                              {emp.Address}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 ml-4">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setEditingEmployee(emp)}
+                            className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 cursor-pointer"
+                            disabled={isSaving}
                           >
-                            {getEmployeeTitle(emp)}
-                          </Badge>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 text-sm text-gray-600">
-                          <div>
-                            <span className="font-medium">Email:</span>{" "}
-                            {emp.Email}
-                          </div>
-                          <div>
-                            <span className="font-medium">Employee ID:</span>{" "}
-                            {emp.Employee_ID}
-                          </div>
-                          <div>
-                            <span className="font-medium">Zone:</span>{" "}
-                            {getEmployeeZone(emp)}
-                          </div>
-                          <div>
-                            <span className="font-medium">Birthdate:</span>{" "}
-                            {formatDate(emp.Birthdate)}
-                          </div>
-                          <div>
-                            <span className="font-medium">Sex:</span> {emp.Sex}
-                          </div>
-                          <div>
-                            <span className="font-medium">Salary:</span> $
-                            {emp.Salary.toLocaleString()}
-                          </div>
-                          <div className="md:col-span-2">
-                            <span className="font-medium">Address:</span>{" "}
-                            {emp.Address}
-                          </div>
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setDeleteConfirmEmployee(emp)}
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50 cursor-pointer"
+                            disabled={isSaving}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 ml-4">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setEditingEmployee(emp)}
-                          className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 cursor-pointer"
-                          disabled={isSaving}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setDeleteConfirmEmployee(emp)}
-                          className="text-red-600 hover:text-red-700 hover:bg-red-50 cursor-pointer"
-                          disabled={isSaving}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-12">
+                      <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                      <p className="text-lg text-gray-600">
+                        No employees found
+                      </p>
+                      <p className="text-sm text-gray-500 mt-2">
+                        {staffSearch.trim()
+                          ? `No employees match "${staffSearch}"`
+                          : "No employees in the system"}
+                      </p>
                     </div>
-                  ))}
+                  )}
                 </div>
               </ScrollArea>
             </CardContent>
           </Card>
         </section>
 
-        {/* Exhibit Management */}
         <section id="exhibits">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-2xl flex items-center gap-2">
-              <Building2 className="h-6 w-6" /> Exhibit Management
+              <Building2 className="h-6 w-6 text-indigo-600" /> Exhibit
+              Management
             </h2>
           </div>
           <Card>
@@ -1808,7 +1899,7 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
                 {allExhibitsDB.map((exhibit) => (
                   <Card
                     key={exhibit.Exhibit_ID}
-                    className="p-4 hover:shadow-md transition-shadow"
+                    className="p-4 bg-gradient-to-br from-indigo-50 to-purple-50 border-2 border-indigo-200"
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
@@ -1817,7 +1908,10 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
                             {exhibit.exhibit_Name}
                           </h3>
                           {exhibit.Location_Description && (
-                            <Badge variant="outline" className="text-xs">
+                            <Badge
+                              variant="outline"
+                              className="text-xs bg-blue-50 text-blue-700 border-blue-200"
+                            >
                               {exhibit.Zone}
                             </Badge>
                           )}
@@ -1853,7 +1947,6 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
           </Card>
         </section>
 
-        {/* Animal Management */}
         <section id="animals">
           <div className="flex items-center justify-between mb-6">
             <div>
@@ -1875,72 +1968,620 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
               isSaving={isSaving}
             />
           </div>
-          <Card>
-            <CardContent className="pt-6">
-              <p className="text-sm text-gray-600 mb-4">
-                Manage zoo animals and their habitats
-              </p>
-              <ScrollArea className="h-[400px]">
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                  {displayAnimals.map((animal, index) => {
-                    const enclosure = allEnclosures.find(
-                      (e) => e.Enclosure_ID === animal.Enclosure_ID
-                    );
-                    // Generate a mock date added (based on animal ID for consistency)
-                    const daysAgo = (animal.Animal_ID * 13) % 365; // Pseudo-random but consistent
-                    const dateAdded = new Date();
-                    dateAdded.setDate(dateAdded.getDate() - daysAgo);
-                    const dateAddedString = formatDate(
-                      dateAdded.toISOString().split("T")[0]
-                    );
 
-                    return (
-                      <div
-                        key={animal.Animal_ID}
-                        className="p-4 bg-teal-50 rounded-lg border border-teal-200 flex items-center justify-between"
-                      >
-                        <div className="flex items-center space-x-4">
-                          <div className="flex items-center justify-center w-10 h-10 rounded-full bg-teal-600 text-white flex-shrink-0">
-                            <PawPrint className="h-5 w-5" />
-                          </div>
-                          <div>
-                            <p className="font-medium">{animal.Animal_Name}</p>
-                            <p className="text-sm text-gray-600">
-                              {animal.Species} •{" "}
-                              {animal.Gender === "M"
-                                ? "Male"
-                                : animal.Gender === "F"
-                                ? "Female"
-                                : "Unknown"}{" "}
-                              • ID: {animal.Animal_ID}
-                            </p>
-                            <p className="text-xs text-gray-500">
-                              Weight: {animal.Weight} lbs • Born:{" "}
-                              {formatDate(animal.Birthday)}
-                            </p>
-                            <p className="text-xs text-gray-500">
-                              Habitat: {enclosure?.Enclosure_Name || "Unknown"}{" "}
-                              • Added: {dateAddedString}
-                            </p>
-                          </div>
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="bg-blue-50 border-blue-300 text-blue-600 hover:bg-blue-100 cursor-pointer flex-shrink-0"
-                          onClick={() => setEditingAnimal(animal)}
-                          disabled={isSaving}
+          {/* Exhibit Filter */}
+          <Card className="mb-4">
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-4">
+                <div className="flex-1">
+                  <Label htmlFor="exhibit-filter">Filter by Exhibit</Label>
+                  <Select
+                    value={
+                      animalExhibitFilter === "All"
+                        ? "All"
+                        : animalExhibitFilter.toString()
+                    }
+                    onValueChange={(value) =>
+                      setAnimalExhibitFilter(
+                        value === "All" ? "All" : parseInt(value)
+                      )
+                    }
+                  >
+                    <SelectTrigger
+                      id="exhibit-filter"
+                      className="cursor-pointer"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="All">All Exhibits</SelectItem>
+                      {allEnclosures.map((enc) => (
+                        <SelectItem
+                          key={enc.Enclosure_ID}
+                          value={enc.Enclosure_ID.toString()}
                         >
-                          <Edit className="h-4 w-4 mr-2" />
-                          Edit
-                        </Button>
-                      </div>
-                    );
-                  })}
+                          {enc.Enclosure_Name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-              </ScrollArea>
+                {animalExhibitFilter !== "All" ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setAnimalExhibitFilter("All")}
+                    className="cursor-pointer mt-6"
+                  >
+                    Clear Filter
+                  </Button>
+                ) : (
+                  <div className="flex items-center gap-2 mt-6">
+                    <Filter className="h-5 w-5 text-gray-600" />
+                    <span className="font-semibold text-gray-700">Filter</span>
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
+
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-sm text-gray-600">
+                  Manage zoo animals organized by their exhibits
+                </p>
+              </div>
+              <div
+                className={
+                  Object.keys(animalsByExhibit).length > 2
+                    ? "max-h-[600px] overflow-y-auto pr-4"
+                    : ""
+                }
+              >
+                <div className="space-y-4">
+                  {Object.entries(animalsByExhibit).map(
+                    ([exhibitName, animals]) => (
+                      <Card
+                        key={exhibitName}
+                        className="overflow-hidden border-2 border-teal-200"
+                      >
+                        <CardHeader className="bg-gradient-to-r from-teal-50 to-cyan-50 pb-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="p-2 bg-teal-600 rounded-lg">
+                                <Building2 className="h-5 w-5 text-white" />
+                              </div>
+                              <div>
+                                <h3 className="font-bold text-lg text-teal-800">
+                                  {exhibitName}
+                                </h3>
+                                <p className="text-sm text-gray-600">
+                                  {animals.length}{" "}
+                                  {animals.length === 1 ? "animal" : "animals"}
+                                </p>
+                              </div>
+                            </div>
+                            <Badge
+                              variant="secondary"
+                              className="bg-teal-100 text-teal-700 border-teal-300"
+                            >
+                              {animals.length}
+                            </Badge>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="pt-4">
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                            {animals.map((animal) => {
+                              const enclosure = allEnclosures.find(
+                                (e) => e.Enclosure_ID === animal.Enclosure_ID
+                              );
+                              const daysAgo = (animal.Animal_ID * 13) % 365;
+                              const dateAdded = new Date();
+                              dateAdded.setDate(dateAdded.getDate() - daysAgo);
+                              const dateAddedString = formatDate(
+                                dateAdded.toISOString().split("T")[0]
+                              );
+
+                              return (
+                                <div
+                                  key={animal.Animal_ID}
+                                  style={{
+                                    padding: "1rem",
+                                    background:
+                                      "linear-gradient(to bottom right, #f0fdfa, #ecfeff)", // from-teal-50 to-cyan-50
+                                    borderRadius: "0.5rem", // rounded-lg
+                                    border: "1px solid #5eead4", // border-teal-300
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "space-between",
+                                    transition: "box-shadow 0.2s ease-in-out", // transition-shadow
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.boxShadow =
+                                      "0 4px 6px rgba(0, 0, 0, 0.1)"; // hover:shadow-md
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.boxShadow = "none";
+                                  }}
+                                >
+                                  <div className="flex items-center space-x-4">
+                                    <div className="flex items-center justify-center w-12 h-12 rounded-full bg-teal-600 text-white flex-shrink-0 shadow-md">
+                                      <PawPrint className="h-6 w-6" />
+                                    </div>
+                                    <div>
+                                      <p className="font-semibold text-gray-800">
+                                        {animal.Animal_Name}
+                                      </p>
+                                      <p className="text-sm text-gray-600">
+                                        {animal.Species} •{" "}
+                                        {animal.Gender === "M"
+                                          ? "Male"
+                                          : animal.Gender === "F"
+                                          ? "Female"
+                                          : "Unknown"}{" "}
+                                        • ID: {animal.Animal_ID}
+                                      </p>
+                                      <p className="text-xs text-gray-500">
+                                        Weight: {animal.Weight} lbs • Born:{" "}
+                                        {formatDate(animal.Birthday)}
+                                      </p>
+                                      <p className="text-xs text-gray-500">
+                                        Health: {animal.Health_Status} • Added:{" "}
+                                        {dateAddedString}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="bg-blue-50 border-blue-300 text-blue-600 hover:bg-blue-100 cursor-pointer flex-shrink-0"
+                                    onClick={() => setEditingAnimal(animal)}
+                                    disabled={isSaving}
+                                  >
+                                    <Edit className="h-4 w-4 mr-2" />
+                                    Edit
+                                  </Button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )
+                  )}
+
+                  {Object.keys(animalsByExhibit).length === 0 && (
+                    <div className="text-center py-12">
+                      <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                      <p className="text-lg text-gray-600">No animals found</p>
+                      <p className="text-sm text-gray-500 mt-2">
+                        {animalExhibitFilter !== "All"
+                          ? "Try selecting a different exhibit"
+                          : "Add animals to get started"}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </section>
+
+        {/* Animals Health Status Distribution Report */}
+        <section id="health-status">
+          <h2 className="text-2xl mb-6 flex items-center gap-2">
+            <Activity className="h-6 w-6 text-red-500" /> Animals Health Status
+            Distribution
+          </h2>
+
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle>Filter Animals by Health Criteria</CardTitle>
+                {healthZoneFilter !== "All" ||
+                healthEnclosureFilter !== "All" ||
+                genderFilter !== "All" ||
+                ageFilter !== "All" ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setHealthZoneFilter("All");
+                      setHealthEnclosureFilter("All");
+                      setGenderFilter("All");
+                      setAgeFilter("All");
+                    }}
+                    className="cursor-pointer"
+                  >
+                    Reset All Filters
+                  </Button>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <Filter className="h-5 w-5 text-gray-600" />
+                    <h3 className="font-semibold text-gray-700">Filters</h3>
+                  </div>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {/* Zone Filter */}
+                <div>
+                  <Label htmlFor="health-zone-filter">Zone</Label>
+                  <Select
+                    value={healthZoneFilter}
+                    onValueChange={(value) => {
+                      setHealthZoneFilter(value);
+                      setHealthEnclosureFilter("All");
+                    }}
+                  >
+                    <SelectTrigger
+                      id="health-zone-filter"
+                      className="cursor-pointer"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="All">All Zones</SelectItem>
+                      <SelectItem value="A">Zone A</SelectItem>
+                      <SelectItem value="B">Zone B</SelectItem>
+                      <SelectItem value="C">Zone C</SelectItem>
+                      <SelectItem value="D">Zone D</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Enclosure Filter */}
+                <div>
+                  <Label htmlFor="health-enclosure-filter">Enclosure</Label>
+                  <Select
+                    value={healthEnclosureFilter.toString()}
+                    onValueChange={(value) =>
+                      setHealthEnclosureFilter(
+                        value === "All" ? "All" : parseInt(value)
+                      )
+                    }
+                  >
+                    <SelectTrigger
+                      id="health-enclosure-filter"
+                      className="cursor-pointer"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="All">All Enclosures</SelectItem>
+                      {allEnclosures
+                        .filter((enc) => {
+                          if (healthZoneFilter === "All") return true;
+                          const location = allLocations.find(
+                            (loc) => loc.Location_ID === enc.Location_ID
+                          );
+                          return location?.Zone === healthZoneFilter;
+                        })
+                        .map((enc) => (
+                          <SelectItem
+                            key={enc.Enclosure_ID}
+                            value={enc.Enclosure_ID.toString()}
+                          >
+                            {enc.Enclosure_Name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Gender Filter */}
+                <div>
+                  <Label htmlFor="gender-filter">Gender</Label>
+                  <Select
+                    value={genderFilter}
+                    onValueChange={(value) => setGenderFilter(value)}
+                  >
+                    <SelectTrigger
+                      id="gender-filter"
+                      className="cursor-pointer"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="All">All Genders</SelectItem>
+                      <SelectItem value="M">Male</SelectItem>
+                      <SelectItem value="F">Female</SelectItem>
+                      <SelectItem value="U">Unknown</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Age Filter */}
+                <div>
+                  <Label htmlFor="age-filter">Age Range (years)</Label>
+                  <Select
+                    value={ageFilter}
+                    onValueChange={(value) => setAgeFilter(value)}
+                  >
+                    <SelectTrigger id="age-filter" className="cursor-pointer">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="All">All Ages</SelectItem>
+                      <SelectItem value="0-2">0-2 years</SelectItem>
+                      <SelectItem value="3-5">3-5 years</SelectItem>
+                      <SelectItem value="6-10">6-10 years</SelectItem>
+                      <SelectItem value="11+">11+ years</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Filtered Charts - Dynamic based on filters */}
+          {(() => {
+            // Helper function to calculate age in years
+            const calculateAge = (birthday) => {
+              const birthDate = new Date(birthday);
+              const today = new Date();
+              let age = today.getFullYear() - birthDate.getFullYear();
+              const monthDiff = today.getMonth() - birthDate.getMonth();
+              if (
+                monthDiff < 0 ||
+                (monthDiff === 0 && today.getDate() < birthDate.getDate())
+              ) {
+                age--;
+              }
+              return age;
+            };
+
+            // Filter animals based on selected filters
+            const filteredAnimals = allAnimalsDB.filter((animal) => {
+              // Zone filter
+              if (healthZoneFilter !== "All") {
+                const enclosure = allEnclosures.find(
+                  (e) => e.Enclosure_ID === animal.Enclosure_ID
+                );
+                const location = allLocations.find(
+                  (loc) => loc.Location_ID === enclosure?.Location_ID
+                );
+                if (location?.Zone !== healthZoneFilter) return false;
+              }
+
+              // Enclosure filter
+              if (
+                healthEnclosureFilter !== "All" &&
+                animal.Enclosure_ID !== healthEnclosureFilter
+              )
+                return false;
+
+              // Gender filter
+              if (genderFilter !== "All" && animal.Gender !== genderFilter)
+                return false;
+
+              // Age filter
+              if (ageFilter !== "All") {
+                const age = calculateAge(animal.Birthday);
+                if (ageFilter === "0-2" && (age < 0 || age > 2)) return false;
+                if (ageFilter === "3-5" && (age < 3 || age > 5)) return false;
+                if (ageFilter === "6-10" && (age < 6 || age > 10)) return false;
+                if (ageFilter === "11+" && age < 11) return false;
+              }
+
+              return true;
+            });
+
+            // Health status distribution for pie chart
+            const healthStatusData = [
+              {
+                name: "Excellent",
+                value: filteredAnimals.filter(
+                  (a) => a.Health_Status === "Excellent"
+                ).length,
+                fill: "#10B981",
+              },
+              {
+                name: "Good",
+                value: filteredAnimals.filter((a) => a.Health_Status === "Good")
+                  .length,
+                fill: "#4CAF50",
+              },
+              {
+                name: "Fair",
+                value: filteredAnimals.filter((a) => a.Health_Status === "Fair")
+                  .length,
+                fill: "#F59E0B",
+              },
+              {
+                name: "Needs Attention",
+                value: filteredAnimals.filter(
+                  (a) => a.Health_Status === "Needs Attention"
+                ).length,
+                fill: "#EF4444",
+              },
+            ].filter((item) => item.value > 0);
+
+            // Vaccination Status Distribution
+            const vaccinationData = [
+              {
+                name: "Vaccinated",
+                value: filteredAnimals.filter((a) => a.Is_Vaccinated).length,
+                fill: "#10B981",
+              },
+              {
+                name: "Not Vaccinated",
+                value: filteredAnimals.filter((a) => !a.Is_Vaccinated).length,
+                fill: "#EF4444",
+              },
+            ].filter((item) => item.value > 0);
+
+            return (
+              <div className="mt-6 space-y-6">
+                {/* Summary Card */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Filtered Results Summary</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                      <div className="text-center p-4 bg-blue-50 rounded-lg">
+                        <p className="text-sm text-gray-600 mb-1">
+                          Total Animals
+                        </p>
+                        <p className="text-3xl font-semibold text-blue-600">
+                          {filteredAnimals.length}
+                        </p>
+                      </div>
+                      <div className="text-center p-4 bg-green-50 rounded-lg">
+                        <p className="text-sm text-gray-600 mb-1">Excellent</p>
+                        <p className="text-3xl font-semibold text-green-600">
+                          {
+                            filteredAnimals.filter(
+                              (a) => a.Health_Status === "Excellent"
+                            ).length
+                          }
+                        </p>
+                      </div>
+                      <div className="text-center p-4 bg-teal-50 rounded-lg">
+                        <p className="text-sm text-gray-600 mb-1">Good</p>
+                        <p className="text-3xl font-semibold text-teal-600">
+                          {
+                            filteredAnimals.filter(
+                              (a) => a.Health_Status === "Good"
+                            ).length
+                          }
+                        </p>
+                      </div>
+                      <div
+                        className="text-center p-4 rounded-lg"
+                        style={{ backgroundColor: "#fefce8" }}
+                      >
+                        <p className="text-sm text-gray-600 mb-1">Fair</p>
+                        <p
+                          style={{
+                            fontSize: "1.875rem",
+                            fontWeight: 600,
+                            color: "#a16207",
+                          }}
+                        >
+                          {
+                            filteredAnimals.filter(
+                              (a) => a.Health_Status === "Fair"
+                            ).length
+                          }
+                        </p>
+                      </div>
+                      <div className="text-center p-4 bg-red-50 rounded-lg">
+                        <p className="text-sm text-gray-600 mb-1">
+                          Needs Attention
+                        </p>
+                        <p className="text-3xl font-semibold text-red-600">
+                          {
+                            filteredAnimals.filter(
+                              (a) => a.Health_Status === "Needs Attention"
+                            ).length
+                          }
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {filteredAnimals.length === 0 ? (
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="text-center py-12">
+                        <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                        <p className="text-lg text-gray-600">
+                          No animals found matching the selected filters
+                        </p>
+                        <p className="text-sm text-gray-500 mt-2">
+                          Try adjusting your filter criteria
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <>
+                    {/* Charts Grid */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      {/* Health Status Distribution - Pie Chart */}
+                      <Card>
+                        <CardHeader>
+                          <CardTitle>Health Status Distribution</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <ResponsiveContainer width="100%" height={300}>
+                            <PieChart>
+                              <Pie
+                                data={healthStatusData}
+                                cx="50%"
+                                cy="50%"
+                                labelLine={false}
+                                label={({ name, value, percent }) =>
+                                  `${name}: ${value} (${(percent * 100).toFixed(
+                                    0
+                                  )}%)`
+                                }
+                                outerRadius={80}
+                                fill="#8884d8"
+                                dataKey="value"
+                              >
+                                {healthStatusData.map((entry, index) => (
+                                  <Cell
+                                    key={`cell-${index}`}
+                                    fill={entry.fill}
+                                  />
+                                ))}
+                              </Pie>
+                              <Tooltip />
+                              <Legend />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        </CardContent>
+                      </Card>
+
+                      {/* Vaccination Status Distribution */}
+                      {vaccinationData.length > 0 && (
+                        <Card>
+                          <CardHeader>
+                            <CardTitle>Vaccination Status</CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <ResponsiveContainer width="100%" height={300}>
+                              <PieChart>
+                                <Pie
+                                  data={vaccinationData}
+                                  cx="50%"
+                                  cy="50%"
+                                  labelLine={false}
+                                  label={({ name, value, percent }) =>
+                                    `${name}: ${value} (${(
+                                      percent * 100
+                                    ).toFixed(0)}%)`
+                                  }
+                                  outerRadius={80}
+                                  fill="#8884d8"
+                                  dataKey="value"
+                                >
+                                  {vaccinationData.map((entry, index) => (
+                                    <Cell
+                                      key={`cell-${index}`}
+                                      fill={entry.fill}
+                                    />
+                                  ))}
+                                </Pie>
+                                <Tooltip />
+                                <Legend />
+                              </PieChart>
+                            </ResponsiveContainer>
+                          </CardContent>
+                        </Card>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })()}
         </section>
 
         {/* Zone Supervisor Assignment Dialog */}
@@ -2102,6 +2743,7 @@ export function AdminPortal({ user, onLogout, onNavigate }) {
           isOpen={editingEmployee !== null}
           onOpenChange={(open) => !open && setEditingEmployee(null)}
           onUpdate={handleUpdateEmployee}
+          allJobTitles={allJobTitles}
           allLocations={allLocations}
           salaries={salaries}
           isSaving={isSaving}
@@ -2176,6 +2818,7 @@ function AddEmployeeDialog({
   onOpenChange,
   onAdd,
   allEmployees,
+  allJobTitles,
   salaries,
   isSaving,
 }) {
@@ -2271,7 +2914,7 @@ function AddEmployeeDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {jobTitles
+                  {allJobTitles
                     .filter((j) => j.Job_ID !== 1 && j.Job_ID !== 2)
                     .map((job) => (
                       <SelectItem
@@ -2434,6 +3077,7 @@ function EditEmployeeDialog({
   isOpen,
   onOpenChange,
   onUpdate,
+  allJobTitles,
   allLocations,
   salaries,
   isSaving,
@@ -2441,9 +3085,21 @@ function EditEmployeeDialog({
   // Helper function to format date for input[type="date"]
   const formatDateForInput = (dateString) => {
     if (!dateString) return "";
-    const date = new Date(dateString);
-    if (isNaN(date.getTime())) return "";
-    return date.toISOString().split("T")[0];
+
+    // Parse the date string manually to avoid timezone issues
+    // Remove 'T' and treat as local date (YYYY-MM-DD or YYYY-MM-DD HH:mm:ss)
+    let dateStr = dateString.replace("T", " ").split(" ")[0]; // Get just the date part
+
+    // If already in YYYY-MM-DD format, return as is
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      return dateStr;
+    }
+
+    // Otherwise parse manually to avoid UTC conversion
+    const parts = dateStr.match(/(\d{4})-(\d{2})-(\d{2})/);
+    if (!parts) return "";
+
+    return `${parts[1]}-${parts[2]}-${parts[3]}`;
   };
 
   const [formData, setFormData] = useState({
@@ -2567,7 +3223,7 @@ function EditEmployeeDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {jobTitles
+                  {allJobTitles
                     .filter((j) => j.Job_ID !== 1 && j.Job_ID !== 2)
                     .map((job) => (
                       <SelectItem
@@ -2943,11 +3599,21 @@ function EditAnimalDialog({
   // Helper function to format date for input[type="date"]
   const formatDateForInput = (dateString) => {
     if (!dateString) return "";
-    // Handle both ISO format and MySQL date format
-    const date = new Date(dateString);
-    if (isNaN(date.getTime())) return "";
-    // Return YYYY-MM-DD format
-    return date.toISOString().split("T")[0];
+
+    // Parse the date string manually to avoid timezone issues
+    // Remove 'T' and treat as local date (YYYY-MM-DD or YYYY-MM-DD HH:mm:ss)
+    let dateStr = dateString.replace("T", " ").split(" ")[0]; // Get just the date part
+
+    // If already in YYYY-MM-DD format, return as is
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      return dateStr;
+    }
+
+    // Otherwise parse manually to avoid UTC conversion
+    const parts = dateStr.match(/(\d{4})-(\d{2})-(\d{2})/);
+    if (!parts) return "";
+
+    return `${parts[1]}-${parts[2]}-${parts[3]}`;
   };
 
   const [formData, setFormData] = useState({

@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
 import {
@@ -11,7 +12,6 @@ import {
 import { exhibitsAPI, activitiesAPI } from "../services/customerAPI";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { getExhibitImage } from "../utils/imageMapping";
-import { useOptimizedFetch } from "../hooks/useOptimizedFetch";
 import { preloadImages } from "../utils/imagePreloader";
 
 const membershipBenefits = [
@@ -21,39 +21,37 @@ const membershipBenefits = [
   "Quarterly members newsletter",
 ];
 
-export function CustomerHighlights({ onNavigate }) {
+export function CustomerHighlights() {
+  const navigate = useNavigate();
   const [eventsIndex, setEventsIndex] = useState(0);
   const [exhibitsIndex, setExhibitsIndex] = useState(0);
+  const [exhibits, setExhibits] = useState([]);
+  const [activities, setActivities] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   const itemsPerPage = 3;
 
-  // Optimized data fetching with caching
-  const {
-    data: exhibitsData,
-    loading: exhibitsLoading,
-    error: exhibitsError,
-  } = useOptimizedFetch(
-    "exhibits",
-    () => exhibitsAPI.getAll(),
-    { cacheTime: 5 * 60 * 1000 } // Cache for 5 minutes
-  );
-
-  const {
-    data: activitiesData,
-    loading: activitiesLoading,
-    error: activitiesError,
-  } = useOptimizedFetch(
-    "activities",
-    () => activitiesAPI.getAll(),
-    { cacheTime: 5 * 60 * 1000 } // Cache for 5 minutes
-  );
-
-  // Ensure we always have arrays (handle null/undefined from cache)
-  const exhibits = exhibitsData || [];
-  const activities = activitiesData || [];
-
-  const loading = exhibitsLoading || activitiesLoading;
-  const error = exhibitsError || activitiesError;
+  // Fetch data without caching
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const [exhibitsData, activitiesData] = await Promise.all([
+          exhibitsAPI.getAll(),
+          activitiesAPI.getAll(),
+        ]);
+        setExhibits(exhibitsData || []);
+        setActivities(activitiesData || []);
+        setError(null);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
 
   // Preload exhibit images for better performance
   useEffect(() => {
@@ -69,18 +67,16 @@ export function CustomerHighlights({ onNavigate }) {
   }, [exhibits]);
 
   const handleMembershipClick = () => {
-    if (onNavigate) {
-      onNavigate("tickets");
-      setTimeout(() => {
-        const membershipsSection = document.getElementById("memberships");
-        if (membershipsSection) {
-          membershipsSection.scrollIntoView({
-            behavior: "smooth",
-            block: "start",
-          });
-        }
-      }, 100);
-    }
+    navigate("/tickets");
+    setTimeout(() => {
+      const membershipsSection = document.getElementById("memberships");
+      if (membershipsSection) {
+        membershipsSection.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }
+    }, 100);
   };
 
   // Get visible items (3 consecutive items, wrapping around if needed)
@@ -129,14 +125,22 @@ export function CustomerHighlights({ onNavigate }) {
         const activityIndex = eventDate.getDate() % exhibitActivities.length;
         const selectedActivity = exhibitActivities[activityIndex];
 
+        // Check if this event is today
+        const isToday =
+          eventDate.getDate() === today.getDate() &&
+          eventDate.getMonth() === today.getMonth() &&
+          eventDate.getFullYear() === today.getFullYear();
+
         next7Days.push({
           ...selectedActivity,
           displayDate: eventDate,
-          dateString: eventDate.toLocaleDateString("en-US", {
-            weekday: "short",
-            month: "numeric",
-            day: "numeric",
-          }),
+          dateString: isToday
+            ? "Today"
+            : eventDate.toLocaleDateString("en-US", {
+                weekday: "short",
+                month: "numeric",
+                day: "numeric",
+              }),
         });
       }
     }
@@ -244,7 +248,7 @@ export function CustomerHighlights({ onNavigate }) {
           <div className="relative max-w-6xl mx-auto">
             <button
               onClick={prevEvents}
-              className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-4 z-10 bg-green-600 text-white rounded-full p-3 shadow-lg hover:bg-green-700 transition-colors cursor-pointer"
+              className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-4 z-5 bg-green-600 text-white rounded-full p-3 shadow-lg hover:bg-green-700 transition-colors cursor-pointer"
               aria-label="Previous events"
             >
               <ChevronLeft className="h-6 w-6" />
@@ -286,7 +290,7 @@ export function CustomerHighlights({ onNavigate }) {
 
             <button
               onClick={nextEvents}
-              className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-4 z-10 bg-green-600 text-white rounded-full p-3 shadow-lg hover:bg-green-700 transition-colors cursor-pointer"
+              className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-4 z-5 bg-green-600 text-white rounded-full p-3 shadow-lg hover:bg-green-700 transition-colors cursor-pointer"
               aria-label="Next events"
             >
               <ChevronRight className="h-6 w-6" />
@@ -306,7 +310,7 @@ export function CustomerHighlights({ onNavigate }) {
           <div className="relative max-w-6xl mx-auto">
             <button
               onClick={prevExhibits}
-              className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-4 z-10 bg-green-600 text-white rounded-full p-3 shadow-lg hover:bg-green-700 transition-colors cursor-pointer"
+              className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-4 z-5 bg-green-600 text-white rounded-full p-3 shadow-lg hover:bg-green-700 transition-colors cursor-pointer"
               aria-label="Previous exhibits"
             >
               <ChevronLeft className="h-6 w-6" />
@@ -350,7 +354,7 @@ export function CustomerHighlights({ onNavigate }) {
 
             <button
               onClick={nextExhibits}
-              className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-4 z-10 bg-green-600 text-white rounded-full p-3 shadow-lg hover:bg-green-700 transition-colors cursor-pointer"
+              className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-4 z-5 bg-green-600 text-white rounded-full p-3 shadow-lg hover:bg-green-700 transition-colors cursor-pointer"
               aria-label="Next exhibits"
             >
               <ChevronRight className="h-6 w-6" />

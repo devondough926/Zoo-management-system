@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Card,
   CardContent,
@@ -51,6 +52,7 @@ const giftShopCategories = [
 ];
 
 export function GiftShopPortal({ user, onLogout, onNavigate }) {
+  const navigate = useNavigate();
   const {
     items: shopItems,
     addItem,
@@ -136,9 +138,9 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
     };
 
     fetchAnalytics();
-  }, [shopItems]); // Refresh when items change
+  }, [shopItems]);
 
-  // Calculate all-time revenue from purchases (keep this for the toggle)
+  // Calculate all-time revenue from purchases
   useEffect(() => {
     const revenue = purchaseItems
       .filter((pi) => pi.Item_ID !== 9000)
@@ -273,7 +275,7 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
               </div>
               <Button
                 variant="outline"
-                onClick={() => onNavigate("shop")}
+                onClick={() => onNavigate ? onNavigate("shop") : navigate("/shop")}
                 className="border-teal-600 text-teal-600 cursor-pointer"
               >
                 <ShoppingBag className="h-4 w-4 mr-2" />
@@ -543,7 +545,7 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
                 }
                 placeholder="Enter item name"
               />
-            </div>
+              </div>
             <div className="space-y-2">
               <Label htmlFor="edit-price">Price *</Label>
               <Input

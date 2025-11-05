@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Card,
   CardContent,
@@ -43,15 +44,38 @@ import { ZooLogo } from "../../components/ZooLogo";
 import { ImageWithFallback } from "../../components/figma/ImageWithFallback";
 import { useData } from "../../data/DataContext";
 
-export function ConcessionPortal({ user, onLogout, onNavigate }) {
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000/api";
+
+export function ConcessionPortal({ user, onLogout }) {
+  const navigate = useNavigate();
   const {
-    concessionItems: menuItems,
+    concessionItems: menuItemsFromContext,
     addConcessionItem,
     updateConcessionItem,
     deleteConcessionItem,
     purchases,
     purchaseConcessionItems,
   } = useData();
+  
+  // Local state for menu items fetched from backend
+  const [menuItems, setMenuItems] = useState([]);
+  
+  // Fetch menu items from backend on mount and when menuItemsFromContext changes
+  useEffect(() => {
+    const fetchMenu = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/food`);
+        if (!res.ok) throw new Error("Failed to fetch menu");
+        const data = await res.json();
+        setMenuItems(data);
+      } catch (err) {
+        console.error("❌ Failed to load menu:", err);
+        toast.error("Failed to load food items");
+      }
+    };
+    fetchMenu();
+  }, []); // Only fetch on mount
+  
   // All concession stands under management (Concession Worker manages all 4 stands)
   const allStands = concessionStands;
   const [showRevenueAllTime, setShowRevenueAllTime] = useState(false);
@@ -78,40 +102,45 @@ export function ConcessionPortal({ user, onLogout, onNavigate }) {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState(null);
 
-  // Calculate revenue from actual purchases
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const todayPurchaseConcessionItems = purchaseConcessionItems.filter((pci) => {
-    const purchase = purchases.find((p) => p.Purchase_ID === pci.Purchase_ID);
-    if (!purchase) return false;
-    const purchaseDate = new Date(purchase.Purchase_Date);
-    purchaseDate.setHours(0, 0, 0, 0);
-    return purchaseDate.getTime() === today.getTime();
+  // Stats state for real backend data
+  const [stats, setStats] = useState({
+    todayRevenue: 0,
+    allTimeRevenue: 0,
+    itemsSoldToday: 0,
+    topItemToday: null,
   });
 
-  const todayRevenue = todayPurchaseConcessionItems.reduce(
-    (sum, pci) => sum + pci.Unit_Price * pci.Quantity,
-    0
-  );
-  const allTimeRevenue = purchaseConcessionItems.reduce(
-    (sum, pci) => sum + pci.Unit_Price * pci.Quantity,
-    0
-  );
-  const itemsSoldToday = todayPurchaseConcessionItems.reduce(
-    (sum, pci) => sum + pci.Quantity,
-    0
-  );
+  // Fetch stats from backend on mount and periodically
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/stats/concession`);
+        if (!res.ok) throw new Error("Failed to fetch stats");
+        const data = await res.json();
+        setStats(data);
+      } catch (err) {
+        console.error("❌ Failed to load stats:", err);
+        toast.error("Failed to load statistics");
+      }
+    };
+
+    // Fetch immediately
+    fetchStats();
+
+    // Refresh every 30 seconds
+    const interval = setInterval(fetchStats, 30000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   // Top selling items with mock quantities (top 3 only)
+  // Note: These are still using mock data for the "Top 3 Selling Items" section
+  // The "Top-Selling Item Today" card uses real data from stats.topItemToday
   const topItems = [
     { item: menuItems[17], quantity: 189, rank: 1 }, // Spaghetti & Meatballs
     { item: menuItems[0], quantity: 167, rank: 2 }, // Classic Cheeseburger
     { item: menuItems[6], quantity: 154, rank: 3 }, // Chocolate Sundae
   ].filter((t) => t.item); // Filter out any undefined items
-
-  // Get top selling item today
-  const topSellingItemToday = topItems[0] || null;
 
   // Bottom selling items with mock quantities (bottom 3 only)
   const totalItemCount = menuItems.length;
@@ -131,7 +160,7 @@ export function ConcessionPortal({ user, onLogout, onNavigate }) {
     setEditDialogOpen(true);
   };
 
-  const handleEditSave = () => {
+  const handleEditSave = async () => {
     if (!editingItem) return;
 
     if (!editForm.name || !editForm.price) {
@@ -139,45 +168,74 @@ export function ConcessionPortal({ user, onLogout, onNavigate }) {
       return;
     }
 
-    // Create a URL for the image file if provided, otherwise keep existing image
-    const imageUrl = editForm.imageFile
-      ? URL.createObjectURL(editForm.imageFile)
-      : editingItem.image;
+    try {
+      const formData = new FormData();
+      formData.append("Item_Name", editForm.name);
+      formData.append("Price", editForm.price);
+      if (editForm.imageFile) {
+        formData.append("image", editForm.imageFile);
+      }
 
-    updateConcessionItem(editingItem.Concession_Item_ID, {
-      Item_Name: editForm.name,
-      Price: parseFloat(editForm.price),
-      ...(imageUrl && { image: imageUrl }),
-    });
+      const res = await fetch(`${API_BASE}/food/${editingItem.Concession_Item_ID}`, {
+        method: "PUT",
+        body: formData,
+      });
 
-    setEditDialogOpen(false);
-    toast.success("Item updated successfully!");
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || "Update failed");
+      }
+
+      // Refresh menu to get updated Image_URL from backend
+      const updated = await fetch(`${API_BASE}/food`);
+      const newList = await updated.json();
+      setMenuItems(newList);
+
+      setEditDialogOpen(false);
+      toast.success("Item updated successfully!");
+    } catch (err) {
+      console.error("❌ Error updating item:", err);
+      toast.error(err.message || "Failed to update item");
+    }
   };
 
-  const handleAddItem = () => {
+  const handleAddItem = async () => {
     if (!addForm.name || !addForm.price) {
       toast.error("Please fill in all required fields");
       return;
     }
 
-    // Create a URL for the image file if provided
-    const imageUrl = addForm.imageFile
-      ? URL.createObjectURL(addForm.imageFile)
-      : undefined;
+    try {
+      const formData = new FormData();
+      formData.append("Item_Name", addForm.name);
+      formData.append("Price", addForm.price);
+      formData.append("Stand_ID", addForm.standId);
+      if (addForm.imageFile) {
+        formData.append("image", addForm.imageFile);
+      }
 
-    const newItem = {
-      Concession_Item_ID:
-        Math.max(...menuItems.map((i) => i.Concession_Item_ID)) + 1,
-      Stand_ID: parseInt(addForm.standId),
-      Item_Name: addForm.name,
-      Price: parseFloat(addForm.price),
-      ...(imageUrl && { image: imageUrl }),
-    };
+      const res = await fetch(`${API_BASE}/food`, {
+        method: "POST",
+        body: formData,
+      });
 
-    addConcessionItem(newItem);
-    setAddDialogOpen(false);
-    setAddForm({ name: "", price: "", standId: "1", imageFile: null });
-    toast.success("New item added successfully!");
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || "Upload failed");
+      }
+
+      // Refresh menu to get the new item with Image_URL from backend
+      const updated = await fetch(`${API_BASE}/food`);
+      const newList = await updated.json();
+      setMenuItems(newList);
+
+      setAddDialogOpen(false);
+      setAddForm({ name: "", price: "", standId: "1", imageFile: null });
+      toast.success("✅ Item added!");
+    } catch (err) {
+      console.error("❌ Error adding item:", err);
+      toast.error(err.message || "Failed to add item");
+    }
   };
 
   const handleDeleteClick = (item) => {
@@ -185,13 +243,31 @@ export function ConcessionPortal({ user, onLogout, onNavigate }) {
     setDeleteDialogOpen(true);
   };
 
-  const handleDeleteConfirm = () => {
+  const handleDeleteConfirm = async () => {
     if (!itemToDelete) return;
 
-    deleteConcessionItem(itemToDelete.Concession_Item_ID);
-    setDeleteDialogOpen(false);
-    setItemToDelete(null);
-    toast.success("Item removed successfully!");
+    try {
+      const res = await fetch(`${API_BASE}/food/${itemToDelete.Concession_Item_ID}`, {
+        method: "DELETE",
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || "Delete failed");
+      }
+
+      // Refresh menu to reflect deletion
+      const updated = await fetch(`${API_BASE}/food`);
+      const newList = await updated.json();
+      setMenuItems(newList);
+
+      setDeleteDialogOpen(false);
+      setItemToDelete(null);
+      toast.success("Item removed successfully!");
+    } catch (err) {
+      console.error("❌ Error deleting item:", err);
+      toast.error(err.message || "Failed to delete item");
+    }
   };
 
   return (
@@ -218,7 +294,7 @@ export function ConcessionPortal({ user, onLogout, onNavigate }) {
               </div>
               <Button
                 variant="outline"
-                onClick={() => onNavigate("food")}
+                onClick={() => navigate("/food")}
                 className="border-teal-600 text-teal-600 cursor-pointer"
               >
                 <Coffee className="h-4 w-4 mr-2" />
@@ -258,10 +334,10 @@ export function ConcessionPortal({ user, onLogout, onNavigate }) {
               <div className="text-3xl text-green-600 mb-2">
                 $
                 {showRevenueAllTime
-                  ? allTimeRevenue.toLocaleString("en-US", {
+                  ? stats.allTimeRevenue.toLocaleString("en-US", {
                       minimumFractionDigits: 2,
                     })
-                  : todayRevenue.toLocaleString("en-US", {
+                  : stats.todayRevenue.toLocaleString("en-US", {
                       minimumFractionDigits: 2,
                     })}
               </div>
@@ -274,7 +350,7 @@ export function ConcessionPortal({ user, onLogout, onNavigate }) {
           <Card>
             <CardContent className="pt-6 text-center">
               <div className="text-3xl text-green-600 mb-2">
-                {itemsSoldToday}
+                {stats.itemsSoldToday}
               </div>
               <p className="text-gray-700">Items Sold Today</p>
             </CardContent>
@@ -282,14 +358,14 @@ export function ConcessionPortal({ user, onLogout, onNavigate }) {
 
           <Card>
             <CardContent className="pt-6 text-center">
-              {topSellingItemToday ? (
+              {stats.topItemToday ? (
                 <>
                   <div className="text-2xl text-green-600 mb-2">
-                    {topSellingItemToday.item.Item_Name}
+                    {stats.topItemToday.Item_Name}
                   </div>
                   <p className="text-gray-700">Top-Selling Item Today</p>
                   <p className="text-sm text-gray-500">
-                    ({topSellingItemToday.quantity} sold)
+                    ({stats.topItemToday.Quantity} sold)
                   </p>
                 </>
               ) : (
@@ -328,9 +404,9 @@ export function ConcessionPortal({ user, onLogout, onNavigate }) {
                 >
                   <div className="flex items-center space-x-4 flex-1">
                     <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden">
-                      {item.image ? (
+                      {item.Image_URL ? (
                         <ImageWithFallback
-                          src={item.image}
+                          src={item.Image_URL}
                           alt={item.Item_Name}
                           className="w-full h-full object-cover"
                         />
@@ -350,7 +426,7 @@ export function ConcessionPortal({ user, onLogout, onNavigate }) {
                   <div className="flex items-center space-x-4">
                     <div className="text-right">
                       <p className="text-2xl font-semibold text-green-600">
-                        ${item.Price.toFixed(2)}
+                        ${parseFloat(item.Price || 0).toFixed(2)}
                       </p>
                     </div>
                     <div className="flex space-x-2">
@@ -403,9 +479,9 @@ export function ConcessionPortal({ user, onLogout, onNavigate }) {
                         #{topItem.rank}
                       </div>
                       <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden">
-                        {topItem.item.image ? (
+                        {topItem.item.Image_URL ? (
                           <ImageWithFallback
-                            src={topItem.item.image}
+                            src={topItem.item.Image_URL}
                             alt={topItem.item.Item_Name}
                             className="w-full h-full object-cover"
                           />
@@ -450,9 +526,9 @@ export function ConcessionPortal({ user, onLogout, onNavigate }) {
                         #{bottomItem.rank}
                       </div>
                       <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden">
-                        {bottomItem.item.image ? (
+                        {bottomItem.item.Image_URL ? (
                           <ImageWithFallback
-                            src={bottomItem.item.image}
+                            src={bottomItem.item.Image_URL}
                             alt={bottomItem.item.Item_Name}
                             className="w-full h-full object-cover"
                           />
