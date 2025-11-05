@@ -26,7 +26,7 @@ app.use(
 app.use(
   cors({
     origin: function (origin, callback) {
-      if (!origin || /^http:\/\/localhost:\d+$/.test(origin)) {
+      if (!origin || /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin)) {
         return callback(null, true);
       }
 
