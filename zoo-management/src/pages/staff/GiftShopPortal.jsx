@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Card,
   CardContent,
@@ -83,36 +83,70 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState(null);
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  // State for analytics data
+  const [todayRevenue, setTodayRevenue] = useState(0);
+  const [itemsSoldToday, setItemsSoldToday] = useState(0);
+  const [topSellingToday, setTopSellingToday] = useState(null);
+  const [topItems, setTopItems] = useState([]);
+  const [allTimeRevenue, setAllTimeRevenue] = useState(0);
 
-  const todayPurchaseItems = purchaseItems.filter((pi) => {
-    const purchase = purchases.find((p) => p.Purchase_ID === pi.Purchase_ID);
-    if (!purchase || pi.Item_ID === 9000) return false;
-    const purchaseDate = new Date(purchase.Purchase_Date);
-    purchaseDate.setHours(0, 0, 0, 0);
-    return purchaseDate.getTime() === today.getTime();
-  });
+  // Fetch analytics data from backend
+  useEffect(() => {
+    const fetchAnalytics = async () => {
+      try {
+        // Fetch today's revenue and items sold
+        const revenueResponse = await fetch('http://localhost:5000/api/shop/analytics/revenue/today');
+        if (revenueResponse.ok) {
+          const data = await revenueResponse.json();
+          setTodayRevenue(parseFloat(data.todayRevenue));
+          setItemsSoldToday(parseInt(data.itemsSoldToday));
+        }
 
-  const todayRevenue = todayPurchaseItems.reduce(
-    (sum, pi) => sum + pi.Unit_Price * pi.Quantity,
-    0
-  );
-  const allTimeRevenue = purchaseItems
-    .filter((pi) => pi.Item_ID !== 9000)
-    .reduce((sum, pi) => sum + pi.Unit_Price * pi.Quantity, 0);
-  const itemsSoldToday = todayPurchaseItems.reduce(
-    (sum, pi) => sum + pi.Quantity,
-    0
-  );
+        // Fetch top selling items (all time)
+        const topSellingResponse = await fetch('http://localhost:5000/api/shop/analytics/top-selling');
+        if (topSellingResponse.ok) {
+          const data = await topSellingResponse.json();
+          setTopItems(data.map((item, index) => ({
+            item: {
+              Item_ID: item.Item_ID,
+              Item_Name: item.Item_Name,
+              Price: item.Price,
+              Category: item.Category,
+              Image_URL: item.Image_URL,
+            },
+            quantity: parseInt(item.totalSold),
+            rank: index + 1,
+          })));
+        }
 
-  const topItems = [
-    { item: shopItems[0], quantity: 156, rank: 1 },
-    { item: shopItems[1], quantity: 143, rank: 2 },
-    { item: shopItems[5], quantity: 128, rank: 3 },
-  ].filter((t) => t.item);
+        // Fetch top selling item today
+        const topTodayResponse = await fetch('http://localhost:5000/api/shop/analytics/top-selling-today');
+        if (topTodayResponse.ok) {
+          const data = await topTodayResponse.json();
+          if (data.Item_Name) {
+            setTopSellingToday({
+              item: { Item_Name: data.Item_Name },
+              quantity: parseInt(data.soldToday),
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching analytics:', error);
+      }
+    };
 
-  const topSellingItemToday = topItems[0] || null;
+    fetchAnalytics();
+  }, [shopItems]); // Refresh when items change
+
+  // Calculate all-time revenue from purchases (keep this for the toggle)
+  useEffect(() => {
+    const revenue = purchaseItems
+      .filter((pi) => pi.Item_ID !== 9000)
+      .reduce((sum, pi) => sum + pi.Unit_Price * pi.Quantity, 0);
+    setAllTimeRevenue(revenue);
+  }, [purchaseItems]);
+
+  const topSellingItemToday = topSellingToday;
 
   const totalItemCount = 32;
   const actualItemCount = shopItems.length;
@@ -137,7 +171,7 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
         ].filter((t) => t.item)
       : [];
 
-   const handleEditClick = (item) => {
+  const handleEditClick = (item) => {
     setEditingItem(item);
     setEditForm({
       name: item.Item_Name,
@@ -417,9 +451,9 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
                         #{topItem.rank}
                       </div>
                       <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden">
-                        {topItem.item.image ? (
+                        {topItem.item.Image_URL ? (
                           <ImageWithFallback
-                            src={topItem.item.image}
+                            src={topItem.item.Image_URL}
                             alt={topItem.item.Item_Name}
                             className="w-full h-full object-cover"
                           />
