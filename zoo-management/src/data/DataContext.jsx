@@ -12,13 +12,8 @@
 
 import { createContext, useContext, useState, useEffect } from "react";
 import {
-  animals as initialAnimals,
+  mockAnimals,
   concessionItems as initialConcessionItems,
-  purchases as initialPurchases,
-  tickets as initialTickets,
-  purchaseItems as initialPurchaseItems,
-  purchaseConcessionItems as initialPurchaseConcessionItems,
-  memberships as initialMemberships,
 } from "./mockData";
 
 const DataContext = createContext(undefined);
@@ -26,18 +21,14 @@ const DataContext = createContext(undefined);
 const API_BASE_URL = "http://localhost:5000/api";
 
 export function DataProvider({ children }) {
-  const [animals, setAnimals] = useState(initialAnimals);
+  const [animals, setAnimals] = useState(mockAnimals);
   const [items, setItems] = useState([]);
-  const [concessionItems, setConcessionItems] = useState(
-    initialConcessionItems
-  );
-  const [purchases, setPurchases] = useState(initialPurchases);
-  const [tickets, setTickets] = useState(initialTickets);
-  const [purchaseItems, setPurchaseItems] = useState(initialPurchaseItems);
-  const [purchaseConcessionItems, setPurchaseConcessionItems] = useState(
-    initialPurchaseConcessionItems
-  );
-  const [memberships, setMemberships] = useState(initialMemberships);
+  const [concessionItems, setConcessionItems] = useState(initialConcessionItems);
+  const [purchases, setPurchases] = useState([]);
+  const [tickets, setTickets] = useState([]);
+  const [purchaseItems, setPurchaseItems] = useState([]);
+  const [purchaseConcessionItems, setPurchaseConcessionItems] = useState([]);
+  const [memberships, setMemberships] = useState([]);
 
   // Fetch shop items from backend on mount
   useEffect(() => {
