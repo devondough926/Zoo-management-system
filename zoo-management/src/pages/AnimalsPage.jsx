@@ -1,7 +1,13 @@
 import { useState, useMemo, useEffect } from "react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import { Stethoscope, Salad, Trees } from "lucide-react";
+import {
+  Stethoscope,
+  Salad,
+  Trees,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import { animalsAPI, enclosuresAPI } from "../services/customerAPI";
 import { getAnimalImage } from "../utils/imageMapping";
 import { AnimalCard } from "../components/AnimalCard";
@@ -10,12 +16,15 @@ import { useHeroImage } from "../utils/heroImages";
 import { preloadImages } from "../utils/imagePreloader";
 
 export function AnimalsPage() {
-  const [selectedHabitat, setSelectedHabitat] = useState("All Animals");
+  const [selectedHabitat, setSelectedHabitat] = useState("All");
+  const [currentPage, setCurrentPage] = useState(1);
   const [animals, setAnimals] = useState([]);
   const [enclosures, setEnclosures] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const heroImage = useHeroImage("animals");
+
+  const ITEMS_PER_PAGE = 12; // 4 columns × 3 rows
 
   // Fetch data without caching
   useEffect(() => {
@@ -40,13 +49,13 @@ export function AnimalsPage() {
 
   // Memoize habitats list - only recalculate when enclosures change
   const habitats = useMemo(() => {
-    return ["All Animals", ...enclosures.map((enc) => enc.Enclosure_Name)];
+    return ["All", ...enclosures.map((enc) => enc.Enclosure_Name)];
   }, [enclosures]);
 
   // Memoize displayed animals - only recalculate when animals, selectedHabitat changes
   const displayedAnimals = useMemo(() => {
     const filteredAnimals =
-      selectedHabitat === "All Animals"
+      selectedHabitat === "All"
         ? animals
         : animals.filter((animal) => animal.Enclosure_Name === selectedHabitat);
 
@@ -63,6 +72,67 @@ export function AnimalsPage() {
       imageUrl: getAnimalImage(animal),
     }));
   }, [animals, selectedHabitat]);
+
+  // Paginated animals
+  const paginatedAnimals = useMemo(() => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    const endIndex = startIndex + ITEMS_PER_PAGE;
+    return displayedAnimals.slice(startIndex, endIndex);
+  }, [displayedAnimals, currentPage]);
+
+  const totalPages = Math.ceil(displayedAnimals.length / ITEMS_PER_PAGE);
+
+  // Go to a page, preloading that page's images first so the visual switch is smooth
+  const goToPage = async (page) => {
+    const startIndex = (page - 1) * ITEMS_PER_PAGE;
+    const endIndex = startIndex + ITEMS_PER_PAGE;
+    const imageUrls = displayedAnimals
+      .slice(startIndex, endIndex)
+      .map((a) => a.imageUrl)
+      .filter(Boolean);
+
+    try {
+      // Start preloading but don't wait indefinitely — race with a short timeout
+      await Promise.race([
+        preloadImages(imageUrls, "high"),
+        new Promise((res) => setTimeout(res, 150)),
+      ]);
+    } catch (e) {
+      // ignore preload errors — we'll still switch
+    }
+
+    setCurrentPage(page);
+
+    // Slower custom smooth scroll so users observe the transition
+    try {
+      if (typeof window !== "undefined") {
+        const start = window.scrollY || window.pageYOffset || 0;
+        if (start > 0) {
+          const duration = 900;
+          const startTime = performance.now();
+          const easeInOutQuad = (t) =>
+            t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+
+          const step = (now) => {
+            const elapsed = now - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            const ease = easeInOutQuad(progress);
+            window.scrollTo(0, Math.round(start * (1 - ease)));
+            if (elapsed < duration) requestAnimationFrame(step);
+          };
+
+          requestAnimationFrame(step);
+        }
+      }
+    } catch (e) {
+      // ignore for non-browser environments
+    }
+  };
+
+  // Reset to page 1 when habitat changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedHabitat]);
 
   // Preload animal images for better performance
   useEffect(() => {
@@ -166,18 +236,59 @@ export function AnimalsPage() {
           </section>
 
           {/* Animals Grid */}
-          <section className="py-16">
+          <section className="py-16 pb-24">
             <div className="container mx-auto px-6">
               <h2 className="text-2xl mb-8 text-center">
-                {selectedHabitat === "All Animals"
-                  ? `All Animals (${displayedAnimals.length})`
-                  : `${selectedHabitat} (${displayedAnimals.length})`}
+                {selectedHabitat === "All" ? "All Animals" : selectedHabitat}
               </h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                {displayedAnimals.map((animal, index) => (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mb-16">
+                {paginatedAnimals.map((animal, index) => (
                   <AnimalCard key={`${animal.name}-${index}`} animal={animal} />
                 ))}
               </div>
+
+              {/* Pagination Controls */}
+              {displayedAnimals.length > 0 && (
+                <div className="flex justify-center items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => goToPage(Math.max(1, currentPage - 1))}
+                    disabled={currentPage === 1}
+                    className="gap-1"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+
+                  <div className="flex gap-1">
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map(
+                      (page) => (
+                        <Button
+                          key={page}
+                          variant={currentPage === page ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => goToPage(page)}
+                          className="min-w-[40px]"
+                        >
+                          {page}
+                        </Button>
+                      )
+                    )}
+                  </div>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      goToPage(Math.min(totalPages, currentPage + 1))
+                    }
+                    disabled={currentPage === totalPages}
+                    className="gap-1"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
             </div>
           </section>
 

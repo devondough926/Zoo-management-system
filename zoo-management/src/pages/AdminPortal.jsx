@@ -1335,9 +1335,11 @@ export function AdminPortal({ user, onLogout }) {
                       cx="50%"
                       cy="50%"
                       labelLine={false}
-                      label={({ name, percent }) =>
-                        `${name}: ${(percent * 100).toFixed(0)}%`
-                      }
+                      // Only render the on-chart label when the slice is non-zero
+                      label={({ name, percent }) => {
+                        if (!percent || percent === 0) return null;
+                        return `${name}: ${(percent * 100).toFixed(0)}%`;
+                      }}
                       outerRadius={80}
                       fill="#8884d8"
                       dataKey="value"
@@ -1366,7 +1368,7 @@ export function AdminPortal({ user, onLogout }) {
               onClick={() => handlePricingDialogOpen(true)}
             >
               <Edit className="h-4 w-4 mr-2" />
-              Manage Prices
+              Edit Prices
             </Button>
           </div>
 
@@ -1385,7 +1387,7 @@ export function AdminPortal({ user, onLogout }) {
                     {Object.entries(ticketPrices).map(([type, price]) => (
                       <div
                         key={type}
-                        className="flex items-center justify-between p-4 bg-gradient-to-r from-green-50 to-green-100 rounded-xl border-2 border-green-300 hover:shadow-md transition-shadow"
+                        className="flex items-center justify-between p-4 bg-gradient-to-r from-green-50 to-green-100 rounded-xl border-2 border-green-300"
                       >
                         <span className="text-gray-800 font-medium capitalize">
                           {type}
@@ -1406,7 +1408,7 @@ export function AdminPortal({ user, onLogout }) {
                       Annual Membership
                     </h3>
                   </div>
-                  <div className="p-6 bg-gradient-to-br from-purple-50 via-purple-100 to-pink-50 rounded-xl border-2 border-purple-300 hover:shadow-md transition-shadow">
+                  <div className="p-6 bg-gradient-to-br from-purple-50 via-purple-100 to-pink-50 rounded-xl border-2 border-purple-300">
                     <div className="flex items-center justify-between mb-3">
                       <span className="text-gray-800 font-semibold text-lg">
                         Annual Membership
@@ -1656,7 +1658,7 @@ export function AdminPortal({ user, onLogout }) {
               onClick={() => handleSalaryDialogOpen(true)}
             >
               <DollarSign className="h-4 w-4 mr-2" />
-              Manage Salaries
+              Edit Salaries
             </Button>
           </div>
           <Card>
@@ -1924,7 +1926,9 @@ export function AdminPortal({ user, onLogout }) {
                             <span>Capacity: {exhibit.Capacity}</span>
                           )}
                           {exhibit.Display_Time && (
-                            <span>• {exhibit.Display_Time}</span>
+                            <span>
+                              • Activity Scheduled for {exhibit.Display_Time}
+                            </span>
                           )}
                         </div>
                       </div>
@@ -2018,7 +2022,7 @@ export function AdminPortal({ user, onLogout }) {
                 ) : (
                   <div className="flex items-center gap-2 mt-6">
                     <Filter className="h-5 w-5 text-gray-600" />
-                    <span className="font-semibold text-gray-700">Filter</span>
+                    <span className="font-semibold text-gray-700">Sort</span>
                   </div>
                 )}
               </div>
@@ -2044,7 +2048,7 @@ export function AdminPortal({ user, onLogout }) {
                     ([exhibitName, animals]) => (
                       <Card
                         key={exhibitName}
-                        className="overflow-hidden border-2 border-teal-200"
+                        className="overflow-hidden outline-1 border-teal-100"
                       >
                         <CardHeader className="bg-gradient-to-r from-teal-50 to-cyan-50 pb-3">
                           <div className="flex items-center justify-between">
@@ -2199,7 +2203,7 @@ export function AdminPortal({ user, onLogout }) {
                 ) : (
                   <div className="flex items-center gap-2">
                     <Filter className="h-5 w-5 text-gray-600" />
-                    <h3 className="font-semibold text-gray-700">Filters</h3>
+                    <h3 className="font-semibold text-gray-700">Sort</h3>
                   </div>
                 )}
               </div>
@@ -2369,6 +2373,14 @@ export function AdminPortal({ user, onLogout }) {
               return true;
             });
 
+            // canonical health status color map (used across cards and charts)
+            const healthColors = {
+              Excellent: "#06B6D4",
+              Good: "#059669",
+              Fair: "#F59E0B",
+              "Needs Attention": "#EF4444",
+            };
+
             // Health status distribution for pie chart
             const healthStatusData = [
               {
@@ -2376,42 +2388,68 @@ export function AdminPortal({ user, onLogout }) {
                 value: filteredAnimals.filter(
                   (a) => a.Health_Status === "Excellent"
                 ).length,
-                fill: "#10B981",
+                fill: healthColors.Excellent,
               },
               {
                 name: "Good",
                 value: filteredAnimals.filter((a) => a.Health_Status === "Good")
                   .length,
-                fill: "#4CAF50",
+                fill: healthColors.Good,
               },
               {
                 name: "Fair",
                 value: filteredAnimals.filter((a) => a.Health_Status === "Fair")
                   .length,
-                fill: "#F59E0B",
+                fill: healthColors.Fair,
               },
               {
                 name: "Needs Attention",
                 value: filteredAnimals.filter(
                   (a) => a.Health_Status === "Needs Attention"
                 ).length,
-                fill: "#EF4444",
+                fill: healthColors["Needs Attention"],
               },
             ].filter((item) => item.value > 0);
 
-            // Vaccination Status Distribution
-            const vaccinationData = [
-              {
-                name: "Vaccinated",
-                value: filteredAnimals.filter((a) => a.Is_Vaccinated).length,
-                fill: "#10B981",
-              },
-              {
-                name: "Not Vaccinated",
-                value: filteredAnimals.filter((a) => !a.Is_Vaccinated).length,
-                fill: "#EF4444",
-              },
-            ].filter((item) => item.value > 0);
+            // Health by Exhibit (stacked bar) - replaces previous Vaccination pie
+            const byExhibit = (() => {
+              // Build a map of enclosureId -> counts per health status
+              // Use globalThis.Map to avoid shadowing by imported `Map` icon
+              const exhibitMap = new globalThis.Map();
+              const statuses = ["Excellent", "Good", "Fair", "Needs Attention"];
+
+              // Initialize map entries for enclosures present in filteredAnimals
+              filteredAnimals.forEach((a) => {
+                const id = a.Enclosure_ID;
+                if (!exhibitMap.has(id)) {
+                  exhibitMap.set(id, { enclosureId: id, enclosureName: null });
+                }
+              });
+
+              // Populate enclosure names from allEnclosures
+              for (const [id, entry] of exhibitMap.entries()) {
+                const enc = allEnclosures.find((e) => e.Enclosure_ID === id);
+                entry.enclosureName = enc?.Enclosure_Name || `Enclosure ${id}`;
+                // initialize counts
+                statuses.forEach((s) => (entry[s] = 0));
+              }
+
+              // Count statuses
+              filteredAnimals.forEach((a) => {
+                const id = a.Enclosure_ID;
+                const entry = exhibitMap.get(id);
+                if (!entry) return; // safeguard
+                const status = a.Health_Status || "Fair";
+                if (statuses.includes(status))
+                  entry[status] = (entry[status] || 0) + 1;
+                else entry.Fair = (entry.Fair || 0) + 1;
+              });
+
+              // Convert to array and only keep exhibits with any animals
+              return Array.from(exhibitMap.values()).filter((e) =>
+                statuses.some((s) => e[s] > 0)
+              );
+            })();
 
             return (
               <div className="mt-6 space-y-6">
@@ -2430,9 +2468,12 @@ export function AdminPortal({ user, onLogout }) {
                           {filteredAnimals.length}
                         </p>
                       </div>
-                      <div className="text-center p-4 bg-green-50 rounded-lg">
+                      <div className="text-center p-4 bg-teal-50 rounded-lg">
                         <p className="text-sm text-gray-600 mb-1">Excellent</p>
-                        <p className="text-3xl font-semibold text-green-600">
+                        <p
+                          className="text-3xl font-semibold"
+                          style={{ color: healthColors.Excellent }}
+                        >
                           {
                             filteredAnimals.filter(
                               (a) => a.Health_Status === "Excellent"
@@ -2440,9 +2481,12 @@ export function AdminPortal({ user, onLogout }) {
                           }
                         </p>
                       </div>
-                      <div className="text-center p-4 bg-teal-50 rounded-lg">
+                      <div className="text-center p-4 bg-green-50 rounded-lg">
                         <p className="text-sm text-gray-600 mb-1">Good</p>
-                        <p className="text-3xl font-semibold text-teal-600">
+                        <p
+                          className="text-3xl font-semibold"
+                          style={{ color: healthColors.Good }}
+                        >
                           {
                             filteredAnimals.filter(
                               (a) => a.Health_Status === "Good"
@@ -2459,7 +2503,7 @@ export function AdminPortal({ user, onLogout }) {
                           style={{
                             fontSize: "1.875rem",
                             fontWeight: 600,
-                            color: "#a16207",
+                            color: healthColors.Fair,
                           }}
                         >
                           {
@@ -2473,7 +2517,10 @@ export function AdminPortal({ user, onLogout }) {
                         <p className="text-sm text-gray-600 mb-1">
                           Needs Attention
                         </p>
-                        <p className="text-3xl font-semibold text-red-600">
+                        <p
+                          className="text-3xl font-semibold"
+                          style={{ color: healthColors["Needs Attention"] }}
+                        >
                           {
                             filteredAnimals.filter(
                               (a) => a.Health_Status === "Needs Attention"
@@ -2516,10 +2563,8 @@ export function AdminPortal({ user, onLogout }) {
                                 cx="50%"
                                 cy="50%"
                                 labelLine={false}
-                                label={({ name, value, percent }) =>
-                                  `${name}: ${value} (${(percent * 100).toFixed(
-                                    0
-                                  )}%)`
+                                label={({ name, percent }) =>
+                                  `${name} — ${(percent * 100).toFixed(0)}%`
                                 }
                                 outerRadius={80}
                                 fill="#8884d8"
@@ -2540,38 +2585,110 @@ export function AdminPortal({ user, onLogout }) {
                       </Card>
 
                       {/* Vaccination Status Distribution */}
-                      {vaccinationData.length > 0 && (
+                      {byExhibit.length > 0 && (
                         <Card>
                           <CardHeader>
-                            <CardTitle>Vaccination Status</CardTitle>
+                            <CardTitle>Health by Exhibit</CardTitle>
                           </CardHeader>
                           <CardContent>
                             <ResponsiveContainer width="100%" height={300}>
-                              <PieChart>
-                                <Pie
-                                  data={vaccinationData}
-                                  cx="50%"
-                                  cy="50%"
-                                  labelLine={false}
-                                  label={({ name, value, percent }) =>
-                                    `${name}: ${value} (${(
-                                      percent * 100
-                                    ).toFixed(0)}%)`
-                                  }
-                                  outerRadius={80}
-                                  fill="#8884d8"
-                                  dataKey="value"
-                                >
-                                  {vaccinationData.map((entry, index) => (
-                                    <Cell
-                                      key={`cell-${index}`}
-                                      fill={entry.fill}
-                                    />
-                                  ))}
-                                </Pie>
+                              <BarChart
+                                data={byExhibit}
+                                margin={{ left: 0, right: 8 }}
+                              >
+                                <CartesianGrid strokeDasharray="3 3" />
+                                {/* show all ticks and render wrapped, rotated labels so long names fit */}
+                                <XAxis
+                                  dataKey="enclosureName"
+                                  interval={0}
+                                  height={80}
+                                  tick={({ x, y, payload }) => {
+                                    const label = String(payload?.value || "");
+                                    // decide whether to rotate based on number of exhibits shown
+                                    const rotate = byExhibit.length > 4; // rotate only when more than 4
+
+                                    if (!rotate) {
+                                      // simple horizontal single-line label centered under the tick
+                                      return (
+                                        <g
+                                          transform={`translate(${x}, ${
+                                            y + 16
+                                          })`}
+                                        >
+                                          <text
+                                            textAnchor="middle"
+                                            fontSize={12}
+                                          >
+                                            {label}
+                                          </text>
+                                        </g>
+                                      );
+                                    }
+
+                                    // rotated/wrapped label for long lists
+                                    const maxChars = 18; // target chars per line
+                                    let line1 = label;
+                                    let line2 = "";
+                                    if (label.length > maxChars) {
+                                      const idx = label.lastIndexOf(
+                                        " ",
+                                        maxChars
+                                      );
+                                      if (idx > 0) {
+                                        line1 = label.slice(0, idx);
+                                        line2 = label.slice(idx + 1);
+                                      } else {
+                                        line1 = label.slice(0, maxChars);
+                                        line2 = label.slice(maxChars);
+                                      }
+                                    }
+
+                                    return (
+                                      <g
+                                        transform={`translate(${x}, ${y + 10})`}
+                                      >
+                                        <text
+                                          textAnchor="end"
+                                          fontSize={12}
+                                          transform="rotate(-45)"
+                                        >
+                                          <tspan x={0} dy={0}>
+                                            {line1}
+                                          </tspan>
+                                          {line2 && (
+                                            <tspan x={0} dy={12}>
+                                              {line2}
+                                            </tspan>
+                                          )}
+                                        </text>
+                                      </g>
+                                    );
+                                  }}
+                                />
+                                <YAxis allowDecimals={false} />
                                 <Tooltip />
                                 <Legend />
-                              </PieChart>
+                                <Bar
+                                  dataKey="Excellent"
+                                  stackId="a"
+                                  fill={healthColors.Excellent}
+                                />
+                                <Bar
+                                  dataKey="Good"
+                                  stackId="a"
+                                  fill={healthColors.Good}
+                                />
+                                <Bar
+                                  dataKey="Fair"
+                                  stackId="a"
+                                  fill={healthColors.Fair}
+                                />
+                                <Bar
+                                  dataKey="Needs Attention"
+                                  stackId="a"
+                                  fill={healthColors["Needs Attention"]}
+                                />
+                              </BarChart>
                             </ResponsiveContainer>
                           </CardContent>
                         </Card>
@@ -2853,7 +2970,7 @@ function AddEmployeeDialog({
       <DialogTrigger asChild>
         <Button className="bg-green-600 hover:bg-green-700 cursor-pointer">
           <UserPlus className="h-4 w-4 mr-2" />
-          Employee
+          Add Employee
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-2xl max-h-[90vh]">
@@ -3426,7 +3543,7 @@ function AddAnimalDialog({
       <DialogTrigger asChild>
         <Button className="bg-teal-600 hover:bg-teal-700 cursor-pointer">
           <Plus className="h-4 w-4 mr-2" />
-          Animal
+          Add Animal
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-2xl">

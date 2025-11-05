@@ -130,11 +130,28 @@ function AppContent() {
     }
   };
 
+  const handleLogout = async () => {
+    // Clear cart state before logging out
+    clearCart();
+    // Call the original logout function from AuthContext
+    await logout();
+  };
+
   const addToCart = (item) => {
+    // Prevent adding items to the cart from logged-in admin/staff contexts
+    // but allow anonymous users to click buttons (they'll be prompted to log in)
+    if (
+      (user && userType !== "customer") ||
+      location.pathname.startsWith("/admin")
+    ) {
+      toast.error("Adding items to cart is disabled for admin/staff users.");
+      return;
+    }
+
     setCart((prevCart) => {
-      // Prevent adding more than one membership (Item ID 9000) to the cart
-      if (item.id === 9000) {
-        const hasMembership = prevCart.some((i) => i.id === 9000);
+      // Prevent adding more than one membership to the cart
+      if (item.type === "membership") {
+        const hasMembership = prevCart.some((i) => i.type === "membership");
         if (hasMembership) {
           toast.error(
             "You can only have one membership in the cart at a time."
@@ -146,8 +163,8 @@ function AppContent() {
         (i) => i.id === item.id && i.type === item.type
       );
       if (existingItem) {
-        // For membership item (9000), don't increase quantity beyond 1
-        if (item.id === 9000) {
+        // For membership items, don't increase quantity beyond 1
+        if (item.type === "membership") {
           toast.error(
             "Membership already in cart. Proceed to checkout or remove it before adding another."
           );
@@ -191,15 +208,15 @@ function AppContent() {
 
     switch (role) {
       case "veterinarian":
-        return <VeterinarianPortal user={employee} onLogout={logout} />;
+        return <VeterinarianPortal user={employee} onLogout={handleLogout} />;
       case "zookeeper":
-        return <ZookeeperPortal user={employee} onLogout={logout} />;
+        return <ZookeeperPortal user={employee} onLogout={handleLogout} />;
       case "giftshop":
-        return <GiftShopPortal user={employee} onLogout={logout} />;
+        return <GiftShopPortal user={employee} onLogout={handleLogout} />;
       case "concession":
-        return <ConcessionPortal user={employee} onLogout={logout} />;
+        return <ConcessionPortal user={employee} onLogout={handleLogout} />;
       case "supervisor":
-        return <ManagerPortal user={employee} onLogout={logout} />;
+        return <ManagerPortal user={employee} onLogout={handleLogout} />;
       default:
         return <Navigate to="/" replace />;
     }
@@ -230,7 +247,7 @@ function AppContent() {
   return (
     <div className="min-h-screen">
       {showNavAndFooter && (
-        <Navigation onLogout={logout} cartCount={cartCount} />
+        <Navigation onLogout={handleLogout} cartCount={cartCount} />
       )}
 
       <Routes>
@@ -241,21 +258,55 @@ function AppContent() {
           path="/attractions"
           element={<AttractionsPage key={pageKey} />}
         />
-        <Route path="/shop" element={<ShopPage addToCart={addToCart} />} />
-        <Route path="/food" element={<FoodPage addToCart={addToCart} />} />
+        {/* Allow cart actions only for customers (not staff/admin) */}
+        <Route
+          path="/shop"
+          element={
+            <ShopPage
+              addToCart={addToCart}
+              allowCartActions={
+                userType === "customer" &&
+                !location.pathname.startsWith("/admin")
+              }
+            />
+          }
+        />
+        <Route
+          path="/food"
+          element={
+            <FoodPage
+              addToCart={addToCart}
+              allowCartActions={
+                userType === "customer" &&
+                !location.pathname.startsWith("/admin")
+              }
+            />
+          }
+        />
         <Route
           path="/tickets"
-          element={<TicketsPage addToCart={addToCart} cart={cart} />}
+          element={
+            <TicketsPage
+              addToCart={addToCart}
+              cart={cart}
+              allowCartActions={
+                userType === "customer" &&
+                !location.pathname.startsWith("/admin")
+              }
+            />
+          }
         />
         <Route
           path="/cart"
           element={
-            <CartPage
-              cart={cart}
-              removeFromCart={removeFromCart}
-              updateCartQuantity={updateCartQuantity}
-              clearCart={clearCart}
-            />
+            <ProtectedRoute requireAuth requireCustomer>
+              <CartPage
+                cart={cart}
+                removeFromCart={removeFromCart}
+                updateCartQuantity={updateCartQuantity}
+                clearCart={clearCart}
+              />
+            </ProtectedRoute>
           }
         />
 
@@ -293,7 +344,7 @@ function AppContent() {
           path="/admin-portal"
           element={
             <ProtectedRoute requireAuth requireEmployee>
-              <AdminPortal user={user} onLogout={logout} />
+              <AdminPortal user={user} onLogout={handleLogout} />
             </ProtectedRoute>
           }
         />

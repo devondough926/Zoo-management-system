@@ -248,7 +248,7 @@ export const getPurchaseDetails = async (req, res) => {
   try {
     const { purchaseId } = req.params;
 
-    // Get purchase info
+    // Get purchase info with membership details
     const [purchases] = await db.query(
       `
       SELECT 
@@ -257,6 +257,7 @@ export const getPurchaseDetails = async (req, res) => {
         p.Purchase_Date,
         CAST(p.Total_Amount AS DECIMAL(10,2)) as Total_Amount,
         p.Payment_Method,
+        p.Membership_ID,
         c.First_Name,
         c.Last_Name,
         c.Email
@@ -276,6 +277,34 @@ export const getPurchaseDetails = async (req, res) => {
       Purchase_Date: formatDateForResponse(purchases[0].Purchase_Date),
       Total_Amount: parseFloat(purchases[0].Total_Amount),
     };
+
+    // Check if this is a membership purchase
+    let membershipDetails = null;
+    if (purchase.Membership_ID) {
+      const [membership] = await db.query(
+        `
+        SELECT 
+          Membership_ID,
+          Customer_ID,
+          CAST(Price AS DECIMAL(10,2)) as Price,
+          Start_Date,
+          End_Date,
+          Membership_Status
+        FROM Membership
+        WHERE Membership_ID = ?
+      `,
+        [purchase.Membership_ID]
+      );
+
+      if (membership.length > 0) {
+        membershipDetails = {
+          ...membership[0],
+          Price: parseFloat(membership[0].Price),
+          Start_Date: formatDateForResponse(membership[0].Start_Date),
+          End_Date: formatDateForResponse(membership[0].End_Date),
+        };
+      }
+    }
 
     // Get tickets for this purchase
     const [tickets] = await db.query(
@@ -342,6 +371,7 @@ export const getPurchaseDetails = async (req, res) => {
 
     res.json({
       purchase: purchase,
+      membership: membershipDetails,
       tickets: formattedTickets,
       purchaseItems: formattedPurchaseItems,
       concessionItems: formattedConcessionItems,
@@ -437,6 +467,7 @@ export const createPurchase = async (req, res) => {
     }
 
     // Handle membership if included
+    let membershipId = null;
     if (membership) {
       // Fetch authoritative membership price from Config table
       const [configRows] = await connection.query(
@@ -478,10 +509,11 @@ export const createPurchase = async (req, res) => {
 
       if (existingMembership.length > 0) {
         // Update existing membership with authoritative price
+        membershipId = existingMembership[0].Membership_ID;
         await connection.query(
           `
           UPDATE Membership
-          SET Membership_Status = 1,
+          SET Membership_Status = 'Active',
               End_Date = ?,
               Price = ?
           WHERE Customer_ID = ?
@@ -490,14 +522,21 @@ export const createPurchase = async (req, res) => {
         );
       } else {
         // Create new membership with authoritative price
-        await connection.query(
+        const [membershipResult] = await connection.query(
           `
           INSERT INTO Membership (Customer_ID, Membership_Status, Start_Date, End_Date, Price)
-          VALUES (?, 1, ?, ?, ?)
+          VALUES (?, 'Active', ?, ?, ?)
         `,
           [customerId, startDate, endDate, membershipPrice]
         );
+        membershipId = membershipResult.insertId;
       }
+
+      // Link this purchase to the membership
+      await connection.query(
+        `UPDATE Purchase SET Membership_ID = ? WHERE Purchase_ID = ?`,
+        [membershipId, purchaseId]
+      );
     }
 
     await connection.commit();

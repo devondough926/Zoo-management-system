@@ -129,6 +129,7 @@ export function OrderHistoryPage({ user }) {
                       const purchaseItemsList = details?.purchaseItems || [];
                       const purchaseConcessions =
                         details?.concessionItems || [];
+                      const purchaseMembership = details?.membership || null;
 
                       return (
                         <div
@@ -160,6 +161,19 @@ export function OrderHistoryPage({ user }) {
                             <p className="text-sm font-medium text-gray-700 mb-2">
                               Items:
                             </p>
+                            {purchaseMembership && (
+                              <p className="text-sm text-gray-600">
+                                • Annual Membership - $
+                                {Number(purchaseMembership.Price).toFixed(2)}
+                                <span className="ml-2 text-xs">
+                                  (Valid until{" "}
+                                  {new Date(
+                                    purchaseMembership.End_Date
+                                  ).toLocaleDateString()}
+                                  )
+                                </span>
+                              </p>
+                            )}
                             {purchaseTickets.length > 0 && (
                               <>
                                 {(() => {
@@ -234,7 +248,8 @@ export function OrderHistoryPage({ user }) {
                               )}
                             {purchaseTickets.length === 0 &&
                               purchaseItemsList.length === 0 &&
-                              purchaseConcessions.length === 0 && (
+                              purchaseConcessions.length === 0 &&
+                              !purchaseMembership && (
                                 <p className="text-sm text-gray-600">
                                   • Purchase completed
                                 </p>

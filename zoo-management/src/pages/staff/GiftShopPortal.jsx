@@ -94,7 +94,7 @@ export function GiftShopPortal({ user, onLogout }) {
 
   const todayPurchaseItems = purchaseItems.filter((pi) => {
     const purchase = purchases.find((p) => p.Purchase_ID === pi.Purchase_ID);
-    if (!purchase || pi.Item_ID === 9000) return false; // Exclude memberships
+    if (!purchase || /membership/i.test(pi.Item_Name || "")) return false; // Exclude memberships
     const purchaseDate = new Date(purchase.Purchase_Date);
     purchaseDate.setHours(0, 0, 0, 0);
     return purchaseDate.getTime() === today.getTime();
@@ -105,7 +105,7 @@ export function GiftShopPortal({ user, onLogout }) {
     0
   );
   const allTimeRevenue = purchaseItems
-    .filter((pi) => pi.Item_ID !== 9000)
+    .filter((pi) => !/membership/i.test(pi.Item_Name || ""))
     .reduce((sum, pi) => sum + pi.Unit_Price * pi.Quantity, 0);
   const itemsSoldToday = todayPurchaseItems.reduce(
     (sum, pi) => sum + pi.Quantity,

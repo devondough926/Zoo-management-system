@@ -895,13 +895,17 @@ export const getRevenueData = async (req, res) => {
       params
     );
 
-    // Get membership revenue from Membership table
+    // Get membership revenue by summing Purchase.Total_Amount for purchases
+    // that are membership purchases (Purchase.Membership_ID IS NOT NULL).
+    const membershipFilter = dateFilter
+      ? `${dateFilter} AND p.Membership_ID IS NOT NULL`
+      : "WHERE p.Membership_ID IS NOT NULL";
+
     const [membershipRevenue] = await db.query(
       `
-      SELECT COALESCE(SUM(m.Price), 0) as revenue
-      FROM Membership m
-      JOIN Purchase p ON m.Purchase_ID = p.Purchase_ID
-      ${dateFilter}
+      SELECT COALESCE(SUM(p.Total_Amount), 0) as revenue
+      FROM Purchase p
+      ${membershipFilter}
     `,
       params
     );

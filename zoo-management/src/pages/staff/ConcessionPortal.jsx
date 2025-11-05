@@ -56,10 +56,10 @@ export function ConcessionPortal({ user, onLogout }) {
     purchases,
     purchaseConcessionItems,
   } = useData();
-  
+
   // Local state for menu items fetched from backend
   const [menuItems, setMenuItems] = useState([]);
-  
+
   // Fetch menu items from backend on mount and when menuItemsFromContext changes
   useEffect(() => {
     const fetchMenu = async () => {
@@ -75,7 +75,7 @@ export function ConcessionPortal({ user, onLogout }) {
     };
     fetchMenu();
   }, []); // Only fetch on mount
-  
+
   // All concession stands under management (Concession Worker manages all 4 stands)
   const allStands = concessionStands;
   const [showRevenueAllTime, setShowRevenueAllTime] = useState(false);
@@ -176,10 +176,13 @@ export function ConcessionPortal({ user, onLogout }) {
         formData.append("image", editForm.imageFile);
       }
 
-      const res = await fetch(`${API_BASE}/food/${editingItem.Concession_Item_ID}`, {
-        method: "PUT",
-        body: formData,
-      });
+      const res = await fetch(
+        `${API_BASE}/food/${editingItem.Concession_Item_ID}`,
+        {
+          method: "PUT",
+          body: formData,
+        }
+      );
 
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
@@ -231,9 +234,8 @@ export function ConcessionPortal({ user, onLogout }) {
 
       setAddDialogOpen(false);
       setAddForm({ name: "", price: "", standId: "1", imageFile: null });
-      toast.success("✅ Item added!");
+      toast.success("Item added!");
     } catch (err) {
-      console.error("❌ Error adding item:", err);
       toast.error(err.message || "Failed to add item");
     }
   };
@@ -247,9 +249,12 @@ export function ConcessionPortal({ user, onLogout }) {
     if (!itemToDelete) return;
 
     try {
-      const res = await fetch(`${API_BASE}/food/${itemToDelete.Concession_Item_ID}`, {
-        method: "DELETE",
-      });
+      const res = await fetch(
+        `${API_BASE}/food/${itemToDelete.Concession_Item_ID}`,
+        {
+          method: "DELETE",
+        }
+      );
 
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
@@ -265,7 +270,6 @@ export function ConcessionPortal({ user, onLogout }) {
       setItemToDelete(null);
       toast.success("Item removed successfully!");
     } catch (err) {
-      console.error("❌ Error deleting item:", err);
       toast.error(err.message || "Failed to delete item");
     }
   };

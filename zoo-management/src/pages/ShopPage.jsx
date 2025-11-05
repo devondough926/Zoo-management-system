@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Card,
   CardContent,
@@ -13,6 +13,8 @@ import {
   MapPin,
   CreditCard,
   Gift,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
@@ -196,12 +198,35 @@ const shopItems = [
   },
 ];
 
-export function ShopPage({ addToCart }) {
+export function ShopPage({ addToCart, allowCartActions = true }) {
   const { items: dbItems } = useData();
   const { user } = useAuth();
   const navigate = useNavigate();
   const [selectedCategory, setSelectedCategory] = useState("All");
+  const [currentPage, setCurrentPage] = useState(1);
   const heroImage = useHeroImage("shop");
+
+  const ITEMS_PER_PAGE = 12; // 4 columns × 3 rows
+
+  // Smooth scroll helper that allows controlling duration (slower than native 'smooth')
+  const smoothScrollToTop = (duration = 900) => {
+    if (typeof window === "undefined") return;
+    const start = window.scrollY || window.pageYOffset || 0;
+    if (start === 0) return;
+    const startTime = performance.now();
+
+    const easeInOutQuad = (t) => (t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t);
+
+    const step = (now) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const ease = easeInOutQuad(progress);
+      window.scrollTo(0, Math.round(start * (1 - ease)));
+      if (elapsed < duration) requestAnimationFrame(step);
+    };
+
+    requestAnimationFrame(step);
+  };
 
   // Pricing is handled centrally in CartPage (member discount applied at checkout)
 
@@ -219,9 +244,39 @@ export function ShopPage({ addToCart }) {
       ? shopItemsFromDb
       : shopItemsFromDb.filter((item) => item.category === selectedCategory);
 
+  // Paginated items
+  const paginatedItems = useMemo(() => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    const endIndex = startIndex + ITEMS_PER_PAGE;
+    return filteredItems.slice(startIndex, endIndex);
+  }, [filteredItems, currentPage]);
+
+  const totalPages = Math.ceil(filteredItems.length / ITEMS_PER_PAGE);
+
+  // Reset to page 1 when category changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedCategory]);
+
+  // Scroll to top of the page/hero when pagination changes
+  useEffect(() => {
+    // Use a slightly slower, custom smooth scroll so the user sees the transition
+    try {
+      smoothScrollToTop(900);
+    } catch (e) {
+      // ignore errors in non-browser environments
+    }
+  }, [currentPage]);
+
   const handleAddToCart = (product) => {
     if (!user) {
-      navigate("/login");
+      // Prompt anonymous user to log in instead of navigating away
+      toast.info("Please log in to add items to your cart.");
+      return;
+    }
+
+    if (!allowCartActions) {
+      toast.error("Adding items to cart is disabled for admin/staff users.");
       return;
     }
 
@@ -233,6 +288,7 @@ export function ShopPage({ addToCart }) {
         name: product.name,
         price: product.price,
         type: "item",
+        image: product.image,
       });
       toast.success(`Added ${product.name} to cart!`);
     }
@@ -293,15 +349,13 @@ export function ShopPage({ addToCart }) {
       </section>
 
       {/* Products Grid */}
-      <section className="py-16">
+      <section className="py-16 pb-24">
         <div className="container mx-auto px-6">
           <h2 className="text-2xl mb-8 text-center">
-            {selectedCategory === "All"
-              ? `All Products (${filteredItems.length})`
-              : `${selectedCategory} (${filteredItems.length})`}
+            {selectedCategory === "All" ? "All Products" : selectedCategory}
           </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {filteredItems.map((product) => (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mb-16">
+            {paginatedItems.map((product) => (
               <Card
                 key={product.id}
                 className="overflow-hidden hover:shadow-lg transition-shadow"
@@ -332,6 +386,7 @@ export function ShopPage({ addToCart }) {
                   <Button
                     className="w-full bg-green-600 hover:bg-green-700 cursor-pointer"
                     onClick={() => handleAddToCart(product)}
+                    disabled={user ? !allowCartActions : false}
                   >
                     <ShoppingCart className="h-4 w-4 mr-2" />
                     Add to Cart
@@ -340,6 +395,49 @@ export function ShopPage({ addToCart }) {
               </Card>
             ))}
           </div>
+
+          {/* Pagination Controls */}
+          {filteredItems.length > 0 && (
+            <div className="flex justify-center items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                className="gap-1"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+
+              <div className="flex gap-1">
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map(
+                  (page) => (
+                    <Button
+                      key={page}
+                      variant={currentPage === page ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setCurrentPage(page)}
+                      className="min-w-[40px]"
+                    >
+                      {page}
+                    </Button>
+                  )
+                )}
+              </div>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setCurrentPage((prev) => Math.min(totalPages, prev + 1))
+                }
+                disabled={currentPage === totalPages}
+                className="gap-1"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
         </div>
       </section>
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
@@ -29,6 +29,9 @@ export function CustomerHighlights() {
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [exhibitsNoTransition, setExhibitsNoTransition] = useState(false);
+  const [exhibitsAnimating, setExhibitsAnimating] = useState(false);
+  const exhibitsTimersRef = useRef({});
 
   const itemsPerPage = 3;
 
@@ -150,7 +153,6 @@ export function CustomerHighlights() {
 
   const upcomingEvents = generateNext7DaysEvents();
   const visibleEvents = getVisibleItems(upcomingEvents, eventsIndex);
-  const visibleExhibits = getVisibleItems(exhibits, exhibitsIndex);
 
   const nextEvents = () => {
     const totalEvents = upcomingEvents.length || 1;
@@ -162,15 +164,109 @@ export function CustomerHighlights() {
     setEventsIndex(eventsIndex === 0 ? totalEvents - 1 : eventsIndex - 1);
   };
 
+  // New carousel-style next/prev to support smooth looping with cloned head/tail
   const nextExhibits = () => {
-    setExhibitsIndex((exhibitsIndex + 1) % exhibits.length);
+    if (!exhibits.length) return;
+    if (exhibitsAnimating) return;
+    const slidesPerView = itemsPerPage;
+    const offsetStart = slidesPerView;
+    const n = exhibits.length;
+    const curr =
+      typeof exhibitsIndex === "number" ? exhibitsIndex : offsetStart;
+    const newIndex = curr + 1;
+
+    // Preload upcoming visible images
+    const realStart = (((newIndex - offsetStart) % n) + n) % n;
+    const nextItems = [];
+    for (let i = 0; i < slidesPerView; i++)
+      nextItems.push(exhibits[(realStart + i) % n]);
+    const urls = nextItems.map((e) => getExhibitImage(e)).filter(Boolean);
+
+    setExhibitsAnimating(true);
+    if (exhibitsTimersRef.current.timer)
+      clearTimeout(exhibitsTimersRef.current.timer);
+    setExhibitsNoTransition(false);
+    setExhibitsIndex(newIndex);
+
+    const transitionMs = 620;
+    const clonedTailStart = offsetStart + n;
+    if (newIndex >= clonedTailStart) {
+      // compute target real index
+      const normalized = (((newIndex - offsetStart) % n) + n) % n;
+      const target = offsetStart + normalized;
+      setTimeout(() => {
+        setExhibitsNoTransition(true);
+        setExhibitsIndex(target);
+        setTimeout(() => setExhibitsNoTransition(false), 20);
+      }, transitionMs);
+      exhibitsTimersRef.current.timer = setTimeout(
+        () => setExhibitsAnimating(false),
+        transitionMs + 80
+      );
+    } else {
+      exhibitsTimersRef.current.timer = setTimeout(
+        () => setExhibitsAnimating(false),
+        transitionMs + 30
+      );
+    }
+
+    Promise.race([
+      preloadImages(urls, "high"),
+      new Promise((res) => setTimeout(res, 150)),
+    ]);
   };
 
   const prevExhibits = () => {
-    setExhibitsIndex(
-      exhibitsIndex === 0 ? exhibits.length - 1 : exhibitsIndex - 1
-    );
+    if (!exhibits.length) return;
+    if (exhibitsAnimating) return;
+    const slidesPerView = itemsPerPage;
+    const offsetStart = slidesPerView;
+    const n = exhibits.length;
+    const curr =
+      typeof exhibitsIndex === "number" ? exhibitsIndex : offsetStart;
+    const newIndex = curr - 1;
+
+    // Preload upcoming visible images
+    const realStart = (((newIndex - offsetStart) % n) + n) % n;
+    const prevItems = [];
+    for (let i = 0; i < slidesPerView; i++)
+      prevItems.push(exhibits[(realStart + i) % n]);
+    const urls = prevItems.map((e) => getExhibitImage(e)).filter(Boolean);
+
+    setExhibitsAnimating(true);
+    if (exhibitsTimersRef.current.timer)
+      clearTimeout(exhibitsTimersRef.current.timer);
+    setExhibitsNoTransition(false);
+    setExhibitsIndex(newIndex);
+
+    const transitionMs = 620;
+    if (newIndex < offsetStart) {
+      const normalized = (((newIndex - offsetStart) % n) + n) % n;
+      const target = offsetStart + normalized;
+      setTimeout(() => {
+        setExhibitsNoTransition(true);
+        setExhibitsIndex(target);
+        setTimeout(() => setExhibitsNoTransition(false), 20);
+      }, transitionMs);
+      exhibitsTimersRef.current.timer = setTimeout(
+        () => setExhibitsAnimating(false),
+        transitionMs + 80
+      );
+    } else {
+      exhibitsTimersRef.current.timer = setTimeout(
+        () => setExhibitsAnimating(false),
+        transitionMs + 30
+      );
+    }
+
+    Promise.race([
+      preloadImages(urls, "high"),
+      new Promise((res) => setTimeout(res, 150)),
+    ]);
   };
+
+  // Note: we intentionally do NOT scroll here. Preload-then-switch is handled
+  // in the next/prev functions so visuals update smoothly once images are ready.
 
   // Format time from 24-hour to 12-hour
   const formatTime = (time) => {
@@ -310,52 +406,100 @@ export function CustomerHighlights() {
           <div className="relative max-w-6xl mx-auto">
             <button
               onClick={prevExhibits}
-              className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-4 z-5 bg-green-600 text-white rounded-full p-3 shadow-lg hover:bg-green-700 transition-colors cursor-pointer"
+              className={`absolute left-0 top-1/2 -translate-y-1/2 -translate-x-4 z-5 bg-green-600 text-white rounded-full p-3 shadow-lg transition-colors ${
+                exhibitsAnimating
+                  ? "opacity-60 cursor-not-allowed"
+                  : "hover:bg-green-700 cursor-pointer"
+              }`}
               aria-label="Previous exhibits"
+              disabled={!!exhibitsAnimating}
             >
               <ChevronLeft className="h-6 w-6" />
             </button>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {visibleExhibits.map((exhibit, index) => (
-                <Card
-                  key={`${exhibitsIndex}-${index}`}
-                  className="overflow-hidden hover:shadow-lg transition-shadow"
-                >
-                  <div className="h-48 bg-gradient-to-br from-green-100 to-emerald-100 overflow-hidden">
-                    {getExhibitImage(exhibit) ? (
-                      <ImageWithFallback
-                        src={getExhibitImage(exhibit)}
-                        alt={exhibit.exhibit_Name}
-                        className="w-full h-48 object-cover"
-                      />
-                    ) : (
-                      <div className="h-48 flex items-center justify-center">
-                        <MapPin className="h-24 w-24 text-green-300" />
+            <div className="overflow-hidden">
+              {/** Build cloned items for seamless looping when there are more exhibits than the view **/}
+              {(() => {
+                const slidesPerView = itemsPerPage;
+                const offsetStart = slidesPerView;
+                let carouselItems = exhibits;
+                if (exhibits.length > slidesPerView) {
+                  carouselItems = [
+                    ...exhibits.slice(-slidesPerView),
+                    ...exhibits,
+                    ...exhibits.slice(0, slidesPerView),
+                  ];
+                }
+
+                const currentIndex =
+                  typeof exhibitsIndex === "number"
+                    ? exhibitsIndex
+                    : offsetStart;
+                const noTransition = exhibitsNoTransition;
+
+                return (
+                  <div
+                    className={`flex will-change-transform ${
+                      noTransition
+                        ? ""
+                        : "transition-transform duration-600 ease-in-out"
+                    }`}
+                    style={{
+                      transform: `translateX(-${
+                        (currentIndex || 0) * (100 / slidesPerView)
+                      }%)`,
+                    }}
+                  >
+                    {carouselItems.map((exhibit, idx) => (
+                      <div
+                        key={`exhibit-slide-${idx}`}
+                        className="flex-none px-2"
+                        style={{ flex: `0 0 calc(100% / ${slidesPerView})` }}
+                      >
+                        <Card className="overflow-hidden hover:shadow-lg transition-shadow">
+                          <div className="h-48 bg-gradient-to-br from-green-100 to-emerald-100 overflow-hidden">
+                            {exhibit && getExhibitImage(exhibit) ? (
+                              <ImageWithFallback
+                                src={getExhibitImage(exhibit)}
+                                alt={exhibit.exhibit_Name}
+                                className="w-full h-48 object-cover"
+                              />
+                            ) : (
+                              <div className="h-48 flex items-center justify-center">
+                                <MapPin className="h-24 w-24 text-green-300" />
+                              </div>
+                            )}
+                          </div>
+                          <CardHeader>
+                            <CardTitle className="text-xl">
+                              {exhibit?.exhibit_Name}
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <p className="text-sm text-green-600 mb-2 font-bold">
+                              Zone {exhibit?.Zone_Name}
+                            </p>
+                            <p className="text-gray-600 text-sm">
+                              {exhibit?.exhibit_Description}
+                            </p>
+                          </CardContent>
+                        </Card>
                       </div>
-                    )}
+                    ))}
                   </div>
-                  <CardHeader>
-                    <CardTitle className="text-xl">
-                      {exhibit.exhibit_Name}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-sm text-green-600 mb-2">
-                      Zone {exhibit.Zone_Name}
-                    </p>
-                    <p className="text-gray-600 text-sm">
-                      {exhibit.exhibit_Description}
-                    </p>
-                  </CardContent>
-                </Card>
-              ))}
+                );
+              })()}
             </div>
 
             <button
               onClick={nextExhibits}
-              className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-4 z-5 bg-green-600 text-white rounded-full p-3 shadow-lg hover:bg-green-700 transition-colors cursor-pointer"
+              className={`absolute right-0 top-1/2 -translate-y-1/2 translate-x-4 z-5 bg-green-600 text-white rounded-full p-3 shadow-lg transition-colors ${
+                exhibitsAnimating
+                  ? "opacity-60 cursor-not-allowed"
+                  : "hover:bg-green-700 cursor-pointer"
+              }`}
               aria-label="Next exhibits"
+              disabled={!!exhibitsAnimating}
             >
               <ChevronRight className="h-6 w-6" />
             </button>
@@ -388,7 +532,7 @@ export function CustomerHighlights() {
               className="bg-green-600 hover:bg-green-700 cursor-pointer"
               onClick={handleMembershipClick}
             >
-              Become a Member
+              Unlock All Benefits
             </Button>
           </div>
         </div>
