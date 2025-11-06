@@ -14,6 +14,7 @@ import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { authAPI } from "../services/customerAPI";
+import { formatPhone, normalizePhone } from "../utils/phone";
 
 export function LoginPage({ onLogin }) {
   const navigate = useNavigate();
@@ -77,7 +78,8 @@ export function LoginPage({ onLogin }) {
         firstName: signupData.firstName,
         lastName: signupData.lastName,
         email: signupData.email,
-        phone: signupData.phone,
+        // send normalized phone digits to backend (or null if empty)
+        phone: normalizePhone(signupData.phone) || null,
         password: signupData.password,
       });
 
@@ -271,12 +273,13 @@ export function LoginPage({ onLogin }) {
                     <Input
                       id="phone"
                       type="tel"
-                      placeholder="555-0101"
+                      placeholder="(555) 555-0123"
                       value={signupData.phone}
+                      maxLength={14}
                       onChange={(e) =>
                         setSignupData({
                           ...signupData,
-                          phone: e.target.value,
+                          phone: formatPhone(e.target.value),
                         })
                       }
                     />

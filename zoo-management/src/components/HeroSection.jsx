@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { preloadImages } from "../utils/imagePreloader";
@@ -18,6 +18,8 @@ export function HeroSection() {
   const [currentImageIndex, setCurrentImageIndex] = useState(1); // Start at 1 (first real image)
   const [isTransitioning, setIsTransitioning] = useState(true);
   const [lastInteraction, setLastInteraction] = useState(Date.now());
+  const [heroAnimating, setHeroAnimating] = useState(false);
+  const heroTimerRef = useRef(null);
 
   // Create extended array with clones for infinite effect
   const extendedImages = [
@@ -39,17 +41,31 @@ export function HeroSection() {
   }, []);
 
   const handleNext = () => {
-    if (!isTransitioning) return;
+    if (heroAnimating) return;
+    // start transition and guard rapid clicks
+    setHeroAnimating(true);
+    if (heroTimerRef.current) clearTimeout(heroTimerRef.current);
     setIsTransitioning(true);
     setCurrentImageIndex((prev) => prev + 1);
     setLastInteraction(Date.now());
+    // clear animating after transition + small buffer (matches 750ms transition)
+    heroTimerRef.current = setTimeout(() => {
+      setHeroAnimating(false);
+      heroTimerRef.current = null;
+    }, 820);
   };
 
   const handlePrevious = () => {
-    if (!isTransitioning) return;
+    if (heroAnimating) return;
+    setHeroAnimating(true);
+    if (heroTimerRef.current) clearTimeout(heroTimerRef.current);
     setIsTransitioning(true);
     setCurrentImageIndex((prev) => prev - 1);
     setLastInteraction(Date.now());
+    heroTimerRef.current = setTimeout(() => {
+      setHeroAnimating(false);
+      heroTimerRef.current = null;
+    }, 820);
   };
 
   // Handle infinite loop reset
@@ -74,11 +90,32 @@ export function HeroSection() {
   // Auto-advance carousel every 5 seconds (resets when buttons are clicked)
   useEffect(() => {
     const timer = setInterval(() => {
+      if (heroAnimating) return;
+      // auto-advance without changing lastInteraction
+      setHeroAnimating(true);
+      if (heroTimerRef.current) clearTimeout(heroTimerRef.current);
+      setIsTransitioning(true);
       setCurrentImageIndex((prev) => prev + 1);
-    }, 5000);
+      heroTimerRef.current = setTimeout(() => {
+        setHeroAnimating(false);
+        heroTimerRef.current = null;
+      }, 820);
+    }, 3000);
 
-    return () => clearInterval(timer);
+    return () => {
+      // Only clear the interval here. Don't clear heroTimerRef here because
+      // this cleanup runs whenever lastInteraction changes (eg. user clicks)
+      // and would otherwise cancel the heroAnimating clear timeout prematurely.
+      clearInterval(timer);
+    };
   }, [lastInteraction]); // Re-create interval when lastInteraction changes
+
+  // Clear any pending hero animation timer on unmount to avoid leaks
+  useEffect(() => {
+    return () => {
+      if (heroTimerRef.current) clearTimeout(heroTimerRef.current);
+    };
+  }, []);
 
   return (
     <section
@@ -138,8 +175,12 @@ export function HeroSection() {
           handlePrevious();
         }}
         type="button"
-        disabled={!isTransitioning}
-        className="absolute left-0 top-1/2 -translate-y-1/2 z-20 bg-white/20 hover:bg-white/30 text-white backdrop-blur-sm rounded-r-full p-4 md:p-6 transition-all disabled:opacity-50  cursor-pointer disabled:cursor-default outline-none focus:outline-none"
+        disabled={!isTransitioning || heroAnimating}
+        className={`absolute left-0 top-1/2 -translate-y-1/2 z-20 bg-white/20 text-white backdrop-blur-sm rounded-r-full p-4 md:p-6 transition-all outline-none focus:outline-none ${
+          !isTransitioning || heroAnimating
+            ? "opacity-50 cursor-default"
+            : "hover:bg-white/30 cursor-pointer"
+        }`}
         aria-label="Previous image"
       >
         <ChevronLeft className="h-10 w-10 md:h-12 md:w-12" />
@@ -152,8 +193,12 @@ export function HeroSection() {
           handleNext();
         }}
         type="button"
-        disabled={!isTransitioning}
-        className="absolute right-0 top-1/2 -translate-y-1/2 z-20 bg-white/20 hover:bg-white/30 text-white backdrop-blur-sm rounded-l-full p-4 md:p-6 transition-all disabled:opacity-50  cursor-pointer disabled:cursor-default outline-none focus:outline-none"
+        disabled={!isTransitioning || heroAnimating}
+        className={`absolute right-0 top-1/2 -translate-y-1/2 z-20 bg-white/20 text-white backdrop-blur-sm rounded-l-full p-4 md:p-6 transition-all outline-none focus:outline-none ${
+          !isTransitioning || heroAnimating
+            ? "opacity-50 cursor-default"
+            : "hover:bg-white/30 cursor-pointer"
+        }`}
         aria-label="Next image"
       >
         <ChevronRight className="h-10 w-10 md:h-12 md:w-12" />
@@ -188,9 +233,17 @@ export function HeroSection() {
             <button
               key={index}
               onClick={() => {
+                if (!isTransitioning || heroAnimating) return;
                 setIsTransitioning(true);
                 setCurrentImageIndex(index + 1); // +1 because of clone at start
                 setLastInteraction(Date.now());
+                // guard indicator click
+                setHeroAnimating(true);
+                if (heroTimerRef.current) clearTimeout(heroTimerRef.current);
+                heroTimerRef.current = setTimeout(() => {
+                  setHeroAnimating(false);
+                  heroTimerRef.current = null;
+                }, 820);
               }}
               className={`h-2 rounded-full transition-all ${
                 index === displayIndex

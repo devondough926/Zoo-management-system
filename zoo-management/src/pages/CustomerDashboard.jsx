@@ -39,6 +39,7 @@ import { useData } from "../data/DataContext";
 import { authAPI, purchasesAPI, membershipAPI } from "../services/customerAPI";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { useHeroImage } from "../utils/heroImages";
+import { formatPhone, normalizePhone } from "../utils/phone";
 
 const formatNumber = (num) => {
   return num.toLocaleString("en-US", {
@@ -185,7 +186,7 @@ export function CustomerDashboard({ user }) {
     firstName: user.First_Name,
     lastName: user.Last_Name,
     email: user.Email,
-    phone: user.Phone,
+    phone: formatPhone(user.Phone || ""),
   });
 
   const [isChangingPassword, setIsChangingPassword] = useState(false);
@@ -233,7 +234,8 @@ export function CustomerDashboard({ user }) {
           firstName: profileData.firstName,
           lastName: profileData.lastName,
           email: profileData.email,
-          phone: profileData.phone,
+          // send only digits to backend
+          phone: normalizePhone(profileData.phone) || null,
         });
 
         user.First_Name = response.customer.First_Name;
@@ -653,7 +655,7 @@ export function CustomerDashboard({ user }) {
                         <label className="text-sm font-medium text-gray-700">
                           Phone
                         </label>
-                        <p className="text-lg">{user.Phone}</p>
+                        <p className="text-lg">{formatPhone(user.Phone)}</p>
                       </div>
                       <div className="pt-4">
                         <Button
@@ -715,10 +717,11 @@ export function CustomerDashboard({ user }) {
                         <Input
                           id="phone"
                           value={profileData.phone}
+                          maxLength={14}
                           onChange={(e) =>
                             setProfileData({
                               ...profileData,
-                              phone: e.target.value,
+                              phone: formatPhone(e.target.value),
                             })
                           }
                           className="border-2 border-gray-300 focus:border-green-500"
@@ -835,14 +838,23 @@ export function CustomerDashboard({ user }) {
                         className="bg-purple-600 hover:bg-purple-700 text-white cursor-pointer font-semibold"
                         onClick={() => navigate("/tickets")}
                       >
-                        Get Membership
+                        Unlock Benefits
                       </Button>
                     </div>
                   )}
 
                   {/* Purchase Statistics */}
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="p-4 bg-white rounded-lg">
+                    <div
+                      className="rounded-lg border border-gray-200 shadow-sm"
+                      style={{
+                        padding: "1rem",
+                        backgroundColor: "white",
+                        borderRadius: "0.5rem",
+                        border: "1px solid #e5e7eb",
+                        borderLeft: "4px solid #16a34a",
+                      }}
+                    >
                       <p className="text-sm text-gray-600 mb-1 font-medium">
                         Total Purchases
                       </p>
@@ -850,7 +862,15 @@ export function CustomerDashboard({ user }) {
                         {customerPurchases.length}
                       </p>
                     </div>
-                    <div className="p-4 bg-white rounded-lg">
+                    <div
+                      className="rounded-lg border border-gray-200 shadow-sm"
+                      style={{
+                        padding: "1rem",
+                        backgroundColor: "white",
+                        borderRadius: "0.5rem",
+                        borderLeft: "4px solid #2563eb",
+                      }}
+                    >
                       <p className="text-sm text-gray-600 mb-1 font-medium">
                         Total Spent
                       </p>
@@ -1090,18 +1110,32 @@ export function CustomerDashboard({ user }) {
 
                   {/* Membership included in this purchase */}
                   {(() => {
-                    const membershipItems = purchaseItems.filter(
-                      (pi) =>
-                        pi.Purchase_ID === selectedPurchase.Purchase_ID &&
-                        pi.Item_ID === 9000
+                    // Check if backend provided membership details
+                    const membershipData = selectedPurchaseDetails?.membership;
+
+                    // Fallback: detect membership by item name in purchaseItems
+                    const allItems =
+                      selectedPurchaseDetails?.purchaseItems ||
+                      purchaseItems.filter(
+                        (pi) => pi.Purchase_ID === selectedPurchase.Purchase_ID
+                      );
+
+                    const membershipItems = allItems.filter((pi) =>
+                      /membership/i.test(pi.Item_Name || "")
                     );
+
+                    // Show membership section if we have either backend membership data or membership items
+                    const hasMembership =
+                      membershipData || membershipItems.length > 0;
+
                     return (
-                      membershipItems.length > 0 && (
+                      hasMembership && (
                         <div>
                           <h3 className="font-medium mb-3">Membership</h3>
                           <div className="space-y-2">
-                            {membershipItems.map((purchaseItem, index) => (
-                              <Card key={`membership-${index}`}>
+                            {membershipData ? (
+                              // Use backend membership data
+                              <Card>
                                 <CardContent className="p-4">
                                   <div className="flex justify-between items-center">
                                     <div>
@@ -1109,32 +1143,80 @@ export function CustomerDashboard({ user }) {
                                         Annual Membership
                                       </p>
                                       <p className="text-sm text-gray-600">
-                                        Quantity: {purchaseItem.Quantity}
-                                      </p>
-                                      <p className="text-sm text-gray-600">
                                         1 Year Unlimited Access
+                                      </p>
+                                      <p className="text-xs text-gray-500 mt-1">
+                                        Valid until:{" "}
+                                        {new Date(
+                                          membershipData.End_Date
+                                        ).toLocaleDateString()}
+                                      </p>
+                                      <p className="text-xs text-gray-500">
+                                        Status:{" "}
+                                        <span
+                                          className={
+                                            membershipData.Membership_Status ===
+                                            "Active"
+                                              ? "text-green-600 font-semibold"
+                                              : "text-red-600"
+                                          }
+                                        >
+                                          {membershipData.Membership_Status}
+                                        </span>
                                       </p>
                                     </div>
                                     <div className="text-right">
                                       <p className="font-semibold text-green-600">
                                         $
-                                        {(
-                                          Number(purchaseItem.Unit_Price) *
-                                          purchaseItem.Quantity
-                                        ).toFixed(2)}
+                                        {Number(membershipData.Price).toFixed(
+                                          2
+                                        )}
                                       </p>
                                       <p className="text-xs text-gray-500">
-                                        $
-                                        {Number(
-                                          purchaseItem.Unit_Price
-                                        ).toFixed(2)}{" "}
-                                        / per
+                                        Annual Fee
                                       </p>
                                     </div>
                                   </div>
                                 </CardContent>
                               </Card>
-                            ))}
+                            ) : (
+                              // Fallback to item-based membership display
+                              membershipItems.map((purchaseItem, index) => (
+                                <Card key={`membership-${index}`}>
+                                  <CardContent className="p-4">
+                                    <div className="flex justify-between items-center">
+                                      <div>
+                                        <p className="font-medium">
+                                          Annual Membership
+                                        </p>
+                                        <p className="text-sm text-gray-600">
+                                          Quantity: {purchaseItem.Quantity}
+                                        </p>
+                                        <p className="text-sm text-gray-600">
+                                          1 Year Unlimited Access
+                                        </p>
+                                      </div>
+                                      <div className="text-right">
+                                        <p className="font-semibold text-green-600">
+                                          $
+                                          {(
+                                            Number(purchaseItem.Unit_Price) *
+                                            purchaseItem.Quantity
+                                          ).toFixed(2)}
+                                        </p>
+                                        <p className="text-xs text-gray-500">
+                                          $
+                                          {Number(
+                                            purchaseItem.Unit_Price
+                                          ).toFixed(2)}{" "}
+                                          / per
+                                        </p>
+                                      </div>
+                                    </div>
+                                  </CardContent>
+                                </Card>
+                              ))
+                            )}
                           </div>
                         </div>
                       )
@@ -1149,7 +1231,7 @@ export function CustomerDashboard({ user }) {
                       purchaseItems.filter(
                         (pi) =>
                           pi.Purchase_ID === selectedPurchase.Purchase_ID &&
-                          pi.Item_ID !== 9000
+                          !/membership/i.test(pi.Item_Name || "")
                       );
 
                     return (
@@ -1286,7 +1368,7 @@ export function CustomerDashboard({ user }) {
                       purchaseItems.filter(
                         (pi) =>
                           pi.Purchase_ID === selectedPurchase.Purchase_ID &&
-                          pi.Item_ID !== 9000
+                          !/membership/i.test(pi.Item_Name || "")
                       ).length > 0;
                     const hasConcessions =
                       selectedPurchaseDetails?.concessionItems?.length > 0 ||
@@ -1294,12 +1376,12 @@ export function CustomerDashboard({ user }) {
                         (pci) =>
                           pci.Purchase_ID === selectedPurchase.Purchase_ID
                       ).length > 0;
-                    const hasMembership =
+                    const hasMembership = (
+                      selectedPurchaseDetails?.purchaseItems ||
                       purchaseItems.filter(
-                        (pi) =>
-                          pi.Purchase_ID === selectedPurchase.Purchase_ID &&
-                          pi.Item_ID === 9000
-                      ).length > 0;
+                        (pi) => pi.Purchase_ID === selectedPurchase.Purchase_ID
+                      )
+                    ).some((pi) => /membership/i.test(pi.Item_Name || ""));
 
                     return (
                       !hasTickets &&

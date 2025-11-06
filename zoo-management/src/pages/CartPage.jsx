@@ -24,6 +24,7 @@ import {
   Minus,
   Crown,
   CheckCircle2,
+  Ticket,
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { Badge } from "../components/ui/badge";
@@ -79,6 +80,8 @@ export function CartPage({
       mounted = false;
     };
   }, [user]);
+
+  // Images are expected to be included on cart entries when added (FoodPage/ShopPage)
 
   // Check if current user has an active membership (DataContext OR backend)
   const hasMembership =
@@ -517,47 +520,79 @@ export function CartPage({
                         return (
                           <div
                             key={`${item.type}-${item.id}`}
-                            className="flex items-center justify-between p-4 rounded-lg bg-gray-50 border border-gray-200"
+                            className="flex items-center justify-between p-4 rounded-lg bg-white shadow-sm border border-gray-100 hover:shadow-md transition-shadow"
                           >
-                            <div className="flex-1">
-                              <h3 className="font-medium">{item.name}</h3>
-                              <p className="text-sm text-gray-600">
-                                ${parseFloat(item.price || 0).toFixed(2)} each
-                              </p>
-                              <p className="text-xs text-gray-500 mt-1">
-                                {item.type === "membership"
-                                  ? "Membership"
-                                  : item.type === "ticket"
-                                  ? "Ticket"
-                                  : item.type === "food"
-                                  ? "Food Item"
-                                  : "Gift Shop Item"}
-                              </p>
+                            <div className="flex-1 flex items-center gap-4">
+                              {/* optional thumbnail */}
+                              {item.image ? (
+                                <div className="w-16 h-12 rounded-md overflow-hidden bg-gray-50 flex-shrink-0">
+                                  <ImageWithFallback
+                                    src={item.image}
+                                    alt={item.name}
+                                    className="w-full h-full object-cover"
+                                  />
+                                </div>
+                              ) : (
+                                <div className="w-16 h-12 rounded-md flex items-center justify-center flex-shrink-0">
+                                  {item.type === "ticket" ? (
+                                    <div className="w-12 h-10 rounded-md bg-green-50 flex items-center justify-center text-green-700">
+                                      <Ticket className="h-6 w-6 text-green-600" />
+                                    </div>
+                                  ) : item.type === "membership" ? (
+                                    <div className="w-12 h-10 rounded-md bg-purple-50 flex items-center justify-center text-purple-700">
+                                      <Crown className="h-6 w-6 text-purple-600" />
+                                    </div>
+                                  ) : (
+                                    <div className="w-12 h-10 rounded-md bg-gray-100 flex items-center justify-center text-gray-400">
+                                      <ShoppingCart className="h-6 w-6" />
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
+                              <div>
+                                <h3 className="font-medium text-gray-800">
+                                  {item.name}
+                                </h3>
+                                <p className="text-sm text-gray-600">
+                                  ${parseFloat(item.price || 0).toFixed(2)} each
+                                </p>
+                                <p className="text-xs text-gray-500 mt-1">
+                                  {item.type === "membership"
+                                    ? "Membership"
+                                    : item.type === "ticket"
+                                    ? "Ticket"
+                                    : item.type === "food"
+                                    ? "Food Item"
+                                    : "Gift Shop Item"}
+                                </p>
+                              </div>
                             </div>
+
                             <div className="flex items-center space-x-4">
-                              <div className="flex items-center space-x-2 bg-white rounded-lg border border-gray-300 px-2 py-1">
+                              <div className="flex items-center space-x-2 bg-white rounded-md border border-gray-200 px-2 py-1">
                                 <Button
                                   variant="ghost"
                                   size="sm"
                                   onClick={() => handleDecreaseQuantity(item)}
-                                  className="h-6 w-6 p-0 cursor-pointer"
+                                  className="h-7 w-7 p-0 flex items-center justify-center cursor-pointer"
                                 >
-                                  <Minus className="h-3 w-3" />
+                                  <Minus className="h-3 w-3 text-gray-600" />
                                 </Button>
-                                <span className="w-8 text-center font-medium">
+                                <span className="w-8 text-center font-medium text-gray-700">
                                   {item.quantity}
                                 </span>
                                 <Button
                                   variant="ghost"
                                   size="sm"
                                   onClick={() => handleIncreaseQuantity(item)}
-                                  className="h-6 w-6 p-0 cursor-pointer"
+                                  className="h-7 w-7 p-0 flex items-center justify-center cursor-pointer"
                                 >
-                                  <Plus className="h-3 w-3" />
+                                  <Plus className="h-3 w-3 text-gray-600" />
                                 </Button>
                               </div>
 
-                              <span className="text-lg text-green-600 font-semibold min-w-[80px] text-right">
+                              <span className="text-lg text-green-600 font-semibold min-w-[90px] text-right">
                                 $
                                 {(
                                   parseFloat(item.price || 0) * item.quantity
@@ -594,7 +629,7 @@ export function CartPage({
             </div>
 
             <div>
-              <Card className="sticky top-24">
+              <Card className="sticky top-24 shadow-lg border border-gray-100">
                 <CardHeader>
                   <CardTitle>Order Summary</CardTitle>
                 </CardHeader>

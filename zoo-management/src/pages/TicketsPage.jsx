@@ -27,7 +27,7 @@ const comparisonFeatures = [
   { feature: "Behind-the-Scenes Tours", dayPass: false, membership: "Yes" },
 ];
 
-export function TicketsPage({ addToCart, cart = [] }) {
+export function TicketsPage({ addToCart, cart = [], allowCartActions = true }) {
   const navigate = useNavigate();
   const { ticketPrices: prices, membershipPrice } = usePricing();
   const { user } = useAuth();
@@ -67,8 +67,14 @@ export function TicketsPage({ addToCart, cart = [] }) {
 
   const handleBuyTicket = (ticket) => {
     if (!user) {
-      navigate("/login");
+      // Prompt anonymous user to log in instead of navigating away
+      toast.info("Please log in to purchase tickets.");
+      return;
     } else if (addToCart) {
+      if (!allowCartActions) {
+        toast.error("Adding items to cart is disabled for admin/staff users.");
+        return;
+      }
       addToCart({
         id: ticket.ticketId, // Use the predefined ticket ID
         name: ticket.type,
@@ -89,10 +95,12 @@ export function TicketsPage({ addToCart, cart = [] }) {
 
   const handleBecomeMember = () => {
     if (!user) {
-      navigate("/login");
+      // Prompt anonymous user to log in instead of navigating away
+      toast.info("Please log in to become a member.");
+      return;
     } else if (addToCart) {
       // Check if membership is already in cart
-      const membershipInCart = cart.some((item) => item.id === 9000);
+      const membershipInCart = cart.some((item) => item.type === "membership");
 
       if (membershipInCart) {
         toast.error("You can only have one membership in the cart!");
@@ -100,10 +108,10 @@ export function TicketsPage({ addToCart, cart = [] }) {
       }
 
       addToCart({
-        id: 9000, // Unique ID for membership
+        id: "membership", // use a non-numeric id string; membership identified by type
         name: "Annual Membership",
         price: membershipPrice,
-        type: "item",
+        type: "membership",
       });
       toast.success("Added Annual Membership to cart!");
     }
@@ -164,6 +172,7 @@ export function TicketsPage({ addToCart, cart = [] }) {
                   <Button
                     className="w-full bg-green-600 hover:bg-green-700 cursor-pointer"
                     onClick={() => handleBuyTicket(ticket)}
+                    disabled={user ? !allowCartActions : false}
                   >
                     Add Pass
                   </Button>
@@ -256,6 +265,7 @@ export function TicketsPage({ addToCart, cart = [] }) {
                 <Button
                   className="w-full bg-green-600 hover:bg-green-700 cursor-pointer"
                   onClick={scrollToDayPasses}
+                  disabled={user ? !allowCartActions : false}
                 >
                   Buy Day Pass
                 </Button>
@@ -264,6 +274,7 @@ export function TicketsPage({ addToCart, cart = [] }) {
                 <Button
                   className="w-full bg-white text-green-600 hover:bg-gray-100 cursor-pointer"
                   onClick={handleBecomeMember}
+                  disabled={user ? !allowCartActions : false}
                 >
                   Become a Member
                 </Button>
