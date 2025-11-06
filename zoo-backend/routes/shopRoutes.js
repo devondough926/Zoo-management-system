@@ -96,6 +96,30 @@ router.get("/analytics/top-selling-today", async (req, res) => {
   }
 });
 
+// Get all purchases
+router.get("/purchases", async (req, res) => {
+  try {
+    const db = (await import("../config/database.js")).default;
+    const [purchases] = await db.query("SELECT * FROM Purchase");
+    res.json(purchases);
+  } catch (error) {
+    console.error("Error fetching purchases:", error);
+    res.status(500).json({ error: "Failed to fetch purchases" });
+  }
+});
+
+// Get all purchase items
+router.get("/purchase-items", async (req, res) => {
+  try {
+    const db = (await import("../config/database.js")).default;
+    const [purchaseItems] = await db.query("SELECT * FROM Purchase_Item");
+    res.json(purchaseItems);
+  } catch (error) {
+    console.error("Error fetching purchase items:", error);
+    res.status(500).json({ error: "Failed to fetch purchase items" });
+  }
+});
+
 // Image upload route for shop items
 router.post("/items/:id/upload-image", upload.single("image"), async (req, res) => {
   try {

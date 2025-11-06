@@ -61,11 +61,38 @@ export const addShopItem = async (req, res) => {
 export const updateShopItem = async (req, res) => {
   try {
     const { id } = req.params;
-    const { Item_Name, Price, Category } = req.body;
+    const { Item_Name, Price, Category, Image_URL } = req.body;
+    
+    // Build dynamic update query to only update provided fields
+    const updates = [];
+    const values = [];
+    
+    if (Item_Name !== undefined) {
+      updates.push("Item_Name = ?");
+      values.push(Item_Name);
+    }
+    if (Price !== undefined) {
+      updates.push("Price = ?");
+      values.push(Price);
+    }
+    if (Category !== undefined) {
+      updates.push("Category = ?");
+      values.push(Category);
+    }
+    if (Image_URL !== undefined) {
+      updates.push("Image_URL = ?");
+      values.push(Image_URL);
+    }
+    
+    if (updates.length === 0) {
+      return res.status(400).json({ error: "No fields to update" });
+    }
+    
+    values.push(id);
     
     await db.query(
-      "UPDATE Item SET Item_Name = ?, Price = ?, Category = ? WHERE Item_ID = ?",
-      [Item_Name, Price, Category, id]
+      `UPDATE Item SET ${updates.join(", ")} WHERE Item_ID = ?`,
+      values
     );
     
     const [updatedItem] = await db.query(

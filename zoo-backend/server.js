@@ -9,6 +9,7 @@ import adminRoutes from "./routes/adminRoutes.js";
 import customerRoutes from "./routes/customerRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
 import shopRoutes from "./routes/shopRoutes.js";
+import foodRoutes from "./routes/foodRoutes.js";
 import { isAzureConfigured } from "./middleware/azureUpload.js";
 
 dotenv.config();
@@ -58,6 +59,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/customer", customerRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/shop", shopRoutes);
+app.use("/api/food", foodRoutes); 
 
 app.use((req, res) => {
   res.status(404).json({
