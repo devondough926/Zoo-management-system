@@ -58,6 +58,7 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
     addItem,
     updateItem,
     deleteItem,
+    refreshItems,
     purchases,
     purchaseItems,
   } = useData();
@@ -184,7 +185,7 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
     setEditDialogOpen(true);
   };
 
-  const handleEditSave = async () => {
+ const handleEditSave = async () => {
   if (!editingItem) return;
 
   if (!editForm.name || !editForm.price) {
@@ -194,7 +195,7 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
 
   try {
     // First update the item details
-    await updateItem(editingItem.Item_ID, {
+    const updatedItem = await updateItem(editingItem.Item_ID, {
       Item_Name: editForm.name,
       Price: parseFloat(editForm.price),
       Category: editForm.category,
@@ -217,8 +218,12 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
         throw new Error("Failed to upload image");
       }
 
-      // Refresh the items list to show the new image
-      window.location.reload();
+      const itemWithImage = await response.json();
+      
+      // Update the item in the list with the new image URL
+      await updateItem(editingItem.Item_ID, {
+        Image_URL: itemWithImage.Image_URL,
+      });
     }
 
     setEditDialogOpen(false);
@@ -229,7 +234,7 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
   }
 };
 
- const handleAddItem = async () => {
+const handleAddItem = async () => {
   if (!addForm.name || !addForm.price) {
     toast.error("Please fill in all required fields");
     return;
@@ -246,24 +251,20 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
     const createdItem = await addItem(newItem);
 
     // If there's an image file, upload it
-    if (addForm.imageFile && createdItem.Item_ID) {
+    if (addForm.imageFile && createdItem && createdItem.Item_ID) {
       const formData = new FormData();
       formData.append("image", addForm.imageFile);
 
-      const response = await fetch(
+      await fetch(
         `http://localhost:5000/api/shop/items/${createdItem.Item_ID}/upload-image`,
         {
           method: "POST",
           body: formData,
         }
       );
-
-      if (!response.ok) {
-        throw new Error("Failed to upload image");
-      }
-
-      // Refresh to show the new image
-      window.location.reload();
+      
+      // Refresh the items list to show the new image
+      await refreshItems();
     }
 
     setAddDialogOpen(false);
@@ -273,6 +274,7 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
       category: giftShopCategories[0],
       imageFile: null,
     });
+    
     toast.success("New item added successfully!");
   } catch (error) {
     toast.error("Failed to add item. Please try again.");
@@ -426,15 +428,15 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
                 >
                   <div className="flex items-center space-x-4 flex-1">
                     <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden">
-                      {product.image ? (
-                        <ImageWithFallback
-                          src={product.image}
+                      {product.Image_URL || product.image ? (
+                         <ImageWithFallback
+                         src={product.Image_URL || product.image}
                           alt={product.Item_Name}
                           className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <ShoppingBag className="h-8 w-8 text-gray-400" />
-                      )}
+                          />
+                         ) : (
+                         <ShoppingBag className="h-8 w-8 text-gray-400" />
+                        )}
                     </div>
                     <div className="flex-1">
                       <h3 className="font-medium">{product.Item_Name}</h3>
