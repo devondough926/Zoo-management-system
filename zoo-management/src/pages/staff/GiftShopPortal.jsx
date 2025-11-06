@@ -185,56 +185,100 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
   };
 
   const handleEditSave = async () => {
-    if (!editingItem) return;
+  if (!editingItem) return;
 
-    if (!editForm.name || !editForm.price) {
-      toast.error("Please fill in all required fields");
-      return;
+  if (!editForm.name || !editForm.price) {
+    toast.error("Please fill in all required fields");
+    return;
+  }
+
+  try {
+    // First update the item details
+    await updateItem(editingItem.Item_ID, {
+      Item_Name: editForm.name,
+      Price: parseFloat(editForm.price),
+      Category: editForm.category,
+    });
+
+    // If there's an image file, upload it
+    if (editForm.imageFile) {
+      const formData = new FormData();
+      formData.append("image", editForm.imageFile);
+
+      const response = await fetch(
+        `http://localhost:5000/api/shop/items/${editingItem.Item_ID}/upload-image`,
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to upload image");
+      }
+
+      // Refresh the items list to show the new image
+      window.location.reload();
     }
 
-    try {
-      await updateItem(editingItem.Item_ID, {
-        Item_Name: editForm.name,
-        Price: parseFloat(editForm.price),
-        Category: editForm.category,
-      });
-      setEditDialogOpen(false);
-      toast.success("Item updated successfully!");
-    } catch (error) {
-      toast.error("Failed to update item. Please try again.");
-      console.error("Error updating item:", error);
-    }
+    setEditDialogOpen(false);
+    toast.success("Item updated successfully!");
+  } catch (error) {
+    toast.error("Failed to update item. Please try again.");
+    console.error("Error updating item:", error);
+  }
+};
+
+ const handleAddItem = async () => {
+  if (!addForm.name || !addForm.price) {
+    toast.error("Please fill in all required fields");
+    return;
+  }
+
+  const newItem = {
+    Item_Name: addForm.name,
+    Price: parseFloat(addForm.price),
+    Category: addForm.category,
+    Shop_ID: 1,
   };
 
-  const handleAddItem = async () => {
-    if (!addForm.name || !addForm.price) {
-      toast.error("Please fill in all required fields");
-      return;
+  try {
+    const createdItem = await addItem(newItem);
+
+    // If there's an image file, upload it
+    if (addForm.imageFile && createdItem.Item_ID) {
+      const formData = new FormData();
+      formData.append("image", addForm.imageFile);
+
+      const response = await fetch(
+        `http://localhost:5000/api/shop/items/${createdItem.Item_ID}/upload-image`,
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to upload image");
+      }
+
+      // Refresh to show the new image
+      window.location.reload();
     }
 
-    const newItem = {
-      Item_Name: addForm.name,
-      Price: parseFloat(addForm.price),
-      Category: addForm.category,
-      Shop_ID: 1,
-    };
-
-    try {
-      await addItem(newItem);
-      setAddDialogOpen(false);
-      setAddForm({
-        name: "",
-        price: "",
-        category: giftShopCategories[0],
-        imageFile: null,
-      });
-      toast.success("New item added successfully!");
-    } catch (error) {
-      toast.error("Failed to add item. Please try again.");
-      console.error("Error adding item:", error);
-    }
-  };
-
+    setAddDialogOpen(false);
+    setAddForm({
+      name: "",
+      price: "",
+      category: giftShopCategories[0],
+      imageFile: null,
+    });
+    toast.success("New item added successfully!");
+  } catch (error) {
+    toast.error("Failed to add item. Please try again.");
+    console.error("Error adding item:", error);
+  }
+};
   const handleDeleteClick = (item) => {
     setItemToDelete(item);
     setDeleteDialogOpen(true);
