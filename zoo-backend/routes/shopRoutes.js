@@ -1,4 +1,5 @@
 import express from "express";
+import { upload, uploadToAzure } from "../middleware/azureUpload.js"
 import {
   getAllShopItems,
   getShopItemById,
@@ -92,6 +93,38 @@ router.get("/analytics/top-selling-today", async (req, res) => {
   } catch (error) {
     console.error("Error fetching top selling item today:", error);
     res.status(500).json({ error: "Failed to fetch top selling item" });
+  }
+});
+
+// Image upload route for shop items
+router.post("/items/:id/upload-image", upload.single("image"), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const db = (await import("../config/database.js")).default;
+
+    if (!req.file) {
+      return res.status(400).json({ error: "No image file provided" });
+    }
+
+    // Upload to Azure Blob Storage
+    const imageUrl = await uploadToAzure(req.file, "items");
+
+    // Update item in database with new image URL
+    await db.query(
+      "UPDATE Item SET Image_URL = ? WHERE Item_ID = ?",
+      [imageUrl, id]
+    );
+
+    // Fetch updated item
+    const [items] = await db.query(
+      "SELECT * FROM Item WHERE Item_ID = ?",
+      [id]
+    );
+
+    res.json(items[0]);
+  } catch (error) {
+    console.error("Error uploading item image:", error);
+    res.status(500).json({ error: "Failed to upload image" });
   }
 });
 
