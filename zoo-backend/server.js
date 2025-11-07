@@ -11,6 +11,8 @@ import authRoutes from "./routes/authRoutes.js";
 import shopRoutes from "./routes/shopRoutes.js";
 import foodRoutes from "./routes/foodRoutes.js";
 import { isAzureConfigured } from "./middleware/azureUpload.js";
+import veterinarianRoutes from './routes/veterinarianRoutes.js';
+import zookeeperRoutes from './routes/zookeeperRoutes.js';
 
 dotenv.config();
 
@@ -60,6 +62,11 @@ app.use("/api/customer", customerRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/shop", shopRoutes);
 app.use("/api/food", foodRoutes); 
+app.use("/api/food", foodRoutes);
+app.use("/api/stats", statsRoutes);
+app.use('/api/veterinarian', veterinarianRoutes);
+app.use('/api/zookeeper', zookeeperRoutes);
+
 
 app.use((req, res) => {
   res.status(404).json({
