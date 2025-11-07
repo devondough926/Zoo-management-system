@@ -10,9 +10,10 @@ import customerRoutes from "./routes/customerRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
 import shopRoutes from "./routes/shopRoutes.js";
 import foodRoutes from "./routes/foodRoutes.js";
+import statsRoutes from "./routes/statsRoutes.js";
 import { isAzureConfigured } from "./middleware/azureUpload.js";
-import veterinarianRoutes from './routes/veterinarianRoutes.js';
-import zookeeperRoutes from './routes/zookeeperRoutes.js';
+import veterinarianRoutes from "./routes/veterinarianRoutes.js";
+import zookeeperRoutes from "./routes/zookeeperRoutes.js";
 
 dotenv.config();
 
@@ -52,7 +53,6 @@ app.use((req, res, next) => {
   next();
 });
 
-
 app.get("/health", (req, res) => {
   res.status(200).json({
     status: "OK",
@@ -65,12 +65,10 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/customer", customerRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/shop", shopRoutes);
-app.use("/api/food", foodRoutes); 
 app.use("/api/food", foodRoutes);
 app.use("/api/stats", statsRoutes);
-app.use('/api/veterinarian', veterinarianRoutes);
-app.use('/api/zookeeper', zookeeperRoutes);
-
+app.use("/api/veterinarian", veterinarianRoutes);
+app.use("/api/zookeeper", zookeeperRoutes);
 
 app.use((req, res) => {
   res.status(404).json({
@@ -91,6 +89,8 @@ const startServer = async () => {
     const dbConnected = await testConnection();
     if (!dbConnected) {
       console.error("[WARNING] Server starting without database connection");
+    } else {
+      console.log("[DB] Database connected successfully");
     }
 
     // Check Azure configuration
@@ -100,7 +100,11 @@ const startServer = async () => {
       );
     }
 
-    app.listen(PORT, () => {});
+    app.listen(PORT, () => {
+      console.log(`\n[SERVER] Running on port ${PORT}`);
+      console.log(`Environment: ${process.env.NODE_ENV || "development"}`);
+      console.log(`Health check: http://localhost:${PORT}/health`);
+    });
   } catch (error) {
     console.error("Failed to start server:", error);
     process.exit(1);
