@@ -169,7 +169,8 @@ export function EditExhibitDialog({
                     key={loc.Location_ID}
                     value={loc.Location_ID.toString()}
                   >
-                    {loc.Zone} - {loc.Location_Description}
+                    {loc.Zone} -{" "}
+                    {loc.Location_Description?.replace(/\bNorth\b/g, "N.")}
                   </SelectItem>
                 ))}
               </SelectContent>

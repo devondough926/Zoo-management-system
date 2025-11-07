@@ -5,6 +5,7 @@ import {
   CardHeader,
   CardTitle,
 } from "../components/ui/card";
+import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import {
@@ -16,11 +17,10 @@ import {
 import { toast } from "sonner";
 import { useAuth } from "../contexts/AuthContext";
 import { useData } from "../data/DataContext";
-import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { preloadImages } from "../utils/imagePreloader";
 import { useHeroImage } from "../utils/heroImages";
 
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000/api";
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
 export function FoodPage({ addToCart, allowCartActions = true }) {
   const { memberships } = useData();
@@ -74,8 +74,9 @@ export function FoodPage({ addToCart, allowCartActions = true }) {
 
   const itemsByStand = useMemo(() => {
     return standInfo.map((stand) => {
+      // normalize Stand_ID comparison (API may return string or number)
       const standItems = concessionItems.filter(
-        (item) => item.Stand_ID === stand.id
+        (item) => String(item.Stand_ID) === String(stand.id)
       );
       return {
         ...stand,
@@ -94,6 +95,49 @@ export function FoodPage({ addToCart, allowCartActions = true }) {
   const [carouselAnimating, setCarouselAnimating] = useState({});
   const carouselTimersRef = useRef({});
 
+  // Ensure currently visible carousel images are preloaded (and adjacent ones optionally)
+  useEffect(() => {
+    if (!itemsByStand || itemsByStand.length === 0) return;
+
+    const toPreload = [];
+
+    itemsByStand.forEach((stand) => {
+      const slidesPerView = Math.min(4, stand.items.length);
+      if (stand.items.length === 0) return;
+
+      const offsetStart =
+        stand.items.length > slidesPerView ? slidesPerView : 0;
+      const current =
+        typeof carouselIndices[stand.name] === "number"
+          ? carouselIndices[stand.name]
+          : offsetStart;
+
+      const n = stand.items.length;
+      const realStart = (((current - offsetStart) % n) + n) % n;
+
+      // preload visible slides
+      for (let i = 0; i < slidesPerView; i++) {
+        const img = stand.items[(realStart + i) % n]?.image;
+        if (img) toPreload.push(img);
+      }
+
+      // also preload one adjacent slide on each side to reduce perceived lag
+      const prevImg = stand.items[(realStart - 1 + n) % n]?.image;
+      const nextImg = stand.items[(realStart + slidesPerView) % n]?.image;
+      if (prevImg) toPreload.push(prevImg);
+      if (nextImg) toPreload.push(nextImg);
+    });
+
+    const unique = Array.from(new Set(toPreload)).filter(Boolean);
+    if (unique.length > 0) {
+      // race with a short timeout so we don't block rendering
+      Promise.race([
+        preloadImages(unique, "high"),
+        new Promise((r) => setTimeout(r, 120)),
+      ]);
+    }
+  }, [itemsByStand, carouselIndices]);
+
   // Preload initial visible images for each stand and initialize carousel indices
   useEffect(() => {
     if (!itemsByStand || itemsByStand.length === 0) return;
@@ -101,7 +145,7 @@ export function FoodPage({ addToCart, allowCartActions = true }) {
     const initialIndices = {};
 
     itemsByStand.forEach((stand) => {
-      const slidesPerView = Math.min(4, stand.items.length || 4);
+      const slidesPerView = Math.min(4, stand.items.length);
       if (stand.items.length > 0) {
         // initial visible real items are the first `slidesPerView` items
         const urls = stand.items
@@ -110,7 +154,9 @@ export function FoodPage({ addToCart, allowCartActions = true }) {
           .filter(Boolean);
         toPreload.push(...urls);
         // default index should point to the offset start (after cloned head)
-        initialIndices[stand.name] = slidesPerView;
+        // If we don't have cloned head/tail (items <= slidesPerView) the offset is 0
+        initialIndices[stand.name] =
+          stand.items.length > slidesPerView ? slidesPerView : 0;
       }
     });
 
@@ -139,7 +185,8 @@ export function FoodPage({ addToCart, allowCartActions = true }) {
     const current = carouselIndices[standName];
     const slidesPerView = Math.min(4, totalItems);
     // If state hasn't been initialized yet, default to the offset start
-    const offsetStart = slidesPerView;
+    // Use cloned head/tail only when there are more items than the slidesPerView
+    const offsetStart = totalItems > slidesPerView ? slidesPerView : 0;
     const curr = typeof current === "number" ? current : offsetStart;
     const n = totalItems;
     const newIndex = curr + 1;
@@ -162,7 +209,7 @@ export function FoodPage({ addToCart, allowCartActions = true }) {
     setCarouselIndices((prev) => ({ ...prev, [standName]: newIndex }));
 
     // If we've moved into the cloned tail (indices >= offsetStart + n), snap back to the corresponding real index
-    const transitionMs = 620; // a little > duration-600
+    const transitionMs = 420; // a little > duration-400
     const clonedTailStart = offsetStart + n; // first index of cloned head (after real items)
     if (newIndex >= clonedTailStart) {
       const normalized = (((newIndex - offsetStart) % n) + n) % n; // 0..n-1
@@ -181,7 +228,7 @@ export function FoodPage({ addToCart, allowCartActions = true }) {
       const finishTimer = setTimeout(() => {
         setCarouselAnimating((p) => ({ ...p, [standName]: false }));
         delete carouselTimersRef.current[standName];
-      }, transitionMs + 80);
+      }, transitionMs + 10);
       carouselTimersRef.current[standName] = finishTimer;
     }
     // If we didn't schedule a snap (normal in-range move), schedule clearing animating after the transition
@@ -189,13 +236,13 @@ export function FoodPage({ addToCart, allowCartActions = true }) {
       const finishTimer = setTimeout(() => {
         setCarouselAnimating((p) => ({ ...p, [standName]: false }));
         delete carouselTimersRef.current[standName];
-      }, transitionMs + 30);
+      }, transitionMs + 5);
       carouselTimersRef.current[standName] = finishTimer;
     }
 
     Promise.race([
       preloadImages(urls, "high"),
-      new Promise((res) => setTimeout(res, 150)),
+      new Promise((res) => setTimeout(res, 120)),
     ]);
   };
 
@@ -204,7 +251,8 @@ export function FoodPage({ addToCart, allowCartActions = true }) {
     if (carouselAnimating[standName]) return;
     const current = carouselIndices[standName];
     const slidesPerView = Math.min(4, totalItems);
-    const offsetStart = slidesPerView;
+    // Use cloned head/tail only when there are more items than the slidesPerView
+    const offsetStart = totalItems > slidesPerView ? slidesPerView : 0;
     const curr = typeof current === "number" ? current : offsetStart;
     const n = totalItems;
     const newIndex = curr - 1;
@@ -227,7 +275,7 @@ export function FoodPage({ addToCart, allowCartActions = true }) {
     setCarouselIndices((prev) => ({ ...prev, [standName]: newIndex }));
 
     // If we've moved into the cloned head (indices < offsetStart), snap to the corresponding real index at the end
-    const transitionMs = 620;
+    const transitionMs = 420;
     if (newIndex < offsetStart) {
       const normalized = (((newIndex - offsetStart) % n) + n) % n; // 0..n-1
       const target = offsetStart + normalized; // this maps into the real range
@@ -243,19 +291,19 @@ export function FoodPage({ addToCart, allowCartActions = true }) {
       const finishTimer = setTimeout(() => {
         setCarouselAnimating((p) => ({ ...p, [standName]: false }));
         delete carouselTimersRef.current[standName];
-      }, transitionMs + 80);
+      }, transitionMs + 10);
       carouselTimersRef.current[standName] = finishTimer;
     } else {
       const finishTimer = setTimeout(() => {
         setCarouselAnimating((p) => ({ ...p, [standName]: false }));
         delete carouselTimersRef.current[standName];
-      }, transitionMs + 30);
+      }, transitionMs + 5);
       carouselTimersRef.current[standName] = finishTimer;
     }
 
     Promise.race([
       preloadImages(urls, "high"),
-      new Promise((res) => setTimeout(res, 150)),
+      new Promise((res) => setTimeout(res, 120)),
     ]);
   };
 
@@ -333,8 +381,12 @@ export function FoodPage({ addToCart, allowCartActions = true }) {
           <h2 className="text-3xl mb-8 text-center">Full Menu</h2>
           <div className="space-y-12 max-w-6xl mx-auto">
             {itemsByStand.map((stand) => {
-              const slidesPerView = Math.min(4, stand.items.length || 4);
-              const offsetStart = slidesPerView;
+              const slidesPerView = Math.min(4, stand.items.length);
+              // If there are more real items than the slidesPerView we create
+              // cloned head/tail for seamless looping and need an offset start.
+              // When items <= slidesPerView there are no clones and offset should be 0.
+              const offsetStart =
+                stand.items.length > slidesPerView ? slidesPerView : 0;
 
               // Build carousel items with cloned head/tail for seamless looping when there are more items than view
               let carouselItems = stand.items;
@@ -401,7 +453,7 @@ export function FoodPage({ addToCart, allowCartActions = true }) {
                           className={`flex will-change-transform ${
                             noTransition
                               ? ""
-                              : "transition-transform duration-600 ease-in-out"
+                              : "transition-transform duration-400 ease-in-out"
                           }`}
                           style={{
                             transform: `translateX(-${
@@ -420,11 +472,24 @@ export function FoodPage({ addToCart, allowCartActions = true }) {
                               <Card className="hover:shadow-md transition-shadow overflow-hidden rounded-lg">
                                 <div className="aspect-video w-full overflow-hidden rounded-t-lg bg-gradient-to-br from-orange-50 to-amber-50 flex items-center justify-center">
                                   {item && item.image ? (
-                                    <ImageWithFallback
-                                      src={item.image}
-                                      alt={item.name}
-                                      className="w-full h-full object-cover"
-                                    />
+                                    (() => {
+                                      const isVisible =
+                                        slideIdx >= (currentIndex || 0) &&
+                                        slideIdx <
+                                          (currentIndex || 0) + slidesPerView;
+                                      return (
+                                        <ImageWithFallback
+                                          src={item.image}
+                                          alt={item.name}
+                                          className="w-full h-full object-cover"
+                                          // hint to ImageWithFallback and browser to load eagerly
+                                          priority={isVisible}
+                                          loading={isVisible ? "eager" : "lazy"}
+                                          width="560"
+                                          height="315"
+                                        />
+                                      );
+                                    })()
                                   ) : (
                                     <UtensilsCrossed className="h-16 w-16 text-orange-200" />
                                   )}

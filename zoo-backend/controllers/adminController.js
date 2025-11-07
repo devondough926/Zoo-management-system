@@ -1129,6 +1129,141 @@ export const getAllMemberships = async (req, res) => {
 };
 
 // ============================================
+// DETAILED TRANSACTIONS
+// ============================================
+
+export const getDetailedTransactions = async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+
+    let dateFilter = "";
+    const params = [];
+
+    if (startDate && endDate) {
+      dateFilter = "WHERE DATE(p.Purchase_Date) BETWEEN DATE(?) AND DATE(?)";
+      params.push(startDate, endDate);
+    }
+
+    // Build membership-specific filter so we don't accidentally inject an
+    // 'AND' into the JOIN clause when no dateFilter is present.
+    const membershipFilter =
+      startDate && endDate
+        ? `WHERE DATE(p.Purchase_Date) BETWEEN DATE(?) AND DATE(?) AND p.Membership_ID IS NOT NULL`
+        : `WHERE p.Membership_ID IS NOT NULL`;
+
+    // When dateFilter is used inside multiple UNION blocks we must repeat
+    // the start/end params for each occurrence so the placeholder count matches.
+    const queryParams = params.length
+      ? [...params, ...params, ...params, ...params]
+      : [];
+
+    const [transactions] = await db.query(
+      `
+      (
+        SELECT 
+          p.Purchase_ID,
+          DATE_FORMAT(p.Purchase_Date, '%Y-%m-%d %H:%i:%s') as Purchase_Date,
+          p.Customer_ID,
+          CASE
+            WHEN p.Customer_ID IS NULL THEN ''
+            WHEN c.First_Name IS NULL OR c.Last_Name IS NULL THEN ''
+            WHEN TRIM(CONCAT(c.First_Name, ' ', c.Last_Name)) = '' THEN ''
+            ELSE TRIM(CONCAT(c.First_Name, ' ', c.Last_Name))
+          END as Customer_Name,
+          p.Payment_Method,
+          CONCAT(t.Ticket_Type, ' Ticket') as Item_Description,
+          'Ticket' as Category,
+          t.Quantity,
+          t.Price as Unit_Price,
+          t.Price * t.Quantity as Total_Amount
+        FROM Purchase p
+        LEFT JOIN Customer c ON p.Customer_ID = c.Customer_ID
+        INNER JOIN Ticket t ON p.Purchase_ID = t.Purchase_ID
+        ${dateFilter}
+      )
+      UNION ALL
+      (
+        SELECT 
+          p.Purchase_ID,
+          DATE_FORMAT(p.Purchase_Date, '%Y-%m-%d %H:%i:%s') as Purchase_Date,
+          p.Customer_ID,
+          CASE
+            WHEN p.Customer_ID IS NULL THEN ''
+            WHEN c.First_Name IS NULL OR c.Last_Name IS NULL THEN ''
+            WHEN TRIM(CONCAT(c.First_Name, ' ', c.Last_Name)) = '' THEN ''
+            ELSE TRIM(CONCAT(c.First_Name, ' ', c.Last_Name))
+          END as Customer_Name,
+          p.Payment_Method,
+          CONCAT(i.Item_Name, ' (Shop)') as Item_Description,
+          'Gift Shop' as Category,
+          pi.Quantity,
+          pi.Unit_Price,
+          pi.Unit_Price * pi.Quantity as Total_Amount
+        FROM Purchase p
+        LEFT JOIN Customer c ON p.Customer_ID = c.Customer_ID
+        INNER JOIN Purchase_Item pi ON p.Purchase_ID = pi.Purchase_ID
+        INNER JOIN Item i ON pi.Item_ID = i.Item_ID
+        ${dateFilter}
+      )
+      UNION ALL
+      (
+        SELECT 
+          p.Purchase_ID,
+          DATE_FORMAT(p.Purchase_Date, '%Y-%m-%d %H:%i:%s') as Purchase_Date,
+          p.Customer_ID,
+          CASE
+            WHEN p.Customer_ID IS NULL THEN ''
+            WHEN c.First_Name IS NULL OR c.Last_Name IS NULL THEN ''
+            WHEN TRIM(CONCAT(c.First_Name, ' ', c.Last_Name)) = '' THEN ''
+            ELSE TRIM(CONCAT(c.First_Name, ' ', c.Last_Name))
+          END as Customer_Name,
+          p.Payment_Method,
+          CONCAT(ci.Item_Name, ' (Food)') as Item_Description,
+          'Food & Beverage' as Category,
+          pci.Quantity,
+          pci.Unit_Price,
+          pci.Unit_Price * pci.Quantity as Total_Amount
+        FROM Purchase p
+        LEFT JOIN Customer c ON p.Customer_ID = c.Customer_ID
+        INNER JOIN Purchase_Concession_Item pci ON p.Purchase_ID = pci.Purchase_ID
+        INNER JOIN Concession_Item ci ON pci.Concession_Item_ID = ci.Concession_Item_ID
+        ${dateFilter}
+      )
+      UNION ALL
+      (
+        SELECT 
+          p.Purchase_ID,
+          DATE_FORMAT(p.Purchase_Date, '%Y-%m-%d %H:%i:%s') as Purchase_Date,
+          p.Customer_ID,
+          CASE
+            WHEN p.Customer_ID IS NULL THEN ''
+            WHEN c.First_Name IS NULL OR c.Last_Name IS NULL THEN ''
+            WHEN TRIM(CONCAT(c.First_Name, ' ', c.Last_Name)) = '' THEN ''
+            ELSE TRIM(CONCAT(c.First_Name, ' ', c.Last_Name))
+          END as Customer_Name,
+          p.Payment_Method,
+          'Annual Membership' as Item_Description,
+          'Membership' as Category,
+          1 as Quantity,
+          p.Total_Amount as Unit_Price,
+          p.Total_Amount as Total_Amount
+  FROM Purchase p
+  LEFT JOIN Customer c ON p.Customer_ID = c.Customer_ID
+  ${membershipFilter}
+      )
+      ORDER BY Purchase_Date DESC, Purchase_ID, Category
+    `,
+      queryParams
+    );
+
+    res.json(transactions);
+  } catch (error) {
+    console.error("Error fetching detailed transactions:", error);
+    res.status(500).json({ error: "Failed to fetch detailed transactions" });
+  }
+};
+
+// ============================================
 // PRICING MANAGEMENT
 // ============================================
 

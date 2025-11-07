@@ -52,6 +52,39 @@ export const ImageWithFallback = React.memo(function ImageWithFallback(props) {
     }
   }, [src, priority]);
 
+  // If the image hasn't started loading after a short delay, trigger a programmatic
+  // preload to ensure the browser requests/decodes it (helps where lazy loading or
+  // race conditions prevent the <img> element from fetching immediately).
+  useEffect(() => {
+    if (!src) return;
+    if (imageCache.has(src)) return; // already loaded
+    if (didError) return;
+
+    let aborted = false;
+    const preloadDelay = 180; // ms
+    const timer = setTimeout(() => {
+      if (aborted) return;
+      // create an off-DOM Image to kick off the network request
+      const p = new Image();
+      p.decoding = "async";
+      p.onload = () => {
+        if (aborted) return;
+        imageCache.add(src);
+        setIsLoaded(true);
+      };
+      p.onerror = () => {
+        if (aborted) return;
+      };
+      // Set src last to avoid synchronous firing
+      p.src = src;
+    }, preloadDelay);
+
+    return () => {
+      aborted = true;
+      clearTimeout(timer);
+    };
+  }, [src, didError]);
+
   return didError ? (
     <div
       className={`inline-block bg-gray-100 text-center align-middle ${

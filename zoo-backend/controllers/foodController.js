@@ -1,7 +1,6 @@
 import pool from "../config/database.js";
 import { uploadToAzure, deleteFromAzure } from "../middleware/azureUpload.js";
 
-// ✅ Get concession statistics (revenue, items sold, top item)
 export const getConcessionStats = async (req, res) => {
   try {
     // Today's revenue and items sold
@@ -62,7 +61,6 @@ export const getConcessionStats = async (req, res) => {
   }
 };
 
-// ✅ Get all food items
 export const getAllFood = async (req, res) => {
   try {
     const [rows] = await pool.query(`
@@ -84,12 +82,9 @@ export const getAllFood = async (req, res) => {
   }
 };
 
-// ✅ Add new food item (with guaranteed Azure persistence)
 export const addFood = async (req, res) => {
   try {
     const { Stand_ID, Item_Name, Price } = req.body;
-    console.log("📥 Add Food Request:", { Stand_ID, Item_Name, Price });
-    console.log("📸 File received:", req.file ? req.file.originalname : "None");
 
     if (!Stand_ID || !Item_Name || !Price) {
       return res
@@ -100,11 +95,9 @@ export const addFood = async (req, res) => {
     let imageUrl = null;
     if (req.file) {
       try {
-        console.log("🪣 Uploading to Azure...");
         imageUrl = await uploadToAzure(req.file, "food");
-        console.log("✅ Uploaded to Azure:", imageUrl);
       } catch (err) {
-        console.error("❌ Azure upload failed:", err);
+        console.error("Azure upload failed:", err);
         return res
           .status(500)
           .json({ error: "Azure upload failed", details: err.message });
@@ -116,8 +109,6 @@ export const addFood = async (req, res) => {
        VALUES (?, ?, ?, ?)`,
       [Stand_ID, Item_Name, Price, imageUrl]
     );
-
-    console.log("✅ Inserted into MySQL:", result.insertId, imageUrl);
 
     // Fetch and return the newly created item with all fields
     const [newItemRows] = await pool.query(
@@ -145,12 +136,10 @@ export const addFood = async (req, res) => {
   }
 };
 
-// ✅ Update existing food item (replace Azure image if new uploaded)
 export const updateFood = async (req, res) => {
   try {
     const { id } = req.params;
     const { Item_Name, Price } = req.body;
-    console.log("✏️ Update Item:", { id, Item_Name, Price });
 
     const [rows] = await pool.query(
       `SELECT Image_URL FROM concession_item WHERE Concession_Item_ID = ?`,
@@ -163,10 +152,8 @@ export const updateFood = async (req, res) => {
     let newImageUrl = rows[0].Image_URL;
 
     if (req.file) {
-      console.log("🔄 Replacing image in Azure...");
       if (newImageUrl) await deleteFromAzure(newImageUrl);
       newImageUrl = await uploadToAzure(req.file, "food");
-      console.log("✅ New Azure URL:", newImageUrl);
     }
 
     await pool.query(
@@ -196,11 +183,9 @@ export const updateFood = async (req, res) => {
   }
 };
 
-// ✅ Delete food item (and remove Azure image)
 export const deleteFood = async (req, res) => {
   try {
     const { id } = req.params;
-    console.log("🗑️ Deleting item:", id);
 
     const [rows] = await pool.query(
       `SELECT Image_URL FROM concession_item WHERE Concession_Item_ID = ?`,
@@ -212,7 +197,6 @@ export const deleteFood = async (req, res) => {
 
     const imageUrl = rows[0].Image_URL;
     if (imageUrl) {
-      console.log("🪣 Removing from Azure:", imageUrl);
       await deleteFromAzure(imageUrl);
     }
 

@@ -1,5 +1,4 @@
 import { useState, useMemo, useEffect } from "react";
-import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import {
   Stethoscope,
@@ -14,6 +13,8 @@ import { AnimalCard } from "../components/AnimalCard";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { useHeroImage } from "../utils/heroImages";
 import { preloadImages } from "../utils/imagePreloader";
+import { generatePaginationArray } from "../utils/paginationHelper";
+import { PaginationControls } from "../components/PaginationControls";
 
 export function AnimalsPage() {
   const [selectedHabitat, setSelectedHabitat] = useState("All");
@@ -249,45 +250,15 @@ export function AnimalsPage() {
 
               {/* Pagination Controls */}
               {displayedAnimals.length > 0 && (
-                <div className="flex justify-center items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => goToPage(Math.max(1, currentPage - 1))}
-                    disabled={currentPage === 1}
-                    className="gap-1"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-
-                  <div className="flex gap-1">
-                    {Array.from({ length: totalPages }, (_, i) => i + 1).map(
-                      (page) => (
-                        <Button
-                          key={page}
-                          variant={currentPage === page ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => goToPage(page)}
-                          className="min-w-[40px]"
-                        >
-                          {page}
-                        </Button>
-                      )
-                    )}
-                  </div>
-
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() =>
-                      goToPage(Math.min(totalPages, currentPage + 1))
-                    }
-                    disabled={currentPage === totalPages}
-                    className="gap-1"
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
+                <PaginationControls
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  onPageChange={goToPage}
+                  paginationArray={generatePaginationArray(
+                    currentPage,
+                    totalPages
+                  )}
+                />
               )}
             </div>
           </section>

@@ -28,7 +28,11 @@ export function AuthProvider({ children }) {
           setRole(sessionData.role);
         }
       } catch (error) {
-        console.error("Session check failed:", error);
+        // Session check failing is expected for non-logged-in users
+        // Only log unexpected errors
+        if (error.message !== "Not authenticated") {
+          console.error("Unexpected session check error:", error);
+        }
       } finally {
         setInitialized(true);
       }

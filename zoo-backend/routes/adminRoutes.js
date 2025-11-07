@@ -32,6 +32,7 @@ import {
   getPurchaseItems,
   getPurchaseConcessionItems,
   getAllMemberships,
+  getDetailedTransactions,
   getPricing,
   updatePricing,
 } from "../controllers/adminController.js";
@@ -248,6 +249,7 @@ router.get("/tickets", getAllTickets);
 router.get("/purchase-items", getPurchaseItems);
 router.get("/purchase-concession-items", getPurchaseConcessionItems);
 router.get("/memberships", getAllMemberships);
+router.get("/transactions/detailed", getDetailedTransactions);
 
 // Pricing routes
 router.get("/pricing", getPricing);

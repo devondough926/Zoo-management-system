@@ -9,7 +9,6 @@ let azureConfigError = null;
 
 try {
   if (process.env.AZURE_STORAGE_CONNECTION_STRING) {
-    console.log("Initializing Azure Blob Storage...");
 
     if (!process.env.AZURE_STORAGE_CONTAINER_NAME) {
       azureConfigError =
@@ -18,9 +17,6 @@ try {
     } else {
       blobServiceClient = BlobServiceClient.fromConnectionString(
         process.env.AZURE_STORAGE_CONNECTION_STRING
-      );
-      console.log(
-        `[SUCCESS] Azure Blob Storage initialized (Container: ${process.env.AZURE_STORAGE_CONTAINER_NAME})`
       );
     }
   } else {
