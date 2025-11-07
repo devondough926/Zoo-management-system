@@ -8,29 +8,85 @@
  *
  * All additions, updates, and deletions are automatically reflected
  * across all pages and portals in real-time.
- *
- * Note: Animals, items, and concessionItems are temporarily loaded from mock data
- * for staff portals (Zookeeper, Veterinarian) until backend integration is complete.
  */
 
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useState, useEffect } from "react";
 import {
   mockAnimals,
-  items as mockItems,
-  concessionItems as mockConcessionItems,
+  concessionItems as initialConcessionItems,
 } from "./mockData";
 
 const DataContext = createContext(undefined);
 
+const API_BASE_URL = "http://localhost:5000/api";
+
 export function DataProvider({ children }) {
   const [animals, setAnimals] = useState(mockAnimals);
-  const [items, setItems] = useState(mockItems);
-  const [concessionItems, setConcessionItems] = useState(mockConcessionItems);
+  const [items, setItems] = useState([]);
+  const [concessionItems, setConcessionItems] = useState(initialConcessionItems);
   const [purchases, setPurchases] = useState([]);
   const [tickets, setTickets] = useState([]);
   const [purchaseItems, setPurchaseItems] = useState([]);
   const [purchaseConcessionItems, setPurchaseConcessionItems] = useState([]);
   const [memberships, setMemberships] = useState([]);
+
+  // Fetch shop items from backend on mount
+  useEffect(() => {
+    const fetchItems = async () => {
+      try {
+        console.log("Fetching shop items...");
+        const response = await fetch(`${API_BASE_URL}/shop/items`);
+        console.log("Response status:", response.status);
+        if (response.ok) {
+          const data = await response.json();
+          console.log("Fetched items:", data.length);
+          setItems(data);
+        } else {
+          console.error("Failed to fetch items, status:", response.status);
+        }
+      } catch (error) {
+        console.error("Error fetching items:", error);
+      }
+    };
+    fetchItems();
+  }, []);
+
+  // Fetch purchase data for analytics
+useEffect(() => {
+  const fetchPurchaseData = async () => {
+    try {
+      // Fetch purchases
+      const purchasesResponse = await fetch(`${API_BASE_URL}/shop/purchases`);
+      if (purchasesResponse.ok) {
+        const purchasesData = await purchasesResponse.json();
+        setPurchases(purchasesData);
+      }
+
+      // Fetch purchase items
+      const purchaseItemsResponse = await fetch(`${API_BASE_URL}/shop/purchase-items`);
+      if (purchaseItemsResponse.ok) {
+        const purchaseItemsData = await purchaseItemsResponse.json();
+        setPurchaseItems(purchaseItemsData);
+      }
+    } catch (error) {
+      console.error("Error fetching purchase data:", error);
+    }
+  };
+  
+  fetchPurchaseData();
+}, []);
+
+  const refreshItems = async () => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/shop/items`);
+    if (response.ok) {
+      const data = await response.json();
+      setItems(data);
+    }
+  } catch (error) {
+    console.error("Error refreshing items:", error);
+  }
+};
 
   // Animal operations
   const addAnimal = (animal) => {
@@ -51,21 +107,61 @@ export function DataProvider({ children }) {
     );
   };
 
-  // Item operations
-  const addItem = (item) => {
-    setItems((prev) => [...prev, item]);
+  // Item operations - NOW WITH API CALLS
+  const addItem = async (item) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/shop/items`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(item),
+      });
+      if (response.ok) {
+        const newItem = await response.json();
+        setItems((prev) => [...prev, newItem]);
+        return newItem;
+      }
+    } catch (error) {
+      console.error("Error adding item:", error);
+      throw error;
+    }
   };
 
-  const updateItem = (itemId, updates) => {
-    setItems((prev) =>
-      prev.map((item) =>
-        item.Item_ID === itemId ? { ...item, ...updates } : item
-      )
-    );
-  };
+ const updateItem = async (itemId, updates) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/shop/items/${itemId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updates),
+    });
+    if (response.ok) {
+      const updatedItem = await response.json();
+      setItems((prev) =>
+        prev.map((item) => 
+          item.Item_ID === itemId 
+            ? { ...item, ...updatedItem } 
+            : item
+        )
+      );
+      return updatedItem;
+    }
+  } catch (error) {
+    console.error("Error updating item:", error);
+    throw error;
+  }
+};
 
-  const deleteItem = (itemId) => {
-    setItems((prev) => prev.filter((item) => item.Item_ID !== itemId));
+  const deleteItem = async (itemId) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/shop/items/${itemId}`, {
+        method: "DELETE",
+      });
+      if (response.ok) {
+        setItems((prev) => prev.filter((item) => item.Item_ID !== itemId));
+      }
+    } catch (error) {
+      console.error("Error deleting item:", error);
+      throw error;
+    }
   };
 
   // Concession item operations
@@ -133,6 +229,7 @@ export function DataProvider({ children }) {
         addItem,
         updateItem,
         deleteItem,
+        refreshItems,
         concessionItems,
         addConcessionItem,
         updateConcessionItem,

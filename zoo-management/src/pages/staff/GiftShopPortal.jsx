@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Card,
@@ -51,21 +51,21 @@ const giftShopCategories = [
   "Decorations & Others",
 ];
 
-export function GiftShopPortal({ user, onLogout }) {
+export function GiftShopPortal({ user, onLogout, onNavigate }) {
   const navigate = useNavigate();
   const {
     items: shopItems,
     addItem,
     updateItem,
     deleteItem,
+    refreshItems,
     purchases,
     purchaseItems,
   } = useData();
-  // All gift shops under management (Gift Shop Worker manages all shops)
+
   const allShops = giftShops;
   const [showRevenueAllTime, setShowRevenueAllTime] = useState(false);
 
-  // Edit dialog state
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [editForm, setEditForm] = useState({
@@ -75,7 +75,6 @@ export function GiftShopPortal({ user, onLogout }) {
     imageFile: null,
   });
 
-  // Add dialog state
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [addForm, setAddForm] = useState({
     name: "",
@@ -84,47 +83,74 @@ export function GiftShopPortal({ user, onLogout }) {
     imageFile: null,
   });
 
-  // Delete dialog state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState(null);
 
-  // Calculate revenue from actual purchases
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  // State for analytics data
+  const [todayRevenue, setTodayRevenue] = useState(0);
+  const [itemsSoldToday, setItemsSoldToday] = useState(0);
+  const [topSellingToday, setTopSellingToday] = useState(null);
+  const [topItems, setTopItems] = useState([]);
+  const [allTimeRevenue, setAllTimeRevenue] = useState(0);
 
-  const todayPurchaseItems = purchaseItems.filter((pi) => {
-    const purchase = purchases.find((p) => p.Purchase_ID === pi.Purchase_ID);
-    if (!purchase || /membership/i.test(pi.Item_Name || "")) return false; // Exclude memberships
-    const purchaseDate = new Date(purchase.Purchase_Date);
-    purchaseDate.setHours(0, 0, 0, 0);
-    return purchaseDate.getTime() === today.getTime();
-  });
+  // Fetch analytics data from backend
+  useEffect(() => {
+    const fetchAnalytics = async () => {
+      try {
+        // Fetch today's revenue and items sold
+        const revenueResponse = await fetch('http://localhost:5000/api/shop/analytics/revenue/today');
+        if (revenueResponse.ok) {
+          const data = await revenueResponse.json();
+          setTodayRevenue(parseFloat(data.todayRevenue));
+          setItemsSoldToday(parseInt(data.itemsSoldToday));
+        }
 
-  const todayRevenue = todayPurchaseItems.reduce(
-    (sum, pi) => sum + pi.Unit_Price * pi.Quantity,
-    0
-  );
-  const allTimeRevenue = purchaseItems
-    .filter((pi) => !/membership/i.test(pi.Item_Name || ""))
-    .reduce((sum, pi) => sum + pi.Unit_Price * pi.Quantity, 0);
-  const itemsSoldToday = todayPurchaseItems.reduce(
-    (sum, pi) => sum + pi.Quantity,
-    0
-  );
+        // Fetch top selling items (all time)
+        const topSellingResponse = await fetch('http://localhost:5000/api/shop/analytics/top-selling');
+        if (topSellingResponse.ok) {
+          const data = await topSellingResponse.json();
+          setTopItems(data.map((item, index) => ({
+            item: {
+              Item_ID: item.Item_ID,
+              Item_Name: item.Item_Name,
+              Price: item.Price,
+              Category: item.Category,
+              Image_URL: item.Image_URL,
+            },
+            quantity: parseInt(item.totalSold),
+            rank: index + 1,
+          })));
+        }
 
-  // Top selling items with mock quantities (top 3 only)
-  const topItems = [
-    { item: shopItems[0], quantity: 156, rank: 1 }, // Plush Elephant
-    { item: shopItems[1], quantity: 143, rank: 2 }, // Zoo T-Shirt
-    { item: shopItems[5], quantity: 128, rank: 3 }, // Plush Tiger
-  ].filter((t) => t.item); // Filter out any undefined items
+        // Fetch top selling item today
+        const topTodayResponse = await fetch('http://localhost:5000/api/shop/analytics/top-selling-today');
+        if (topTodayResponse.ok) {
+          const data = await topTodayResponse.json();
+          if (data.Item_Name) {
+            setTopSellingToday({
+              item: { Item_Name: data.Item_Name },
+              quantity: parseInt(data.soldToday),
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching analytics:', error);
+      }
+    };
 
-  // Get top selling item today
-  const topSellingItemToday = topItems[0] || null;
+    fetchAnalytics();
+  }, [shopItems]);
 
-  // Bottom selling items with mock quantities (bottom 3 only)
-  // Note: ShopPage has 32 items (8 per category × 4 categories), but mockData.items only has initial 8
-  // We use 32 as the total to match the public shop page
+  // Calculate all-time revenue from purchases
+  useEffect(() => {
+    const revenue = purchaseItems
+      .filter((pi) => pi.Item_ID !== 9000)
+      .reduce((sum, pi) => sum + pi.Unit_Price * pi.Quantity, 0);
+    setAllTimeRevenue(revenue);
+  }, [purchaseItems]);
+
+  const topSellingItemToday = topSellingToday;
+
   const totalItemCount = 32;
   const actualItemCount = shopItems.length;
   const bottomItems =
@@ -134,19 +160,19 @@ export function GiftShopPortal({ user, onLogout }) {
             item: shopItems[Math.min(7, actualItemCount - 1)],
             quantity: 18,
             rank: totalItemCount,
-          }, // Last place
+          },
           {
             item: shopItems[Math.min(3, actualItemCount - 2)],
             quantity: 27,
             rank: totalItemCount - 1,
-          }, // 2nd to last
+          },
           {
             item: shopItems[Math.min(4, actualItemCount - 3)],
             quantity: 35,
             rank: totalItemCount - 2,
-          }, // 3rd to last
+          },
         ].filter((t) => t.item)
-      : []; // Filter out any undefined items
+      : [];
 
   const handleEditClick = (item) => {
     setEditingItem(item);
@@ -159,51 +185,88 @@ export function GiftShopPortal({ user, onLogout }) {
     setEditDialogOpen(true);
   };
 
-  const handleEditSave = () => {
-    if (!editingItem) return;
+ const handleEditSave = async () => {
+  if (!editingItem) return;
 
-    if (!editForm.name || !editForm.price) {
-      toast.error("Please fill in all required fields");
-      return;
-    }
+  if (!editForm.name || !editForm.price) {
+    toast.error("Please fill in all required fields");
+    return;
+  }
 
-    // Create a URL for the image file if provided, otherwise keep existing image
-    const imageUrl = editForm.imageFile
-      ? URL.createObjectURL(editForm.imageFile)
-      : editingItem.image;
-
-    updateItem(editingItem.Item_ID, {
+  try {
+    // First update the item details
+    const updatedItem = await updateItem(editingItem.Item_ID, {
       Item_Name: editForm.name,
       Price: parseFloat(editForm.price),
-      ...(imageUrl && { image: imageUrl }),
       Category: editForm.category,
     });
 
-    setEditDialogOpen(false);
-    toast.success("Item updated successfully!");
-  };
+    // If there's an image file, upload it
+    if (editForm.imageFile) {
+      const formData = new FormData();
+      formData.append("image", editForm.imageFile);
 
-  const handleAddItem = () => {
-    if (!addForm.name || !addForm.price) {
-      toast.error("Please fill in all required fields");
-      return;
+      const response = await fetch(
+        `http://localhost:5000/api/shop/items/${editingItem.Item_ID}/upload-image`,
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to upload image");
+      }
+
+      const itemWithImage = await response.json();
+      
+      // Update the item in the list with the new image URL
+      await updateItem(editingItem.Item_ID, {
+        Image_URL: itemWithImage.Image_URL,
+      });
     }
 
-    // Create a URL for the image file if provided
-    const imageUrl = addForm.imageFile
-      ? URL.createObjectURL(addForm.imageFile)
-      : undefined;
+    setEditDialogOpen(false);
+    toast.success("Item updated successfully!");
+  } catch (error) {
+    toast.error("Failed to update item. Please try again.");
+    console.error("Error updating item:", error);
+  }
+};
 
-    const newItem = {
-      Item_ID: Math.max(...shopItems.map((i) => i.Item_ID)) + 1,
-      Shop_ID: 1, // Default to first shop
-      Item_Name: addForm.name,
-      Price: parseFloat(addForm.price),
-      Category: addForm.category,
-      ...(imageUrl && { image: imageUrl }),
-    };
+const handleAddItem = async () => {
+  if (!addForm.name || !addForm.price) {
+    toast.error("Please fill in all required fields");
+    return;
+  }
 
-    addItem(newItem);
+  const newItem = {
+    Item_Name: addForm.name,
+    Price: parseFloat(addForm.price),
+    Category: addForm.category,
+    Shop_ID: 1,
+  };
+
+  try {
+    const createdItem = await addItem(newItem);
+
+    // If there's an image file, upload it
+    if (addForm.imageFile && createdItem && createdItem.Item_ID) {
+      const formData = new FormData();
+      formData.append("image", addForm.imageFile);
+
+      await fetch(
+        `http://localhost:5000/api/shop/items/${createdItem.Item_ID}/upload-image`,
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
+      
+      // Refresh the items list to show the new image
+      await refreshItems();
+    }
+
     setAddDialogOpen(false);
     setAddForm({
       name: "",
@@ -211,26 +274,34 @@ export function GiftShopPortal({ user, onLogout }) {
       category: giftShopCategories[0],
       imageFile: null,
     });
+    
     toast.success("New item added successfully!");
-  };
-
+  } catch (error) {
+    toast.error("Failed to add item. Please try again.");
+    console.error("Error adding item:", error);
+  }
+};
   const handleDeleteClick = (item) => {
     setItemToDelete(item);
     setDeleteDialogOpen(true);
   };
 
-  const handleDeleteConfirm = () => {
+  const handleDeleteConfirm = async () => {
     if (!itemToDelete) return;
 
-    deleteItem(itemToDelete.Item_ID);
-    setDeleteDialogOpen(false);
-    setItemToDelete(null);
-    toast.success("Item removed successfully!");
+    try {
+      await deleteItem(itemToDelete.Item_ID);
+      setDeleteDialogOpen(false);
+      setItemToDelete(null);
+      toast.success("Item removed successfully!");
+    } catch (error) {
+      toast.error("Failed to delete item. Please try again.");
+      console.error("Error deleting item:", error);
+    }
   };
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <header className="bg-white border-b sticky top-0 z-50">
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
@@ -250,7 +321,7 @@ export function GiftShopPortal({ user, onLogout }) {
               </div>
               <Button
                 variant="outline"
-                onClick={() => navigate("/shop")}
+                onClick={() => onNavigate ? onNavigate("shop") : navigate("/shop")}
                 className="border-teal-600 text-teal-600 cursor-pointer"
               >
                 <ShoppingBag className="h-4 w-4 mr-2" />
@@ -269,9 +340,7 @@ export function GiftShopPortal({ user, onLogout }) {
         </div>
       </header>
 
-      {/* Main Content */}
       <div className="container mx-auto px-6 py-12">
-        {/* Stats Dashboard - Moved to Top */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <Card>
             <CardContent className="pt-6 text-center">
@@ -334,7 +403,6 @@ export function GiftShopPortal({ user, onLogout }) {
           </Card>
         </div>
 
-        {/* Current Inventory */}
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -360,15 +428,15 @@ export function GiftShopPortal({ user, onLogout }) {
                 >
                   <div className="flex items-center space-x-4 flex-1">
                     <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden">
-                      {product.image ? (
-                        <ImageWithFallback
-                          src={product.image}
+                      {product.Image_URL || product.image ? (
+                         <ImageWithFallback
+                         src={product.Image_URL || product.image}
                           alt={product.Item_Name}
                           className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <ShoppingBag className="h-8 w-8 text-gray-400" />
-                      )}
+                          />
+                         ) : (
+                         <ShoppingBag className="h-8 w-8 text-gray-400" />
+                        )}
                     </div>
                     <div className="flex-1">
                       <h3 className="font-medium">{product.Item_Name}</h3>
@@ -380,7 +448,7 @@ export function GiftShopPortal({ user, onLogout }) {
                   <div className="flex items-center space-x-4">
                     <div className="text-right">
                       <p className="text-2xl font-semibold text-green-600">
-                        ${product.Price.toFixed(2)}
+                        ${parseFloat(product.Price).toFixed(2)}
                       </p>
                     </div>
                     <div className="flex space-x-2">
@@ -409,9 +477,7 @@ export function GiftShopPortal({ user, onLogout }) {
           </CardContent>
         </Card>
 
-        {/* Selling Items Stats */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-8">
-          {/* Top Selling Items */}
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -433,9 +499,9 @@ export function GiftShopPortal({ user, onLogout }) {
                         #{topItem.rank}
                       </div>
                       <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden">
-                        {topItem.item.image ? (
+                        {topItem.item.Image_URL ? (
                           <ImageWithFallback
-                            src={topItem.item.image}
+                            src={topItem.item.Image_URL}
                             alt={topItem.item.Item_Name}
                             className="w-full h-full object-cover"
                           />
@@ -458,7 +524,6 @@ export function GiftShopPortal({ user, onLogout }) {
             </CardContent>
           </Card>
 
-          {/* Bottom Selling Items */}
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -507,7 +572,6 @@ export function GiftShopPortal({ user, onLogout }) {
         </div>
       </div>
 
-      {/* Edit Dialog */}
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
@@ -527,7 +591,7 @@ export function GiftShopPortal({ user, onLogout }) {
                 }
                 placeholder="Enter item name"
               />
-            </div>
+              </div>
             <div className="space-y-2">
               <Label htmlFor="edit-price">Price *</Label>
               <Input
@@ -588,7 +652,6 @@ export function GiftShopPortal({ user, onLogout }) {
         </DialogContent>
       </Dialog>
 
-      {/* Add New Item Dialog */}
       <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
@@ -670,7 +733,6 @@ export function GiftShopPortal({ user, onLogout }) {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>

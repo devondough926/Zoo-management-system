@@ -36,129 +36,165 @@ import {
   Heart,
 } from "lucide-react";
 import { toast } from "sonner";
-import { useData } from "../../data/DataContext";
 import { ZooLogo } from "../../components/ZooLogo";
 
 export function ZookeeperPortal({ user, onLogout }) {
-  const { animals } = useData();
-  const [selectedHabitat, setSelectedHabitat] = useState(1); // Default to first habitat
+  const [selectedHabitat, setSelectedHabitat] = useState(1);
   const [careDialogOpen, setCareDialogOpen] = useState(false);
   const [selectedAnimal, setSelectedAnimal] = useState(null);
+  
+  // Real data from API
+  const [stats, setStats] = useState({
+    totalAnimals: 0,
+    totalEnclosures: 0,
+    animalsFedToday: 0,
+    careLogsToday: 0
+  });
+  const [habitatAnimals, setHabitatAnimals] = useState([]);
+  const [habitatStatus, setHabitatStatus] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [dialogFedStatus, setDialogFedStatus] = useState(false);
 
-  // Mock care statuses (in real app, would come from database)
-  const [animalCareStatuses, setAnimalCareStatuses] = useState(() =>
-    animals.map((animal) => ({
-      animalId: animal.Animal_ID,
-      fed: Math.random() > 0.5,
-      lastFed: new Date(Date.now() - Math.random() * 86400000).toISOString(),
-    }))
-  );
+  // Fetch dashboard statistics
+  const fetchStats = async () => {
+    try {
+      const response = await fetch('http://localhost:5000/api/zookeeper/stats');
+      if (!response.ok) throw new Error('Failed to fetch stats');
+      const data = await response.json();
+      setStats(data);
+    } catch (error) {
+      console.error('Error fetching stats:', error);
+      toast.error('Failed to load statistics');
+    }
+  };
 
-  const [habitatStatuses, setHabitatStatuses] = useState(() =>
-    enclosures.map((enc) => ({
-      enclosureId: enc.Enclosure_ID,
-      cleaned: Math.random() > 0.3,
-      lastCleaned: new Date(
-        Date.now() - Math.random() * 86400000
-      ).toISOString(),
-    }))
-  );
+  // Fetch animals by habitat/enclosure
+  const fetchAnimalsByHabitat = async (enclosureId) => {
+    if (!enclosureId) return;
+    
+    setLoading(true);
+    try {
+      const response = await fetch(`http://localhost:5000/api/zookeeper/enclosures/${enclosureId}/animals`);
+      if (!response.ok) throw new Error('Failed to fetch animals');
+      const data = await response.json();
+      setHabitatAnimals(data);
+    } catch (error) {
+      console.error('Error fetching animals:', error);
+      toast.error('Failed to load animals');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  // Sync care statuses when animals list changes
+  // Fetch habitat cleaning status
+  const fetchHabitatStatus = async (enclosureId) => {
+    if (!enclosureId) return;
+    
+    try {
+      const response = await fetch(`http://localhost:5000/api/zookeeper/enclosures/${enclosureId}/status`);
+      if (!response.ok) throw new Error('Failed to fetch habitat status');
+      const data = await response.json();
+      setHabitatStatus(data);
+    } catch (error) {
+      console.error('Error fetching habitat status:', error);
+    }
+  };
+
+  // Load initial data
   useEffect(() => {
-    setAnimalCareStatuses((prevStatuses) => {
-      const existingStatusMap = new Map(
-        prevStatuses.map((s) => [s.animalId, s])
-      );
-      return animals.map((animal) => {
-        if (existingStatusMap.has(animal.Animal_ID)) {
-          return existingStatusMap.get(animal.Animal_ID);
-        }
-        // New animal - create default status
-        return {
-          animalId: animal.Animal_ID,
-          fed: false,
-          lastFed: new Date().toISOString(),
-        };
-      });
-    });
-  }, [animals]);
+    fetchStats();
+  }, []);
 
-  // Get animals for selected habitat
-  const habitatAnimals = selectedHabitat
-    ? animals.filter((animal) => animal.Enclosure_ID === selectedHabitat)
-    : [];
+  // Fetch animals and status when habitat changes
+  useEffect(() => {
+    if (selectedHabitat) {
+      fetchAnimalsByHabitat(selectedHabitat);
+      fetchHabitatStatus(selectedHabitat);
+    }
+  }, [selectedHabitat]);
 
   const selectedHabitatInfo = selectedHabitat
     ? enclosures.find((enc) => enc.Enclosure_ID === selectedHabitat)
     : null;
 
-  const selectedHabitatStatus = selectedHabitat
-    ? habitatStatuses.find((status) => status.enclosureId === selectedHabitat)
-    : null;
-
   const selectedAnimalInfo = selectedAnimal
-    ? animals.find((a) => a.Animal_ID === selectedAnimal)
-    : null;
-
-  const selectedAnimalStatus = selectedAnimal
-    ? animalCareStatuses.find((status) => status.animalId === selectedAnimal)
+    ? habitatAnimals.find((a) => a.Animal_ID === selectedAnimal)
     : null;
 
   const handleLogCare = (animalId) => {
     setSelectedAnimal(animalId);
+    setDialogFedStatus(false); // Reset to default
     setCareDialogOpen(true);
   };
 
-  const handleSaveCare = () => {
-    if (!selectedAnimal || !selectedAnimalStatus) return;
+  const handleSaveCare = async () => {
+    if (!selectedAnimal) return;
 
-    // Update the status
-    setAnimalCareStatuses((prev) =>
-      prev.map((status) =>
-        status.animalId === selectedAnimal
-          ? { ...status, lastFed: new Date().toISOString() }
-          : status
-      )
-    );
+    try {
+      // Create care log
+      const response = await fetch('http://localhost:5000/api/zookeeper/care-logs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          animalId: selectedAnimal,
+          employeeId: user.Employee_ID || 200,
+          activity: dialogFedStatus ? 'Animal fed' : 'Animal care logged',
+          notes: dialogFedStatus ? 'Feeding completed' : 'General care completed'
+        })
+      });
 
-    toast.success(`Care logged for ${selectedAnimalInfo?.Animal_Name}`);
-    setCareDialogOpen(false);
+      if (!response.ok) throw new Error('Failed to create care log');
+
+      toast.success(`Care logged for ${selectedAnimalInfo?.Animal_Name}`);
+      setCareDialogOpen(false);
+      
+      // Refresh data
+      fetchAnimalsByHabitat(selectedHabitat);
+      fetchStats();
+    } catch (error) {
+      console.error('Error saving care log:', error);
+      toast.error('Failed to save care log');
+    }
   };
 
   const toggleAnimalFed = () => {
-    if (!selectedAnimal) return;
-    setAnimalCareStatuses((prev) =>
-      prev.map((status) =>
-        status.animalId === selectedAnimal
-          ? { ...status, fed: !status.fed }
-          : status
-      )
-    );
+    setDialogFedStatus(prev => !prev);
   };
 
-  const toggleHabitatCleaned = () => {
+  const toggleHabitatCleaned = async () => {
     if (!selectedHabitat) return;
-    setHabitatStatuses((prev) =>
-      prev.map((status) =>
-        status.enclosureId === selectedHabitat
-          ? {
-              ...status,
-              cleaned: !status.cleaned,
-              lastCleaned: new Date().toISOString(),
-            }
-          : status
-      )
-    );
-    toast.success(
-      `${selectedHabitatInfo?.Enclosure_Name} cleaning status updated`
-    );
-  };
 
-  // Calculate stats
-  const totalAnimals = animals.length;
-  const fedAnimals = animalCareStatuses.filter((s) => s.fed).length;
-  const cleanedHabitats = habitatStatuses.filter((s) => s.cleaned).length;
+    try {
+      // Get first animal in this enclosure to link the log
+      if (habitatAnimals.length === 0) {
+        toast.error('No animals in this habitat to log cleaning');
+        return;
+      }
+
+      // Create care log for habitat cleaning
+      const response = await fetch('http://localhost:5000/api/zookeeper/care-logs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          animalId: habitatAnimals[0].Animal_ID, // Use first animal as reference
+          employeeId: user.Employee_ID || 200,
+          activity: 'Enclosure cleaning and maintenance',
+          notes: `${selectedHabitatInfo?.Enclosure_Name} cleaned and sanitized`
+        })
+      });
+
+      if (!response.ok) throw new Error('Failed to log cleaning');
+
+      toast.success(`${selectedHabitatInfo?.Enclosure_Name} cleaning logged`);
+      
+      // Refresh data
+      fetchHabitatStatus(selectedHabitat);
+      fetchStats();
+    } catch (error) {
+      console.error('Error logging cleaning:', error);
+      toast.error('Failed to log cleaning');
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -204,7 +240,7 @@ export function ZookeeperPortal({ user, onLogout }) {
                 <div>
                   <p className="text-sm text-gray-600">Animals Fed Today</p>
                   <p className="text-2xl font-semibold text-green-600">
-                    {fedAnimals}/{totalAnimals}
+                    {stats.animalsFedToday}/{stats.totalAnimals}
                   </p>
                 </div>
               </div>
@@ -215,9 +251,9 @@ export function ZookeeperPortal({ user, onLogout }) {
               <div className="flex items-center space-x-3">
                 <Sparkles className="h-8 w-8 text-teal-600" />
                 <div>
-                  <p className="text-sm text-gray-600">Habitats Cleaned</p>
+                  <p className="text-sm text-gray-600">Care Logs Today</p>
                   <p className="text-2xl font-semibold text-teal-600">
-                    {cleanedHabitats}/{enclosures.length}
+                    {stats.careLogsToday}
                   </p>
                 </div>
               </div>
@@ -230,7 +266,7 @@ export function ZookeeperPortal({ user, onLogout }) {
                 <div>
                   <p className="text-sm text-gray-600">Total Habitats</p>
                   <p className="text-2xl font-semibold text-yellow-600">
-                    {enclosures.length}
+                    {stats.totalEnclosures}
                   </p>
                 </div>
               </div>
@@ -281,41 +317,37 @@ export function ZookeeperPortal({ user, onLogout }) {
               <CardContent>
                 <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                   <div className="flex items-center space-x-3">
-                    {selectedHabitatStatus?.cleaned ? (
+                    {habitatStatus?.lastCleaning ? (
                       <CheckCircle className="h-6 w-6 text-green-600" />
                     ) : (
-                      <XCircle className="h-6 w-6 text-red-600" />
+                      <XCircle className="h-6 w-6 text-gray-400" />
                     )}
                     <div>
-                      <p className="font-medium">Habitat Cleaned</p>
-                      {selectedHabitatStatus?.lastCleaned && (
+                      <p className="font-medium">Last Habitat Cleaning</p>
+                      {habitatStatus?.lastCleaning ? (
                         <p className="text-sm text-gray-600">
-                          Last cleaned:{" "}
+                          Cleaned on:{" "}
                           {new Date(
-                            selectedHabitatStatus.lastCleaned
+                            habitatStatus.lastCleaning.Log_Date
                           ).toLocaleDateString()}{" "}
                           at{" "}
                           {new Date(
-                            selectedHabitatStatus.lastCleaned
+                            habitatStatus.lastCleaning.Log_Date
                           ).toLocaleTimeString()}
+                          {" by "}
+                          {habitatStatus.lastCleaning.First_Name} {habitatStatus.lastCleaning.Last_Name}
                         </p>
+                      ) : (
+                        <p className="text-sm text-gray-600">No cleaning logged yet</p>
                       )}
                     </div>
                   </div>
                   <Button
                     onClick={toggleHabitatCleaned}
-                    variant={
-                      selectedHabitatStatus?.cleaned ? "outline" : "default"
-                    }
-                    className={
-                      selectedHabitatStatus?.cleaned
-                        ? ""
-                        : "bg-green-600 hover:bg-green-700"
-                    }
+                    variant="default"
+                    className="bg-green-600 hover:bg-green-700 cursor-pointer"
                   >
-                    {selectedHabitatStatus?.cleaned
-                      ? "Mark as Not Cleaned"
-                      : "Mark as Cleaned"}
+                    Log Cleaning
                   </Button>
                 </div>
               </CardContent>
@@ -331,64 +363,63 @@ export function ZookeeperPortal({ user, onLogout }) {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {habitatAnimals.map((animal) => {
-                    const careStatus = animalCareStatuses.find(
-                      (s) => s.animalId === animal.Animal_ID
-                    );
-                    return (
-                      <div
-                        key={animal.Animal_ID}
-                        className="p-4 rounded-lg border hover:border-green-600 transition-colors"
-                      >
-                        <div className="flex items-start justify-between mb-3">
-                          <div>
-                            <h3 className="font-medium">
-                              {animal.Animal_Name}
-                            </h3>
-                            <p className="text-sm text-gray-600">
-                              {animal.Species}
-                            </p>
-                          </div>
-                          {careStatus?.fed ? (
-                            <Badge className="bg-green-100 text-green-800">
-                              Fed
-                            </Badge>
-                          ) : (
-                            <Badge variant="destructive">Not Fed</Badge>
-                          )}
-                        </div>
-                        <div className="text-sm space-y-1 text-gray-600 mb-3">
-                          <p>
-                            Gender:{" "}
-                            {animal.Gender === "M"
-                              ? "Male"
-                              : animal.Gender === "F"
-                              ? "Female"
-                              : "Unknown"}
-                          </p>
-                          {careStatus?.lastFed && (
-                            <p className="text-xs">
-                              Last fed:{" "}
-                              {new Date(
-                                careStatus.lastFed
-                              ).toLocaleDateString()}
-                            </p>
-                          )}
-                        </div>
-                        <Button
-                          onClick={() => handleLogCare(animal.Animal_ID)}
-                          variant="outline"
-                          size="sm"
-                          className="w-full cursor-pointer"
+                {loading ? (
+                  <div className="text-center py-8 text-gray-600">
+                    Loading animals...
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {habitatAnimals.map((animal) => {
+                      return (
+                        <div
+                          key={animal.Animal_ID}
+                          className="p-4 rounded-lg border hover:border-green-600 transition-colors"
                         >
-                          <ClipboardList className="h-4 w-4 mr-2" />
-                          Log Care
-                        </Button>
-                      </div>
-                    );
-                  })}
-                </div>
+                          <div className="flex items-start justify-between mb-3">
+                            <div>
+                              <h3 className="font-medium">
+                                {animal.Animal_Name}
+                              </h3>
+                              <p className="text-sm text-gray-600">
+                                {animal.Species}
+                              </p>
+                            </div>
+                            <Badge className="bg-blue-100 text-blue-800">
+                              {animal.Species}
+                            </Badge>
+                          </div>
+                          <div className="text-sm space-y-1 text-gray-600 mb-3">
+                            <p>
+                              Gender:{" "}
+                              {animal.Gender === "M"
+                                ? "Male"
+                                : animal.Gender === "F"
+                                ? "Female"
+                                : "Unknown"}
+                            </p>
+                            <p className="text-xs">
+                              Health: {animal.Health_Status || 'Good'}
+                            </p>
+                            {animal.Weight && (
+                              <p className="text-xs">
+                                Weight: {animal.Weight} lbs
+                              </p>
+                            )}
+                          </div>
+                          <Button
+                            onClick={() => handleLogCare(animal.Animal_ID)}
+                            variant="outline"
+                            size="sm"
+                            className="w-full cursor-pointer"
+                          >
+                            <ClipboardList className="h-4 w-4 mr-2" />
+                            Log Care
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -431,7 +462,7 @@ export function ZookeeperPortal({ user, onLogout }) {
                 </div>
                 <Switch
                   id="fed-status"
-                  checked={selectedAnimalStatus?.fed || false}
+                  checked={dialogFedStatus}
                   onCheckedChange={toggleAnimalFed}
                 />
               </div>
@@ -444,11 +475,11 @@ export function ZookeeperPortal({ user, onLogout }) {
               </p>
               <p className="text-sm text-blue-800">
                 <strong>Habitat:</strong>{" "}
-                {selectedAnimalInfo?.Enclosure?.Enclosure_Name}
+                {selectedAnimalInfo?.Enclosure_Name}
               </p>
               <p className="text-sm text-blue-800">
-                <strong>Status:</strong>{" "}
-                {selectedAnimalStatus?.fed ? "Fed" : "Not Fed"}
+                <strong>Marking as:</strong>{" "}
+                {dialogFedStatus ? "Fed" : "Care Logged"}
               </p>
             </div>
           </div>
