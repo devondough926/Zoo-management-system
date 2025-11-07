@@ -51,6 +51,7 @@ export function VeterinarianPortal({ user, onLogout }) {
   });
   const [habitatAnimals, setHabitatAnimals] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   // Fetch dashboard statistics
   const fetchStats = async () => {
@@ -111,7 +112,22 @@ export function VeterinarianPortal({ user, onLogout }) {
   const handleSaveVetCare = async () => {
     if (!selectedAnimal || !selectedAnimalInfo) return;
 
+    // It's OK if this is a role-based login where Employee_ID is not provided
+    // we'll send null and the backend will store a NULL Employee_ID for the visit.
+    if (!user) {
+      console.error('No user in context', user);
+      toast.error('Cannot save: missing user information');
+      return;
+    }
+
+  setSaving(true);
     try {
+      // Normalize vaccination value to boolean
+      const isVaccinated =
+        typeof selectedAnimalInfo.Is_Vaccinated === 'boolean'
+          ? selectedAnimalInfo.Is_Vaccinated
+          : Number(selectedAnimalInfo.Is_Vaccinated) === 1;
+
       // Update animal health info
       const healthResponse = await fetch(
         `http://localhost:5000/api/veterinarian/animals/${selectedAnimal}/health`,
@@ -120,37 +136,68 @@ export function VeterinarianPortal({ user, onLogout }) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             healthStatus: selectedAnimalInfo.Health_Status,
-            isVaccinated: selectedAnimalInfo.Is_Vaccinated,
-            weight: selectedAnimalInfo.Weight
-          })
+            isVaccinated,
+            weight: selectedAnimalInfo.Weight,
+          }),
         }
       );
 
-      if (!healthResponse.ok) throw new Error('Failed to update health info');
+      if (!healthResponse.ok) {
+        const errBody = await healthResponse.json().catch(() => ({}));
+        console.error('Health update failed', errBody);
+        toast.error(errBody.error || 'Failed to update health info');
+        setSaving(false);
+        return;
+      }
 
-      // Create vet visit record
-      const visitResponse = await fetch('http://localhost:5000/api/veterinarian/vet-visits', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+  // Only create a vet visit record if we have a concrete employee id.
+  // For role-based logins that don't have Employee_ID, we'll skip creating
+  // a visit row and just persist the animal health changes directly.
+  let visitData = null;
+  if (user.Employee_ID) {
+        // Create vet visit record (include visitDate explicitly)
+        const visitPayload = {
           animalId: selectedAnimal,
-          employeeId: user.Employee_ID || 101,
+          employeeId: user.Employee_ID,
+          visitDate: new Date().toISOString(),
           diagnosis: 'Routine checkup completed',
-          treatment: `Health status: ${selectedAnimalInfo.Health_Status}, Weight: ${selectedAnimalInfo.Weight} lbs`
-        })
-      });
+          treatment: `Health status: ${selectedAnimalInfo.Health_Status}, Weight: ${selectedAnimalInfo.Weight} lbs`,
+        };
 
-      if (!visitResponse.ok) throw new Error('Failed to create vet visit');
+        const visitResponse = await fetch(
+          'http://localhost:5000/api/veterinarian/vet-visits',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(visitPayload),
+          }
+        );
 
-      toast.success(`Vet record updated for ${selectedAnimalInfo?.Animal_Name}`);
+        if (!visitResponse.ok) {
+          const errBody = await visitResponse.json().catch(() => ({}));
+          console.error('Create visit failed', errBody);
+          toast.error(errBody.error || 'Failed to create vet visit');
+          setSaving(false);
+          return;
+        }
+
+        visitData = await visitResponse.json().catch(() => null);
+        toast.success(`Vet record updated for ${selectedAnimalInfo?.Animal_Name}`);
+      } else {
+        // No employee id available — we intentionally do NOT create a vet visit.
+        toast(`Animal updated directly in database for ${selectedAnimalInfo?.Animal_Name} (no employee assigned)`);
+      }
       setVetDialogOpen(false);
-      
-      // Refresh data
-      fetchAnimalsByHabitat(selectedHabitat);
-      fetchStats();
+
+      // Refresh data (re-fetch from server to keep authoritative state)
+      await fetchAnimalsByHabitat(selectedHabitat);
+      await fetchStats();
+      setSaving(false);
+      return visitData;
     } catch (error) {
       console.error('Error saving vet care:', error);
       toast.error('Failed to save vet record');
+      setSaving(false);
     }
   };
 
@@ -537,8 +584,9 @@ export function VeterinarianPortal({ user, onLogout }) {
             <Button
               onClick={handleSaveVetCare}
               className="bg-green-600 hover:bg-green-700 cursor-pointer"
+              disabled={saving}
             >
-              Save Changes
+              {saving ? 'Saving...' : 'Save Changes'}
             </Button>
           </DialogFooter>
         </DialogContent>

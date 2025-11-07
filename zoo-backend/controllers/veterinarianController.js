@@ -137,20 +137,40 @@ export const createVetVisit = async (req, res) => {
   try {
     const { animalId, employeeId, visitDate, diagnosis, treatment } = req.body;
 
+    // Log incoming payload to help debugging
+    console.log("[createVetVisit] payload:", { animalId, employeeId, visitDate, diagnosis, treatment });
+
     // Validate required fields
-    if (!animalId || !employeeId) {
-      return res
-        .status(400)
-        .json({ error: "Animal ID and Employee ID are required" });
+    if (!animalId) {
+      return res.status(400).json({ error: "Animal ID is required" });
     }
 
-    const visitDateValue = visitDate || new Date();
+    // Allow employeeId to be optional (can be null). If provided, it must be a number.
+    const employeeIdValue = employeeId !== undefined && employeeId !== null ? employeeId : null;
 
-    const [result] = await db.query(
-      `INSERT INTO Vet_Visit (Animal_ID, Employee_ID, Visit_Date, Diagnosis, Treatment)
-       VALUES (?, ?, ?, ?, ?)`,
-      [animalId, employeeId, visitDateValue, diagnosis || null, treatment || null]
-    );
+    // Normalize visit date to a MySQL DATETIME string (YYYY-MM-DD HH:MM:SS)
+    const rawVisitDate = visitDate || new Date();
+    const parsedDate = new Date(rawVisitDate);
+    const visitDateValue = isNaN(parsedDate.getTime())
+      ? new Date()
+      : parsedDate;
+    const formattedVisitDate = visitDateValue
+      .toISOString()
+      .slice(0, 19)
+      .replace("T", " ");
+
+    let result;
+    try {
+      [result] = await db.query(
+        `INSERT INTO Vet_Visit (Animal_ID, Employee_ID, Visit_Date, Diagnosis, Treatment)
+         VALUES (?, ?, ?, ?, ?)`,
+        [animalId, employeeIdValue, formattedVisitDate, diagnosis || null, treatment || null]
+      );
+    } catch (dbError) {
+      console.error("Error inserting vet visit:", dbError);
+      // Surface DB error message for easier debugging (non-sensitive, local dev only)
+      return res.status(500).json({ error: "Failed to create vet visit", details: dbError.message });
+    }
 
     // Fetch the newly created visit
     const [newVisit] = await db.query(
