@@ -51,6 +51,8 @@ const giftShopCategories = [
   "Decorations & Others",
 ];
 
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+
 export function GiftShopPortal({ user, onLogout, onNavigate }) {
   const navigate = useNavigate();
   const {
@@ -98,7 +100,9 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
     const fetchAnalytics = async () => {
       try {
         // Fetch today's revenue and items sold
-        const revenueResponse = await fetch('http://localhost:5000/api/shop/analytics/revenue/today');
+        const revenueResponse = await fetch(
+          `${API_BASE}/shop/analytics/revenue/today`
+        );
         if (revenueResponse.ok) {
           const data = await revenueResponse.json();
           setTodayRevenue(parseFloat(data.todayRevenue));
@@ -106,24 +110,30 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
         }
 
         // Fetch top selling items (all time)
-        const topSellingResponse = await fetch('http://localhost:5000/api/shop/analytics/top-selling');
+        const topSellingResponse = await fetch(
+          `${API_BASE}/shop/analytics/top-selling`
+        );
         if (topSellingResponse.ok) {
           const data = await topSellingResponse.json();
-          setTopItems(data.map((item, index) => ({
-            item: {
-              Item_ID: item.Item_ID,
-              Item_Name: item.Item_Name,
-              Price: item.Price,
-              Category: item.Category,
-              Image_URL: item.Image_URL,
-            },
-            quantity: parseInt(item.totalSold),
-            rank: index + 1,
-          })));
+          setTopItems(
+            data.map((item, index) => ({
+              item: {
+                Item_ID: item.Item_ID,
+                Item_Name: item.Item_Name,
+                Price: item.Price,
+                Category: item.Category,
+                Image_URL: item.Image_URL,
+              },
+              quantity: parseInt(item.totalSold),
+              rank: index + 1,
+            }))
+          );
         }
 
         // Fetch top selling item today
-        const topTodayResponse = await fetch('http://localhost:5000/api/shop/analytics/top-selling-today');
+        const topTodayResponse = await fetch(
+          `${API_BASE}/shop/analytics/top-selling-today`
+        );
         if (topTodayResponse.ok) {
           const data = await topTodayResponse.json();
           if (data.Item_Name) {
@@ -134,7 +144,7 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
           }
         }
       } catch (error) {
-        console.error('Error fetching analytics:', error);
+        console.error("Error fetching analytics:", error);
       }
     };
 
@@ -185,102 +195,102 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
     setEditDialogOpen(true);
   };
 
- const handleEditSave = async () => {
-  if (!editingItem) return;
+  const handleEditSave = async () => {
+    if (!editingItem) return;
 
-  if (!editForm.name || !editForm.price) {
-    toast.error("Please fill in all required fields");
-    return;
-  }
+    if (!editForm.name || !editForm.price) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
 
-  try {
-    // First update the item details
-    const updatedItem = await updateItem(editingItem.Item_ID, {
-      Item_Name: editForm.name,
-      Price: parseFloat(editForm.price),
-      Category: editForm.category,
-    });
+    try {
+      // First update the item details
+      const updatedItem = await updateItem(editingItem.Item_ID, {
+        Item_Name: editForm.name,
+        Price: parseFloat(editForm.price),
+        Category: editForm.category,
+      });
 
-    // If there's an image file, upload it
-    if (editForm.imageFile) {
-      const formData = new FormData();
-      formData.append("image", editForm.imageFile);
+      // If there's an image file, upload it
+      if (editForm.imageFile) {
+        const formData = new FormData();
+        formData.append("image", editForm.imageFile);
 
-      const response = await fetch(
-        `http://localhost:5000/api/shop/items/${editingItem.Item_ID}/upload-image`,
-        {
-          method: "POST",
-          body: formData,
+        const response = await fetch(
+          `${API_BASE}/shop/items/${editingItem.Item_ID}/upload-image`,
+          {
+            method: "POST",
+            body: formData,
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error("Failed to upload image");
         }
-      );
 
-      if (!response.ok) {
-        throw new Error("Failed to upload image");
+        const itemWithImage = await response.json();
+
+        // Update the item in the list with the new image URL
+        await updateItem(editingItem.Item_ID, {
+          Image_URL: itemWithImage.Image_URL,
+        });
       }
 
-      const itemWithImage = await response.json();
-      
-      // Update the item in the list with the new image URL
-      await updateItem(editingItem.Item_ID, {
-        Image_URL: itemWithImage.Image_URL,
-      });
+      setEditDialogOpen(false);
+      toast.success("Item updated successfully!");
+    } catch (error) {
+      toast.error("Failed to update item. Please try again.");
+      console.error("Error updating item:", error);
     }
-
-    setEditDialogOpen(false);
-    toast.success("Item updated successfully!");
-  } catch (error) {
-    toast.error("Failed to update item. Please try again.");
-    console.error("Error updating item:", error);
-  }
-};
-
-const handleAddItem = async () => {
-  if (!addForm.name || !addForm.price) {
-    toast.error("Please fill in all required fields");
-    return;
-  }
-
-  const newItem = {
-    Item_Name: addForm.name,
-    Price: parseFloat(addForm.price),
-    Category: addForm.category,
-    Shop_ID: 1,
   };
 
-  try {
-    const createdItem = await addItem(newItem);
-
-    // If there's an image file, upload it
-    if (addForm.imageFile && createdItem && createdItem.Item_ID) {
-      const formData = new FormData();
-      formData.append("image", addForm.imageFile);
-
-      await fetch(
-        `http://localhost:5000/api/shop/items/${createdItem.Item_ID}/upload-image`,
-        {
-          method: "POST",
-          body: formData,
-        }
-      );
-      
-      // Refresh the items list to show the new image
-      await refreshItems();
+  const handleAddItem = async () => {
+    if (!addForm.name || !addForm.price) {
+      toast.error("Please fill in all required fields");
+      return;
     }
 
-    setAddDialogOpen(false);
-    setAddForm({
-      name: "",
-      price: "",
-      category: giftShopCategories[0],
-      imageFile: null,
-    });
-    
-    toast.success("New item added successfully!");
-  } catch (error) {
-    toast.error("Failed to add item. Please try again.");
-    console.error("Error adding item:", error);
-  }
-};
+    const newItem = {
+      Item_Name: addForm.name,
+      Price: parseFloat(addForm.price),
+      Category: addForm.category,
+      Shop_ID: 1,
+    };
+
+    try {
+      const createdItem = await addItem(newItem);
+
+      // If there's an image file, upload it
+      if (addForm.imageFile && createdItem && createdItem.Item_ID) {
+        const formData = new FormData();
+        formData.append("image", addForm.imageFile);
+
+        await fetch(
+          `${API_BASE}/shop/items/${createdItem.Item_ID}/upload-image`,
+          {
+            method: "POST",
+            body: formData,
+          }
+        );
+
+        // Refresh the items list to show the new image
+        await refreshItems();
+      }
+
+      setAddDialogOpen(false);
+      setAddForm({
+        name: "",
+        price: "",
+        category: giftShopCategories[0],
+        imageFile: null,
+      });
+
+      toast.success("New item added successfully!");
+    } catch (error) {
+      toast.error("Failed to add item. Please try again.");
+      console.error("Error adding item:", error);
+    }
+  };
   const handleDeleteClick = (item) => {
     setItemToDelete(item);
     setDeleteDialogOpen(true);
@@ -321,7 +331,9 @@ const handleAddItem = async () => {
               </div>
               <Button
                 variant="outline"
-                onClick={() => onNavigate ? onNavigate("shop") : navigate("/shop")}
+                onClick={() =>
+                  onNavigate ? onNavigate("shop") : navigate("/shop")
+                }
                 className="border-teal-600 text-teal-600 cursor-pointer"
               >
                 <ShoppingBag className="h-4 w-4 mr-2" />
@@ -429,14 +441,14 @@ const handleAddItem = async () => {
                   <div className="flex items-center space-x-4 flex-1">
                     <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden">
                       {product.Image_URL || product.image ? (
-                         <ImageWithFallback
-                         src={product.Image_URL || product.image}
+                        <ImageWithFallback
+                          src={product.Image_URL || product.image}
                           alt={product.Item_Name}
                           className="w-full h-full object-cover"
-                          />
-                         ) : (
-                         <ShoppingBag className="h-8 w-8 text-gray-400" />
-                        )}
+                        />
+                      ) : (
+                        <ShoppingBag className="h-8 w-8 text-gray-400" />
+                      )}
                     </div>
                     <div className="flex-1">
                       <h3 className="font-medium">{product.Item_Name}</h3>
@@ -591,7 +603,7 @@ const handleAddItem = async () => {
                 }
                 placeholder="Enter item name"
               />
-              </div>
+            </div>
             <div className="space-y-2">
               <Label htmlFor="edit-price">Price *</Label>
               <Input

@@ -38,16 +38,18 @@ import {
 import { toast } from "sonner";
 import { ZooLogo } from "../../components/ZooLogo";
 
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+
 export function VeterinarianPortal({ user, onLogout }) {
   const [selectedHabitat, setSelectedHabitat] = useState(1);
   const [vetDialogOpen, setVetDialogOpen] = useState(false);
   const [selectedAnimal, setSelectedAnimal] = useState(null);
-  
+
   // Real data from API
-  const [stats, setStats] = useState({ 
-    totalAnimals: 0, 
-    vaccinatedAnimals: 0, 
-    healthyAnimals: 0 
+  const [stats, setStats] = useState({
+    totalAnimals: 0,
+    vaccinatedAnimals: 0,
+    healthyAnimals: 0,
   });
   const [habitatAnimals, setHabitatAnimals] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -56,29 +58,31 @@ export function VeterinarianPortal({ user, onLogout }) {
   // Fetch dashboard statistics
   const fetchStats = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/veterinarian/stats');
-      if (!response.ok) throw new Error('Failed to fetch stats');
+      const response = await fetch(`${API_BASE}/veterinarian/stats`);
+      if (!response.ok) throw new Error("Failed to fetch stats");
       const data = await response.json();
       setStats(data);
     } catch (error) {
-      console.error('Error fetching stats:', error);
-      toast.error('Failed to load statistics');
+      console.error("Error fetching stats:", error);
+      toast.error("Failed to load statistics");
     }
   };
 
   // Fetch animals by habitat/enclosure
   const fetchAnimalsByHabitat = async (enclosureId) => {
     if (!enclosureId) return;
-    
+
     setLoading(true);
     try {
-      const response = await fetch(`http://localhost:5000/api/veterinarian/enclosures/${enclosureId}/animals`);
-      if (!response.ok) throw new Error('Failed to fetch animals');
+      const response = await fetch(
+        `${API_BASE}/veterinarian/enclosures/${enclosureId}/animals`
+      );
+      if (!response.ok) throw new Error("Failed to fetch animals");
       const data = await response.json();
       setHabitatAnimals(data);
     } catch (error) {
-      console.error('Error fetching animals:', error);
-      toast.error('Failed to load animals');
+      console.error("Error fetching animals:", error);
+      toast.error("Failed to load animals");
     } finally {
       setLoading(false);
     }
@@ -115,25 +119,25 @@ export function VeterinarianPortal({ user, onLogout }) {
     // It's OK if this is a role-based login where Employee_ID is not provided
     // we'll send null and the backend will store a NULL Employee_ID for the visit.
     if (!user) {
-      console.error('No user in context', user);
-      toast.error('Cannot save: missing user information');
+      console.error("No user in context", user);
+      toast.error("Cannot save: missing user information");
       return;
     }
 
-  setSaving(true);
+    setSaving(true);
     try {
       // Normalize vaccination value to boolean
       const isVaccinated =
-        typeof selectedAnimalInfo.Is_Vaccinated === 'boolean'
+        typeof selectedAnimalInfo.Is_Vaccinated === "boolean"
           ? selectedAnimalInfo.Is_Vaccinated
           : Number(selectedAnimalInfo.Is_Vaccinated) === 1;
 
       // Update animal health info
       const healthResponse = await fetch(
-        `http://localhost:5000/api/veterinarian/animals/${selectedAnimal}/health`,
+        `${API_BASE}/veterinarian/animals/${selectedAnimal}/health`,
         {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             healthStatus: selectedAnimalInfo.Health_Status,
             isVaccinated,
@@ -144,48 +148,52 @@ export function VeterinarianPortal({ user, onLogout }) {
 
       if (!healthResponse.ok) {
         const errBody = await healthResponse.json().catch(() => ({}));
-        console.error('Health update failed', errBody);
-        toast.error(errBody.error || 'Failed to update health info');
+        console.error("Health update failed", errBody);
+        toast.error(errBody.error || "Failed to update health info");
         setSaving(false);
         return;
       }
 
-  // Only create a vet visit record if we have a concrete employee id.
-  // For role-based logins that don't have Employee_ID, we'll skip creating
-  // a visit row and just persist the animal health changes directly.
-  let visitData = null;
-  if (user.Employee_ID) {
+      // Only create a vet visit record if we have a concrete employee id.
+      // For role-based logins that don't have Employee_ID, we'll skip creating
+      // a visit row and just persist the animal health changes directly.
+      let visitData = null;
+      if (user.Employee_ID) {
         // Create vet visit record (include visitDate explicitly)
         const visitPayload = {
           animalId: selectedAnimal,
           employeeId: user.Employee_ID,
           visitDate: new Date().toISOString(),
-          diagnosis: 'Routine checkup completed',
+          diagnosis: "Routine checkup completed",
           treatment: `Health status: ${selectedAnimalInfo.Health_Status}, Weight: ${selectedAnimalInfo.Weight} lbs`,
         };
 
         const visitResponse = await fetch(
-          'http://localhost:5000/api/veterinarian/vet-visits',
+          `${API_BASE}/veterinarian/vet-visits`,
           {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify(visitPayload),
           }
         );
 
         if (!visitResponse.ok) {
           const errBody = await visitResponse.json().catch(() => ({}));
-          console.error('Create visit failed', errBody);
-          toast.error(errBody.error || 'Failed to create vet visit');
+          console.error("Create visit failed", errBody);
+          toast.error(errBody.error || "Failed to create vet visit");
           setSaving(false);
           return;
         }
 
         visitData = await visitResponse.json().catch(() => null);
-        toast.success(`Vet record updated for ${selectedAnimalInfo?.Animal_Name}`);
+        toast.success(
+          `Vet record updated for ${selectedAnimalInfo?.Animal_Name}`
+        );
       } else {
         // No employee id available — we intentionally do NOT create a vet visit.
-        toast(`Animal updated directly in database for ${selectedAnimalInfo?.Animal_Name} (no employee assigned)`);
+        toast(
+          `Animal updated directly in database for ${selectedAnimalInfo?.Animal_Name} (no employee assigned)`
+        );
       }
       setVetDialogOpen(false);
 
@@ -195,16 +203,16 @@ export function VeterinarianPortal({ user, onLogout }) {
       setSaving(false);
       return visitData;
     } catch (error) {
-      console.error('Error saving vet care:', error);
-      toast.error('Failed to save vet record');
+      console.error("Error saving vet care:", error);
+      toast.error("Failed to save vet record");
       setSaving(false);
     }
   };
 
   const toggleShotsGiven = () => {
     if (!selectedAnimal || !selectedAnimalInfo) return;
-    setHabitatAnimals(prev =>
-      prev.map(animal =>
+    setHabitatAnimals((prev) =>
+      prev.map((animal) =>
         animal.Animal_ID === selectedAnimal
           ? { ...animal, Is_Vaccinated: animal.Is_Vaccinated ? 0 : 1 }
           : animal
@@ -214,8 +222,8 @@ export function VeterinarianPortal({ user, onLogout }) {
 
   const updateHealthStatus = (newStatus) => {
     if (!selectedAnimal) return;
-    setHabitatAnimals(prev =>
-      prev.map(animal =>
+    setHabitatAnimals((prev) =>
+      prev.map((animal) =>
         animal.Animal_ID === selectedAnimal
           ? { ...animal, Health_Status: newStatus }
           : animal
@@ -227,11 +235,9 @@ export function VeterinarianPortal({ user, onLogout }) {
     if (!selectedAnimal) return;
     const age = parseInt(newAge);
     if (isNaN(age)) return;
-    setHabitatAnimals(prev =>
-      prev.map(animal =>
-        animal.Animal_ID === selectedAnimal
-          ? { ...animal, Age: age }
-          : animal
+    setHabitatAnimals((prev) =>
+      prev.map((animal) =>
+        animal.Animal_ID === selectedAnimal ? { ...animal, Age: age } : animal
       )
     );
   };
@@ -240,8 +246,8 @@ export function VeterinarianPortal({ user, onLogout }) {
     if (!selectedAnimal) return;
     const weight = parseFloat(newWeight);
     if (isNaN(weight)) return;
-    setHabitatAnimals(prev =>
-      prev.map(animal =>
+    setHabitatAnimals((prev) =>
+      prev.map((animal) =>
         animal.Animal_ID === selectedAnimal
           ? { ...animal, Weight: weight }
           : animal
@@ -397,7 +403,9 @@ export function VeterinarianPortal({ user, onLogout }) {
                       >
                         <div className="flex items-start justify-between mb-3">
                           <div>
-                            <h3 className="font-medium">{animal.Animal_Name}</h3>
+                            <h3 className="font-medium">
+                              {animal.Animal_Name}
+                            </h3>
                             <p className="text-sm text-gray-600">
                               {animal.Species}
                             </p>
@@ -496,8 +504,7 @@ export function VeterinarianPortal({ user, onLogout }) {
                   : "Unknown"}
               </p>
               <p className="text-sm text-blue-800">
-                <strong>Habitat:</strong>{" "}
-                {selectedAnimalInfo?.Enclosure_Name}
+                <strong>Habitat:</strong> {selectedAnimalInfo?.Enclosure_Name}
               </p>
             </div>
 
@@ -586,7 +593,7 @@ export function VeterinarianPortal({ user, onLogout }) {
               className="bg-green-600 hover:bg-green-700 cursor-pointer"
               disabled={saving}
             >
-              {saving ? 'Saving...' : 'Save Changes'}
+              {saving ? "Saving..." : "Save Changes"}
             </Button>
           </DialogFooter>
         </DialogContent>

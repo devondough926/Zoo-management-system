@@ -48,8 +48,13 @@ const setAuthCookie = (res, token) => {
   const maxAgeMs = parseExpiresToMs(JWT_EXPIRES_IN);
   res.cookie("auth_token", token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production", // Use secure cookies in production
-    sameSite: "lax",
+    // Use secure cookies in production
+    secure: process.env.NODE_ENV === "production",
+    // For cross-site XHR/fetch from the deployed frontend, SameSite must be 'None'
+    // and cookies must be Secure. Default to 'lax' in development for local testing.
+    sameSite:
+      process.env.COOKIE_SAMESITE ||
+      (process.env.NODE_ENV === "production" ? "none" : "lax"),
     maxAge: maxAgeMs,
   });
 };
@@ -405,7 +410,9 @@ export const logout = async (req, res) => {
     res.clearCookie("auth_token", {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
+      sameSite:
+        process.env.COOKIE_SAMESITE ||
+        (process.env.NODE_ENV === "production" ? "none" : "lax"),
     });
     res.json({ message: "Logged out successfully" });
   } catch (error) {

@@ -48,20 +48,67 @@ export function AuthProvider({ children }) {
   };
 
   const logout = async () => {
+    let primarySucceeded = false;
+
     try {
-      // Call backend to clear httpOnly cookie
+      // Primary: call configured backend to clear httpOnly cookie
       await authAPI.logout();
+      primarySucceeded = true;
     } catch (error) {
+      // Log error but don't fail — we'll attempt a sensible fallback below
       console.error("Logout API call failed:", error);
-    } finally {
-      // Always clear local state even if API fails
-      setUser(null);
-      setUserType(null);
-      setRole(null);
-      // Clear cart from localStorage (not auth-related but user-specific)
-      localStorage.removeItem("cart");
-      localStorage.removeItem("currentPage");
     }
+
+    // Only attempt same-origin fallback if primary failed and the configured
+    // API host is different from the current page host. This avoids issuing
+    // duplicate logout requests when the primary already succeeded.
+    if (!primarySucceeded && typeof window !== "undefined") {
+      try {
+        const apiBase =
+          import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+        let apiHost = null;
+        try {
+          apiHost = new URL(apiBase).host;
+        } catch (e) {
+          // If parsing fails, skip the fallback
+          apiHost = null;
+        }
+
+        // Only call same-origin fallback when the API host differs from page host
+        if (!apiHost || apiHost !== window.location.host) {
+          await fetch(`/api/auth/logout`, {
+            method: "POST",
+            credentials: "include",
+          });
+        } else {
+          // If API host equals page host, no fallback needed
+          console.debug(
+            "Skipping same-origin fallback logout (API host equals page host)"
+          );
+        }
+      } catch (err) {
+        // Non-fatal: fallback may fail if no proxy exists
+        console.debug("Fallback same-origin logout failed:", err);
+      }
+    }
+
+    // Re-validate session to confirm the cookie was cleared server-side.
+    try {
+      const sessionAfter = await authAPI.validateSession();
+      if (sessionAfter && sessionAfter.user) {
+        console.warn("Session still present after logout attempt.");
+      }
+    } catch (e) {
+      console.debug("Session re-check failed:", e);
+    }
+
+    // Always clear local state even if API fails or session remains.
+    setUser(null);
+    setUserType(null);
+    setRole(null);
+    // Clear cart from localStorage (not auth-related but user-specific)
+    localStorage.removeItem("cart");
+    localStorage.removeItem("currentPage");
   };
 
   const updateUser = (updates) => {

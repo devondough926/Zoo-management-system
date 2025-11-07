@@ -18,12 +18,15 @@ import {
 
 const DataContext = createContext(undefined);
 
-const API_BASE_URL = "http://localhost:5000/api";
+const API_BASE_URL =
+  import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
 export function DataProvider({ children }) {
   const [animals, setAnimals] = useState(mockAnimals);
   const [items, setItems] = useState([]);
-  const [concessionItems, setConcessionItems] = useState(initialConcessionItems);
+  const [concessionItems, setConcessionItems] = useState(
+    initialConcessionItems
+  );
   const [purchases, setPurchases] = useState([]);
   const [tickets, setTickets] = useState([]);
   const [purchaseItems, setPurchaseItems] = useState([]);
@@ -52,41 +55,43 @@ export function DataProvider({ children }) {
   }, []);
 
   // Fetch purchase data for analytics
-useEffect(() => {
-  const fetchPurchaseData = async () => {
-    try {
-      // Fetch purchases
-      const purchasesResponse = await fetch(`${API_BASE_URL}/shop/purchases`);
-      if (purchasesResponse.ok) {
-        const purchasesData = await purchasesResponse.json();
-        setPurchases(purchasesData);
-      }
+  useEffect(() => {
+    const fetchPurchaseData = async () => {
+      try {
+        // Fetch purchases
+        const purchasesResponse = await fetch(`${API_BASE_URL}/shop/purchases`);
+        if (purchasesResponse.ok) {
+          const purchasesData = await purchasesResponse.json();
+          setPurchases(purchasesData);
+        }
 
-      // Fetch purchase items
-      const purchaseItemsResponse = await fetch(`${API_BASE_URL}/shop/purchase-items`);
-      if (purchaseItemsResponse.ok) {
-        const purchaseItemsData = await purchaseItemsResponse.json();
-        setPurchaseItems(purchaseItemsData);
+        // Fetch purchase items
+        const purchaseItemsResponse = await fetch(
+          `${API_BASE_URL}/shop/purchase-items`
+        );
+        if (purchaseItemsResponse.ok) {
+          const purchaseItemsData = await purchaseItemsResponse.json();
+          setPurchaseItems(purchaseItemsData);
+        }
+      } catch (error) {
+        console.error("Error fetching purchase data:", error);
       }
-    } catch (error) {
-      console.error("Error fetching purchase data:", error);
-    }
-  };
-  
-  fetchPurchaseData();
-}, []);
+    };
+
+    fetchPurchaseData();
+  }, []);
 
   const refreshItems = async () => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/shop/items`);
-    if (response.ok) {
-      const data = await response.json();
-      setItems(data);
+    try {
+      const response = await fetch(`${API_BASE_URL}/shop/items`);
+      if (response.ok) {
+        const data = await response.json();
+        setItems(data);
+      }
+    } catch (error) {
+      console.error("Error refreshing items:", error);
     }
-  } catch (error) {
-    console.error("Error refreshing items:", error);
-  }
-};
+  };
 
   // Animal operations
   const addAnimal = (animal) => {
@@ -126,29 +131,27 @@ useEffect(() => {
     }
   };
 
- const updateItem = async (itemId, updates) => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/shop/items/${itemId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(updates),
-    });
-    if (response.ok) {
-      const updatedItem = await response.json();
-      setItems((prev) =>
-        prev.map((item) => 
-          item.Item_ID === itemId 
-            ? { ...item, ...updatedItem } 
-            : item
-        )
-      );
-      return updatedItem;
+  const updateItem = async (itemId, updates) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/shop/items/${itemId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+      if (response.ok) {
+        const updatedItem = await response.json();
+        setItems((prev) =>
+          prev.map((item) =>
+            item.Item_ID === itemId ? { ...item, ...updatedItem } : item
+          )
+        );
+        return updatedItem;
+      }
+    } catch (error) {
+      console.error("Error updating item:", error);
+      throw error;
     }
-  } catch (error) {
-    console.error("Error updating item:", error);
-    throw error;
-  }
-};
+  };
 
   const deleteItem = async (itemId) => {
     try {

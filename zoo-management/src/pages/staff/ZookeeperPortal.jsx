@@ -38,17 +38,19 @@ import {
 import { toast } from "sonner";
 import { ZooLogo } from "../../components/ZooLogo";
 
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+
 export function ZookeeperPortal({ user, onLogout }) {
   const [selectedHabitat, setSelectedHabitat] = useState(1);
   const [careDialogOpen, setCareDialogOpen] = useState(false);
   const [selectedAnimal, setSelectedAnimal] = useState(null);
-  
+
   // Real data from API
   const [stats, setStats] = useState({
     totalAnimals: 0,
     totalEnclosures: 0,
     animalsFedToday: 0,
-    careLogsToday: 0
+    careLogsToday: 0,
   });
   const [habitatAnimals, setHabitatAnimals] = useState([]);
   const [habitatStatus, setHabitatStatus] = useState(null);
@@ -58,29 +60,32 @@ export function ZookeeperPortal({ user, onLogout }) {
   // Fetch dashboard statistics
   const fetchStats = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/zookeeper/stats');
-      if (!response.ok) throw new Error('Failed to fetch stats');
+      const response = await fetch(`${API_BASE}/zookeeper/stats`);
+
+      if (!response.ok) throw new Error("Failed to fetch stats");
       const data = await response.json();
       setStats(data);
     } catch (error) {
-      console.error('Error fetching stats:', error);
-      toast.error('Failed to load statistics');
+      console.error("Error fetching stats:", error);
+      toast.error("Failed to load statistics");
     }
   };
 
   // Fetch animals by habitat/enclosure
   const fetchAnimalsByHabitat = async (enclosureId) => {
     if (!enclosureId) return;
-    
+
     setLoading(true);
     try {
-      const response = await fetch(`http://localhost:5000/api/zookeeper/enclosures/${enclosureId}/animals`);
-      if (!response.ok) throw new Error('Failed to fetch animals');
+      const response = await fetch(
+        `${API_BASE}/zookeeper/enclosures/${enclosureId}/animals`
+      );
+      if (!response.ok) throw new Error("Failed to fetch animals");
       const data = await response.json();
       setHabitatAnimals(data);
     } catch (error) {
-      console.error('Error fetching animals:', error);
-      toast.error('Failed to load animals');
+      console.error("Error fetching animals:", error);
+      toast.error("Failed to load animals");
     } finally {
       setLoading(false);
     }
@@ -89,14 +94,16 @@ export function ZookeeperPortal({ user, onLogout }) {
   // Fetch habitat cleaning status
   const fetchHabitatStatus = async (enclosureId) => {
     if (!enclosureId) return;
-    
+
     try {
-      const response = await fetch(`http://localhost:5000/api/zookeeper/enclosures/${enclosureId}/status`);
-      if (!response.ok) throw new Error('Failed to fetch habitat status');
+      const response = await fetch(
+        `${API_BASE}/zookeeper/enclosures/${enclosureId}/status`
+      );
+      if (!response.ok) throw new Error("Failed to fetch habitat status");
       const data = await response.json();
       setHabitatStatus(data);
     } catch (error) {
-      console.error('Error fetching habitat status:', error);
+      console.error("Error fetching habitat status:", error);
     }
   };
 
@@ -132,33 +139,35 @@ export function ZookeeperPortal({ user, onLogout }) {
 
     try {
       // Create care log
-      const response = await fetch('http://localhost:5000/api/zookeeper/care-logs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch(`${API_BASE}/zookeeper/care-logs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           animalId: selectedAnimal,
           employeeId: user.Employee_ID || 200,
-          activity: dialogFedStatus ? 'Animal fed' : 'Animal care logged',
-          notes: dialogFedStatus ? 'Feeding completed' : 'General care completed'
-        })
+          activity: dialogFedStatus ? "Animal fed" : "Animal care logged",
+          notes: dialogFedStatus
+            ? "Feeding completed"
+            : "General care completed",
+        }),
       });
 
-      if (!response.ok) throw new Error('Failed to create care log');
+      if (!response.ok) throw new Error("Failed to create care log");
 
       toast.success(`Care logged for ${selectedAnimalInfo?.Animal_Name}`);
       setCareDialogOpen(false);
-      
+
       // Refresh data
       fetchAnimalsByHabitat(selectedHabitat);
       fetchStats();
     } catch (error) {
-      console.error('Error saving care log:', error);
-      toast.error('Failed to save care log');
+      console.error("Error saving care log:", error);
+      toast.error("Failed to save care log");
     }
   };
 
   const toggleAnimalFed = () => {
-    setDialogFedStatus(prev => !prev);
+    setDialogFedStatus((prev) => !prev);
   };
 
   const toggleHabitatCleaned = async () => {
@@ -167,32 +176,32 @@ export function ZookeeperPortal({ user, onLogout }) {
     try {
       // Get first animal in this enclosure to link the log
       if (habitatAnimals.length === 0) {
-        toast.error('No animals in this habitat to log cleaning');
+        toast.error("No animals in this habitat to log cleaning");
         return;
       }
 
       // Create care log for habitat cleaning
-      const response = await fetch('http://localhost:5000/api/zookeeper/care-logs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch(`${API_BASE}/zookeeper/care-logs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           animalId: habitatAnimals[0].Animal_ID, // Use first animal as reference
           employeeId: user.Employee_ID || 200,
-          activity: 'Enclosure cleaning and maintenance',
-          notes: `${selectedHabitatInfo?.Enclosure_Name} cleaned and sanitized`
-        })
+          activity: "Enclosure cleaning and maintenance",
+          notes: `${selectedHabitatInfo?.Enclosure_Name} cleaned and sanitized`,
+        }),
       });
 
-      if (!response.ok) throw new Error('Failed to log cleaning');
+      if (!response.ok) throw new Error("Failed to log cleaning");
 
       toast.success(`${selectedHabitatInfo?.Enclosure_Name} cleaning logged`);
-      
+
       // Refresh data
       fetchHabitatStatus(selectedHabitat);
       fetchStats();
     } catch (error) {
-      console.error('Error logging cleaning:', error);
-      toast.error('Failed to log cleaning');
+      console.error("Error logging cleaning:", error);
+      toast.error("Failed to log cleaning");
     }
   };
 
@@ -335,10 +344,13 @@ export function ZookeeperPortal({ user, onLogout }) {
                             habitatStatus.lastCleaning.Log_Date
                           ).toLocaleTimeString()}
                           {" by "}
-                          {habitatStatus.lastCleaning.First_Name} {habitatStatus.lastCleaning.Last_Name}
+                          {habitatStatus.lastCleaning.First_Name}{" "}
+                          {habitatStatus.lastCleaning.Last_Name}
                         </p>
                       ) : (
-                        <p className="text-sm text-gray-600">No cleaning logged yet</p>
+                        <p className="text-sm text-gray-600">
+                          No cleaning logged yet
+                        </p>
                       )}
                     </div>
                   </div>
@@ -398,7 +410,7 @@ export function ZookeeperPortal({ user, onLogout }) {
                                 : "Unknown"}
                             </p>
                             <p className="text-xs">
-                              Health: {animal.Health_Status || 'Good'}
+                              Health: {animal.Health_Status || "Good"}
                             </p>
                             {animal.Weight && (
                               <p className="text-xs">
@@ -474,8 +486,7 @@ export function ZookeeperPortal({ user, onLogout }) {
                 {selectedAnimalInfo?.Species})
               </p>
               <p className="text-sm text-blue-800">
-                <strong>Habitat:</strong>{" "}
-                {selectedAnimalInfo?.Enclosure_Name}
+                <strong>Habitat:</strong> {selectedAnimalInfo?.Enclosure_Name}
               </p>
               <p className="text-sm text-blue-800">
                 <strong>Marking as:</strong>{" "}
