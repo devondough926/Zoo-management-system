@@ -34,76 +34,74 @@ import {
   XCircle,
   Syringe,
   PawPrint,
-  Users,
 } from "lucide-react";
 import { toast } from "sonner";
-import { useData } from "../../data/DataContext";
 import { ZooLogo } from "../../components/ZooLogo";
 
 export function VeterinarianPortal({ user, onLogout }) {
-  const { animals } = useData();
-  const [selectedHabitat, setSelectedHabitat] = useState(1); // Default to first habitat
+  const [selectedHabitat, setSelectedHabitat] = useState(1);
   const [vetDialogOpen, setVetDialogOpen] = useState(false);
   const [selectedAnimal, setSelectedAnimal] = useState(null);
+  
+  // Real data from API
+  const [stats, setStats] = useState({ 
+    totalAnimals: 0, 
+    vaccinatedAnimals: 0, 
+    healthyAnimals: 0 
+  });
+  const [habitatAnimals, setHabitatAnimals] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  // Mock vet statuses (in real app, would come from database)
-  const [animalVetStatuses, setAnimalVetStatuses] = useState(() =>
-    animals.map((animal, idx) => ({
-      animalId: animal.Animal_ID,
-      shotsGiven: Math.random() > 0.4,
-      lastVaccination: new Date(
-        Date.now() - Math.random() * 180 * 86400000
-      ).toISOString(),
-      healthStatus: ["Excellent", "Good", "Fair", "Needs Attention"][
-        Math.floor(Math.random() * 4)
-      ],
-      age: Math.floor(Math.random() * 15) + 1,
-      weight: Math.floor(Math.random() * 500) + 50,
-      lastCheckup: new Date(
-        Date.now() - Math.random() * 30 * 86400000
-      ).toISOString(),
-    }))
-  );
+  // Fetch dashboard statistics
+  const fetchStats = async () => {
+    try {
+      const response = await fetch('http://localhost:5000/api/veterinarian/stats');
+      if (!response.ok) throw new Error('Failed to fetch stats');
+      const data = await response.json();
+      setStats(data);
+    } catch (error) {
+      console.error('Error fetching stats:', error);
+      toast.error('Failed to load statistics');
+    }
+  };
 
-  // Sync vet statuses when animals list changes
+  // Fetch animals by habitat/enclosure
+  const fetchAnimalsByHabitat = async (enclosureId) => {
+    if (!enclosureId) return;
+    
+    setLoading(true);
+    try {
+      const response = await fetch(`http://localhost:5000/api/veterinarian/enclosures/${enclosureId}/animals`);
+      if (!response.ok) throw new Error('Failed to fetch animals');
+      const data = await response.json();
+      setHabitatAnimals(data);
+    } catch (error) {
+      console.error('Error fetching animals:', error);
+      toast.error('Failed to load animals');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Load initial data
   useEffect(() => {
-    setAnimalVetStatuses((prevStatuses) => {
-      const existingStatusMap = new Map(
-        prevStatuses.map((s) => [s.animalId, s])
-      );
-      return animals.map((animal) => {
-        if (existingStatusMap.has(animal.Animal_ID)) {
-          return existingStatusMap.get(animal.Animal_ID);
-        }
-        // New animal - create default status
-        return {
-          animalId: animal.Animal_ID,
-          shotsGiven: false,
-          lastVaccination: new Date().toISOString(),
-          healthStatus: "Good",
-          age: 1,
-          weight: 100,
-          lastCheckup: new Date().toISOString(),
-        };
-      });
-    });
-  }, [animals]);
+    fetchStats();
+  }, []);
 
-  // Get animals for selected habitat
-  const habitatAnimals = selectedHabitat
-    ? animals.filter((animal) => animal.Enclosure_ID === selectedHabitat)
-    : [];
+  // Fetch animals when habitat changes
+  useEffect(() => {
+    if (selectedHabitat) {
+      fetchAnimalsByHabitat(selectedHabitat);
+    }
+  }, [selectedHabitat]);
 
   const selectedHabitatInfo = selectedHabitat
     ? enclosures.find((enc) => enc.Enclosure_ID === selectedHabitat)
     : null;
 
   const selectedAnimalInfo = selectedAnimal
-    ? animals.find((a) => a.Animal_ID === selectedAnimal)
-    : null;
-
-  const selectedAnimalStatus = selectedAnimal
-    ? animalVetStatuses.find((status) => status.animalId === selectedAnimal)
+    ? habitatAnimals.find((a) => a.Animal_ID === selectedAnimal)
     : null;
 
   const handleLogVetCare = (animalId) => {
@@ -111,46 +109,116 @@ export function VeterinarianPortal({ user, onLogout }) {
     setVetDialogOpen(true);
   };
 
-  const handleSaveVetCare = () => {
-    if (!selectedAnimal || !selectedAnimalStatus) return;
+  const handleSaveVetCare = async () => {
+    if (!selectedAnimal || !selectedAnimalInfo) return;
 
-    // Update the status
-    setAnimalVetStatuses((prev) =>
-      prev.map((status) =>
-        status.animalId === selectedAnimal
-          ? { ...status, lastCheckup: new Date().toISOString() }
-          : status
-      )
-    );
+    // It's OK if this is a role-based login where Employee_ID is not provided
+    // we'll send null and the backend will store a NULL Employee_ID for the visit.
+    if (!user) {
+      console.error('No user in context', user);
+      toast.error('Cannot save: missing user information');
+      return;
+    }
 
-    toast.success(`Vet record updated for ${selectedAnimalInfo?.Animal_Name}`);
-    setVetDialogOpen(false);
+  setSaving(true);
+    try {
+      // Normalize vaccination value to boolean
+      const isVaccinated =
+        typeof selectedAnimalInfo.Is_Vaccinated === 'boolean'
+          ? selectedAnimalInfo.Is_Vaccinated
+          : Number(selectedAnimalInfo.Is_Vaccinated) === 1;
+
+      // Update animal health info
+      const healthResponse = await fetch(
+        `http://localhost:5000/api/veterinarian/animals/${selectedAnimal}/health`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            healthStatus: selectedAnimalInfo.Health_Status,
+            isVaccinated,
+            weight: selectedAnimalInfo.Weight,
+          }),
+        }
+      );
+
+      if (!healthResponse.ok) {
+        const errBody = await healthResponse.json().catch(() => ({}));
+        console.error('Health update failed', errBody);
+        toast.error(errBody.error || 'Failed to update health info');
+        setSaving(false);
+        return;
+      }
+
+  // Only create a vet visit record if we have a concrete employee id.
+  // For role-based logins that don't have Employee_ID, we'll skip creating
+  // a visit row and just persist the animal health changes directly.
+  let visitData = null;
+  if (user.Employee_ID) {
+        // Create vet visit record (include visitDate explicitly)
+        const visitPayload = {
+          animalId: selectedAnimal,
+          employeeId: user.Employee_ID,
+          visitDate: new Date().toISOString(),
+          diagnosis: 'Routine checkup completed',
+          treatment: `Health status: ${selectedAnimalInfo.Health_Status}, Weight: ${selectedAnimalInfo.Weight} lbs`,
+        };
+
+        const visitResponse = await fetch(
+          'http://localhost:5000/api/veterinarian/vet-visits',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(visitPayload),
+          }
+        );
+
+        if (!visitResponse.ok) {
+          const errBody = await visitResponse.json().catch(() => ({}));
+          console.error('Create visit failed', errBody);
+          toast.error(errBody.error || 'Failed to create vet visit');
+          setSaving(false);
+          return;
+        }
+
+        visitData = await visitResponse.json().catch(() => null);
+        toast.success(`Vet record updated for ${selectedAnimalInfo?.Animal_Name}`);
+      } else {
+        // No employee id available — we intentionally do NOT create a vet visit.
+        toast(`Animal updated directly in database for ${selectedAnimalInfo?.Animal_Name} (no employee assigned)`);
+      }
+      setVetDialogOpen(false);
+
+      // Refresh data (re-fetch from server to keep authoritative state)
+      await fetchAnimalsByHabitat(selectedHabitat);
+      await fetchStats();
+      setSaving(false);
+      return visitData;
+    } catch (error) {
+      console.error('Error saving vet care:', error);
+      toast.error('Failed to save vet record');
+      setSaving(false);
+    }
   };
 
   const toggleShotsGiven = () => {
-    if (!selectedAnimal) return;
-    setAnimalVetStatuses((prev) =>
-      prev.map((status) =>
-        status.animalId === selectedAnimal
-          ? {
-              ...status,
-              shotsGiven: !status.shotsGiven,
-              lastVaccination: !status.shotsGiven
-                ? new Date().toISOString()
-                : status.lastVaccination,
-            }
-          : status
+    if (!selectedAnimal || !selectedAnimalInfo) return;
+    setHabitatAnimals(prev =>
+      prev.map(animal =>
+        animal.Animal_ID === selectedAnimal
+          ? { ...animal, Is_Vaccinated: animal.Is_Vaccinated ? 0 : 1 }
+          : animal
       )
     );
   };
 
   const updateHealthStatus = (newStatus) => {
     if (!selectedAnimal) return;
-    setAnimalVetStatuses((prev) =>
-      prev.map((status) =>
-        status.animalId === selectedAnimal
-          ? { ...status, healthStatus: newStatus }
-          : status
+    setHabitatAnimals(prev =>
+      prev.map(animal =>
+        animal.Animal_ID === selectedAnimal
+          ? { ...animal, Health_Status: newStatus }
+          : animal
       )
     );
   };
@@ -159,9 +227,11 @@ export function VeterinarianPortal({ user, onLogout }) {
     if (!selectedAnimal) return;
     const age = parseInt(newAge);
     if (isNaN(age)) return;
-    setAnimalVetStatuses((prev) =>
-      prev.map((status) =>
-        status.animalId === selectedAnimal ? { ...status, age } : status
+    setHabitatAnimals(prev =>
+      prev.map(animal =>
+        animal.Animal_ID === selectedAnimal
+          ? { ...animal, Age: age }
+          : animal
       )
     );
   };
@@ -170,21 +240,14 @@ export function VeterinarianPortal({ user, onLogout }) {
     if (!selectedAnimal) return;
     const weight = parseFloat(newWeight);
     if (isNaN(weight)) return;
-    setAnimalVetStatuses((prev) =>
-      prev.map((status) =>
-        status.animalId === selectedAnimal ? { ...status, weight } : status
+    setHabitatAnimals(prev =>
+      prev.map(animal =>
+        animal.Animal_ID === selectedAnimal
+          ? { ...animal, Weight: weight }
+          : animal
       )
     );
   };
-
-  // Calculate stats
-  const totalAnimals = animals.length;
-  const vaccinatedAnimals = animalVetStatuses.filter(
-    (s) => s.shotsGiven
-  ).length;
-  const healthyAnimals = animalVetStatuses.filter(
-    (s) => s.healthStatus === "Excellent" || s.healthStatus === "Good"
-  ).length;
 
   const getHealthBadgeColor = (status) => {
     switch (status) {
@@ -245,7 +308,7 @@ export function VeterinarianPortal({ user, onLogout }) {
                 <div>
                   <p className="text-sm text-gray-600">Total Animals</p>
                   <p className="text-2xl font-semibold text-green-600">
-                    {totalAnimals}
+                    {stats.totalAnimals}
                   </p>
                 </div>
               </div>
@@ -258,7 +321,7 @@ export function VeterinarianPortal({ user, onLogout }) {
                 <div>
                   <p className="text-sm text-gray-600">Vaccinated</p>
                   <p className="text-2xl font-semibold text-blue-600">
-                    {vaccinatedAnimals}/{totalAnimals}
+                    {stats.vaccinatedAnimals}/{stats.totalAnimals}
                   </p>
                 </div>
               </div>
@@ -271,7 +334,7 @@ export function VeterinarianPortal({ user, onLogout }) {
                 <div>
                   <p className="text-sm text-gray-600">Healthy Animals</p>
                   <p className="text-2xl font-semibold text-teal-600">
-                    {healthyAnimals}/{totalAnimals}
+                    {stats.healthyAnimals}/{stats.totalAnimals}
                   </p>
                 </div>
               </div>
@@ -320,74 +383,75 @@ export function VeterinarianPortal({ user, onLogout }) {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {habitatAnimals.map((animal) => {
-                  const vetStatus = animalVetStatuses.find(
-                    (s) => s.animalId === animal.Animal_ID
-                  );
-                  return (
-                    <div
-                      key={animal.Animal_ID}
-                      className="p-4 rounded-lg border hover:border-green-600 transition-colors"
-                    >
-                      <div className="flex items-start justify-between mb-3">
-                        <div>
-                          <h3 className="font-medium">{animal.Animal_Name}</h3>
-                          <p className="text-sm text-gray-600">
-                            {animal.Species}
-                          </p>
-                        </div>
-                        <Badge
-                          className={getHealthBadgeColor(
-                            vetStatus?.healthStatus || "Good"
-                          )}
-                        >
-                          {vetStatus?.healthStatus}
-                        </Badge>
-                      </div>
-                      <div className="text-sm space-y-2 text-gray-600 mb-3">
-                        <div className="flex items-center justify-between">
-                          <span>Age:</span>
-                          <span className="font-medium">
-                            {vetStatus?.age} years
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span>Weight:</span>
-                          <span className="font-medium">
-                            {vetStatus?.weight} lbs
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span>Vaccinated:</span>
-                          {vetStatus?.shotsGiven ? (
-                            <CheckCircle className="h-4 w-4 text-green-600" />
-                          ) : (
-                            <XCircle className="h-4 w-4 text-red-600" />
-                          )}
-                        </div>
-                        {vetStatus?.lastCheckup && (
-                          <p className="text-xs pt-1">
-                            Last checkup:{" "}
-                            {new Date(
-                              vetStatus.lastCheckup
-                            ).toLocaleDateString()}
-                          </p>
-                        )}
-                      </div>
-                      <Button
-                        onClick={() => handleLogVetCare(animal.Animal_ID)}
-                        variant="outline"
-                        size="sm"
-                        className="w-full cursor-pointer"
+              {loading ? (
+                <div className="text-center py-8 text-gray-600">
+                  Loading animals...
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {habitatAnimals.map((animal) => {
+                    return (
+                      <div
+                        key={animal.Animal_ID}
+                        className="p-4 rounded-lg border hover:border-green-600 transition-colors"
                       >
-                        <Stethoscope className="h-4 w-4 mr-2" />
-                        Update Vet Info
-                      </Button>
-                    </div>
-                  );
-                })}
-              </div>
+                        <div className="flex items-start justify-between mb-3">
+                          <div>
+                            <h3 className="font-medium">{animal.Animal_Name}</h3>
+                            <p className="text-sm text-gray-600">
+                              {animal.Species}
+                            </p>
+                          </div>
+                          <Badge
+                            className={getHealthBadgeColor(
+                              animal.Health_Status || "Good"
+                            )}
+                          >
+                            {animal.Health_Status || "Good"}
+                          </Badge>
+                        </div>
+                        <div className="text-sm space-y-2 text-gray-600 mb-3">
+                          <div className="flex items-center justify-between">
+                            <span>Age:</span>
+                            <span className="font-medium">
+                              {animal.Age || 0} years
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span>Weight:</span>
+                            <span className="font-medium">
+                              {animal.Weight || 0} lbs
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span>Vaccinated:</span>
+                            {animal.Is_Vaccinated ? (
+                              <CheckCircle className="h-4 w-4 text-green-600" />
+                            ) : (
+                              <XCircle className="h-4 w-4 text-red-600" />
+                            )}
+                          </div>
+                          {animal.Birthday && (
+                            <p className="text-xs pt-1">
+                              Birthday:{" "}
+                              {new Date(animal.Birthday).toLocaleDateString()}
+                            </p>
+                          )}
+                        </div>
+                        <Button
+                          onClick={() => handleLogVetCare(animal.Animal_ID)}
+                          variant="outline"
+                          size="sm"
+                          className="w-full cursor-pointer"
+                        >
+                          <Stethoscope className="h-4 w-4 mr-2" />
+                          Update Vet Info
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </CardContent>
           </Card>
         )}
@@ -433,7 +497,7 @@ export function VeterinarianPortal({ user, onLogout }) {
               </p>
               <p className="text-sm text-blue-800">
                 <strong>Habitat:</strong>{" "}
-                {selectedAnimalInfo?.Enclosure?.Enclosure_Name}
+                {selectedAnimalInfo?.Enclosure_Name}
               </p>
             </div>
 
@@ -449,7 +513,7 @@ export function VeterinarianPortal({ user, onLogout }) {
               </div>
               <Switch
                 id="shots-status"
-                checked={selectedAnimalStatus?.shotsGiven || false}
+                checked={selectedAnimalInfo?.Is_Vaccinated || false}
                 onCheckedChange={toggleShotsGiven}
               />
             </div>
@@ -458,7 +522,7 @@ export function VeterinarianPortal({ user, onLogout }) {
             <div className="space-y-2">
               <Label>Health Status</Label>
               <Select
-                value={selectedAnimalStatus?.healthStatus}
+                value={selectedAnimalInfo?.Health_Status || "Good"}
                 onValueChange={(value) => updateHealthStatus(value)}
               >
                 <SelectTrigger>
@@ -481,7 +545,7 @@ export function VeterinarianPortal({ user, onLogout }) {
               <Input
                 id="age"
                 type="number"
-                value={selectedAnimalStatus?.age || 0}
+                value={selectedAnimalInfo?.Age || 0}
                 onChange={(e) => updateAge(e.target.value)}
                 min="0"
                 max="100"
@@ -494,20 +558,18 @@ export function VeterinarianPortal({ user, onLogout }) {
               <Input
                 id="weight"
                 type="number"
-                value={selectedAnimalStatus?.weight || 0}
+                value={selectedAnimalInfo?.Weight || 0}
                 onChange={(e) => updateWeight(e.target.value)}
                 min="0"
                 step="0.1"
               />
             </div>
 
-            {/* Last Vaccination Date */}
-            {selectedAnimalStatus?.lastVaccination && (
+            {/* Birthday */}
+            {selectedAnimalInfo?.Birthday && (
               <div className="text-sm text-gray-600">
-                Last vaccination:{" "}
-                {new Date(
-                  selectedAnimalStatus.lastVaccination
-                ).toLocaleDateString()}
+                Birthday:{" "}
+                {new Date(selectedAnimalInfo.Birthday).toLocaleDateString()}
               </div>
             )}
           </div>
@@ -522,8 +584,9 @@ export function VeterinarianPortal({ user, onLogout }) {
             <Button
               onClick={handleSaveVetCare}
               className="bg-green-600 hover:bg-green-700 cursor-pointer"
+              disabled={saving}
             >
-              Save Changes
+              {saving ? 'Saving...' : 'Save Changes'}
             </Button>
           </DialogFooter>
         </DialogContent>
