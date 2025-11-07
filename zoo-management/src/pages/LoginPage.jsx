@@ -105,7 +105,12 @@ export function LoginPage({ onLogin }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-gradient-to-br from-green-600 via-emerald-600 to-teal-700 p-6 overflow-hidden">
+    <div
+      className="fixed inset-0 bg-gradient-to-b from-green-600 via-emerald-600 to-teal-700 p-6 overflow-hidden"
+      style={{
+        background: "linear-gradient(to bottom, #0ea5a4, #059669, #16a34a)",
+      }}
+    >
       {/* Back to Home Button - Top Left */}
       <Button
         variant="ghost"
@@ -121,9 +126,6 @@ export function LoginPage({ onLogin }) {
         <div className="w-full max-w-sm">
           {/* Logo with drop shadow for standout effect */}
           <div className="flex flex-col items-center justify-center mb-8">
-            <div className="drop-shadow-2xl">
-              <ZooLogo size={80} className="filter drop-shadow-lg" />
-            </div>
             <span className="text-5xl font-bold text-white mt-4 drop-shadow-lg">
               WildWood Zoo
             </span>
@@ -136,9 +138,12 @@ export function LoginPage({ onLogin }) {
           {!showSignup ? (
             // Login Form
             <Card className="shadow-2xl">
-              <CardHeader>
-                <CardTitle>Login</CardTitle>
-                <CardDescription>
+              <CardHeader className="flex flex-col items-center">
+                <div className="drop-shadow-2xl -mt-8">
+                  <ZooLogo size={64} className="filter drop-shadow-lg" />
+                </div>
+                <CardTitle className="text-center mt-2">Login</CardTitle>
+                <CardDescription className="text-center">
                   Sign in to your Wildwood Zoo account
                 </CardDescription>
                 <div className="flex gap-2 mt-4">
@@ -215,10 +220,15 @@ export function LoginPage({ onLogin }) {
           ) : (
             // Signup Form
             <Card className="shadow-2xl">
-              <CardHeader>
-                <CardTitle>Create Account</CardTitle>
-                <CardDescription>
-                  Join Wildwood Zoo and enjoy exclusive benefits
+              <CardHeader className="flex flex-col items-center">
+                <div className="drop-shadow-2xl -mt-8">
+                  <ZooLogo size={64} className="filter drop-shadow-lg" />
+                </div>
+                <CardTitle className="text-center mt-2">
+                  Create Account
+                </CardTitle>
+                <CardDescription className="text-center">
+                  Register for an account now!
                 </CardDescription>
               </CardHeader>
               <CardContent>

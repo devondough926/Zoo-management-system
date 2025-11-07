@@ -21,7 +21,9 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { useData } from "../data/DataContext";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
+import { PaginationControls } from "../components/PaginationControls";
 import { useHeroImage } from "../utils/heroImages";
+import { generatePaginationArray } from "../utils/paginationHelper";
 
 const categories = [
   "All",
@@ -400,45 +402,13 @@ export function ShopPage({ addToCart, allowCartActions = true }) {
 
           {/* Pagination Controls */}
           {filteredItems.length > 0 && (
-            <div className="flex justify-center items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-                disabled={currentPage === 1}
-                className="gap-1"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-
-              <div className="flex gap-1">
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map(
-                  (page) => (
-                    <Button
-                      key={page}
-                      variant={currentPage === page ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setCurrentPage(page)}
-                      className="min-w-[40px]"
-                    >
-                      {page}
-                    </Button>
-                  )
-                )}
-              </div>
-
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  setCurrentPage((prev) => Math.min(totalPages, prev + 1))
-                }
-                disabled={currentPage === totalPages}
-                className="gap-1"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
+            <PaginationControls
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={setCurrentPage}
+              paginationArray={generatePaginationArray(currentPage, totalPages)}
+              alwaysShow={true}
+            />
           )}
         </div>
       </section>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Card,
@@ -28,6 +28,13 @@ import {
 } from "../../components/ui/alert-dialog";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../components/ui/select";
 import { concessionStands } from "../../data/mockData";
 import {
   LogOut,
@@ -44,7 +51,7 @@ import { ZooLogo } from "../../components/ZooLogo";
 import { ImageWithFallback } from "../../components/figma/ImageWithFallback";
 import { useData } from "../../data/DataContext";
 
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000/api";
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
 export function ConcessionPortal({ user, onLogout }) {
   const navigate = useNavigate();
@@ -59,6 +66,8 @@ export function ConcessionPortal({ user, onLogout }) {
 
   // Local state for menu items fetched from backend
   const [menuItems, setMenuItems] = useState([]);
+  // Selected stand filter ("All" shows all stands)
+  const [selectedStand, setSelectedStand] = useState("All");
 
   // Fetch menu items from backend on mount and when menuItemsFromContext changes
   useEffect(() => {
@@ -133,22 +142,71 @@ export function ConcessionPortal({ user, onLogout }) {
     return () => clearInterval(interval);
   }, []);
 
-  // Top selling items with mock quantities (top 3 only)
-  // Note: These are still using mock data for the "Top 3 Selling Items" section
-  // The "Top-Selling Item Today" card uses real data from stats.topItemToday
-  const topItems = [
-    { item: menuItems[17], quantity: 189, rank: 1 }, // Spaghetti & Meatballs
-    { item: menuItems[0], quantity: 167, rank: 2 }, // Classic Cheeseburger
-    { item: menuItems[6], quantity: 154, rank: 3 }, // Chocolate Sundae
-  ].filter((t) => t.item); // Filter out any undefined items
+  // Fetch purchase concession items from backend and compute top/bottom sellers
+  const [purchaseConcessionData, setPurchaseConcessionData] = useState([]);
 
-  // Bottom selling items with mock quantities (bottom 3 only)
-  const totalItemCount = menuItems.length;
-  const bottomItems = [
-    { item: menuItems[19], quantity: 23, rank: totalItemCount }, // Italian Sub - last place
-    { item: menuItems[13], quantity: 31, rank: totalItemCount - 1 }, // Green Smoothie - 2nd to last
-    { item: menuItems[8], quantity: 38, rank: totalItemCount - 2 }, // Frozen Lemonade - 3rd to last
-  ].filter((t) => t.item); // Filter out any undefined items
+  useEffect(() => {
+    let mounted = true;
+    const fetchPurchaseConcessions = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/admin/purchase-concession-items`);
+        if (!res.ok)
+          throw new Error("Failed to fetch purchase concession items");
+        const data = await res.json();
+        if (mounted) setPurchaseConcessionData(data);
+      } catch (err) {
+        console.error("❌ Failed to load purchase concession items:", err);
+        // don't spam the user with toasts here; stats already surface errors
+      }
+    };
+    fetchPurchaseConcessions();
+
+    // refresh periodically (30s) to keep dashboard up-to-date
+    const interval = setInterval(fetchPurchaseConcessions, 30000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  // Build sales totals by Concession_Item_ID
+  const salesByItemId = useMemo(() => {
+    const map = {};
+    purchaseConcessionData.forEach((rec) => {
+      const id =
+        rec.Concession_Item_ID ?? rec.concession_item_id ?? rec.Item_ID;
+      const qty = Number(rec.Quantity ?? rec.quantity ?? 0);
+      if (!id) return;
+      map[id] = (map[id] || 0) + (isNaN(qty) ? 0 : qty);
+    });
+    return map;
+  }, [purchaseConcessionData]);
+
+  // Combine menu items with their total sold counts (default 0 for unsold items)
+  const itemsWithSales = useMemo(() => {
+    return menuItems.map((it) => ({
+      item: it,
+      quantity: salesByItemId[it.Concession_Item_ID] || 0,
+    }));
+  }, [menuItems, salesByItemId]);
+
+  // Top 3 sellers (highest quantity)
+  const topItems = useMemo(() => {
+    return [...itemsWithSales]
+      .sort((a, b) => b.quantity - a.quantity)
+      .slice(0, 3)
+      .map((t, idx) => ({ ...t, rank: idx + 1 }))
+      .filter((t) => t.item);
+  }, [itemsWithSales]);
+
+  // Bottom 3 sellers (lowest quantity)
+  const bottomItems = useMemo(() => {
+    return [...itemsWithSales]
+      .sort((a, b) => a.quantity - b.quantity)
+      .slice(0, 3)
+      .map((t, idx) => ({ ...t, rank: itemsWithSales.length - idx }))
+      .filter((t) => t.item);
+  }, [itemsWithSales]);
 
   const handleEditClick = (item) => {
     setEditingItem(item);
@@ -386,75 +444,115 @@ export function ConcessionPortal({ user, onLogout }) {
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center">
-                <Coffee className="h-5 w-5 mr-2 text-green-600" />
-                Current Menu ({menuItems.length} items)
-              </CardTitle>
-              <Button
-                className="bg-green-600 hover:bg-green-700 cursor-pointer"
-                onClick={() => setAddDialogOpen(true)}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Add New Item
-              </Button>
+              <div className="flex items-center justify-between w-full">
+                <CardTitle className="flex items-center">
+                  <Coffee className="h-5 w-5 mr-2 text-green-600" />
+                  Current Menu (
+                  {
+                    menuItems.filter((item) =>
+                      selectedStand === "All"
+                        ? true
+                        : String(item.Stand_ID) === String(selectedStand)
+                    ).length
+                  }{" "}
+                  items)
+                </CardTitle>
+
+                <div className="flex items-center gap-3">
+                  <Select
+                    value={selectedStand}
+                    onValueChange={(value) => setSelectedStand(value)}
+                  >
+                    <SelectTrigger className="w-44 cursor-pointer">
+                      <SelectValue placeholder="All Stands" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="All">All Stands</SelectItem>
+                      {concessionStands.map((s) => (
+                        <SelectItem
+                          key={s.Stand_ID}
+                          value={s.Stand_ID.toString()}
+                        >
+                          {s.Stand_Name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <Button
+                    className="bg-green-600 hover:bg-green-700 cursor-pointer"
+                    onClick={() => setAddDialogOpen(true)}
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add New Item
+                  </Button>
+                </div>
+              </div>
             </div>
           </CardHeader>
           <CardContent>
             <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2">
-              {menuItems.map((item) => (
-                <div
-                  key={item.Concession_Item_ID}
-                  className="flex items-center justify-between p-4 rounded-lg border hover:border-green-600 transition-colors"
-                >
-                  <div className="flex items-center space-x-4 flex-1">
-                    <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden">
-                      {item.Image_URL ? (
-                        <ImageWithFallback
-                          src={item.Image_URL}
-                          alt={item.Item_Name}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <Coffee className="h-8 w-8 text-gray-400" />
-                      )}
+              {/** filter menu items by selected stand */}
+              {menuItems
+                .filter((item) =>
+                  selectedStand === "All"
+                    ? true
+                    : String(item.Stand_ID) === String(selectedStand)
+                )
+                .map((item) => (
+                  <div
+                    key={item.Concession_Item_ID}
+                    className="flex items-center justify-between p-4 rounded-lg border hover:border-green-600 transition-colors"
+                  >
+                    <div className="flex items-center space-x-4 flex-1">
+                      <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden">
+                        {item.Image_URL ? (
+                          <ImageWithFallback
+                            src={item.Image_URL}
+                            alt={item.Item_Name}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <Coffee className="h-8 w-8 text-gray-400" />
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-medium">{item.Item_Name}</h3>
+                        <p className="text-sm text-gray-600">
+                          {concessionStands.find(
+                            (s) => s.Stand_ID === item.Stand_ID
+                          )?.Stand_Name || "Unknown Location"}
+                        </p>
+                      </div>
                     </div>
-                    <div className="flex-1">
-                      <h3 className="font-medium">{item.Item_Name}</h3>
-                      <p className="text-sm text-gray-600">
-                        {concessionStands.find(
-                          (s) => s.Stand_ID === item.Stand_ID
-                        )?.Stand_Name || "Unknown Location"}
-                      </p>
+                    <div className="flex items-center space-x-4">
+                      <div className="text-right">
+                        <p className="text-2xl font-semibold text-green-600">
+                          ${parseFloat(item.Price || 0).toFixed(2)}
+                        </p>
+                      </div>
+                      <div className="flex space-x-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEditClick(item)}
+                          className="cursor-pointer border-transparent hover:bg-blue-50 hover:border-blue-300 hover:text-blue-600 focus:bg-blue-50 focus:border-blue-300 focus:text-blue-600 transition-colors"
+                        >
+                          <Edit2 className="h-4 w-4 mr-1" />
+                          Edit
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDeleteClick(item)}
+                          className="cursor-pointer border-transparent text-red-600 hover:bg-red-50 hover:border-red-600 hover:text-red-600 focus:bg-red-50 focus:border-red-600 focus:text-red-600 transition-colors"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-4">
-                    <div className="text-right">
-                      <p className="text-2xl font-semibold text-green-600">
-                        ${parseFloat(item.Price || 0).toFixed(2)}
-                      </p>
-                    </div>
-                    <div className="flex space-x-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleEditClick(item)}
-                        className="cursor-pointer"
-                      >
-                        <Edit2 className="h-4 w-4 mr-1" />
-                        Edit
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleDeleteClick(item)}
-                        className="cursor-pointer border-red-600 text-red-600 hover:bg-red-50"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              ))}
+                ))}
             </div>
           </CardContent>
         </Card>

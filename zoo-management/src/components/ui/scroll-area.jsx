@@ -5,16 +5,25 @@ import * as ScrollAreaPrimitive from "@radix-ui/react-scroll-area@1.2.3";
 
 import { cn } from "./utils";
 
-function ScrollArea({ className, children, ...props }) {
+function ScrollArea({ className, children, height, style, ...props }) {
+  // allow passing a numeric height (in px) or a CSS height string
+  const rootStyle = {
+    ...(style || {}),
+    ...(height
+      ? { height: typeof height === "number" ? `${height}px` : height }
+      : {}),
+  };
+
   return (
     <ScrollAreaPrimitive.Root
       data-slot="scroll-area"
       className={cn("relative", className)}
+      style={rootStyle}
       {...props}
     >
       <ScrollAreaPrimitive.Viewport
         data-slot="scroll-area-viewport"
-        className="focus-visible:ring-ring/50 size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:outline-1"
+        className="w-full h-full focus-visible:ring-ring/50 rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:outline-1"
       >
         {children}
       </ScrollAreaPrimitive.Viewport>

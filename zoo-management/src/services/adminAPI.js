@@ -243,6 +243,16 @@ export const analyticsAPI = {
     if (!response.ok) throw new Error("Failed to fetch statistics");
     return response.json();
   },
+
+  getDetailedTransactions: async (startDate = null, endDate = null) => {
+    let url = `${API_BASE_URL}/admin/transactions/detailed`;
+    if (startDate && endDate) {
+      url += `?startDate=${startDate}&endDate=${endDate}`;
+    }
+    const response = await fetch(url);
+    if (!response.ok) throw new Error("Failed to fetch detailed transactions");
+    return response.json();
+  },
 };
 
 export const referenceAPI = {
@@ -320,11 +330,18 @@ export const getDateRange = (range) => {
     case "today":
       startDate.setHours(0, 0, 0, 0);
       break;
+    case "yesterday":
+      startDate.setDate(now.getDate() - 1);
+      startDate.setHours(0, 0, 0, 0);
+      break;
     case "week":
       startDate.setDate(now.getDate() - 7);
       break;
     case "month":
       startDate.setMonth(now.getMonth() - 1);
+      break;
+    case "quarter":
+      startDate.setMonth(now.getMonth() - 3);
       break;
     case "year":
       startDate.setFullYear(now.getFullYear() - 1);

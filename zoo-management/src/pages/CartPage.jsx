@@ -313,7 +313,7 @@ export function CartPage({
 
       clearCart();
       setShowCheckoutDialog(false);
-      toast.success(`Purchase confirmed! Order #${customerPurchaseNumber}`);
+      toast.success("Purchase Success!");
     } catch (error) {
       console.error("Checkout error:", error);
 
@@ -449,7 +449,7 @@ export function CartPage({
 
       clearCart();
       setShowCheckoutDialog(false);
-      toast.success(`Purchase confirmed! Order #${customerPurchaseNumber}`);
+      toast.success("Purchase success!");
     }
   };
 

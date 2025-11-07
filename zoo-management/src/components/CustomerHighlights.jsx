@@ -188,7 +188,7 @@ export function CustomerHighlights() {
     setExhibitsNoTransition(false);
     setExhibitsIndex(newIndex);
 
-    const transitionMs = 620;
+    const transitionMs = 420;
     const clonedTailStart = offsetStart + n;
     if (newIndex >= clonedTailStart) {
       // compute target real index
@@ -201,18 +201,18 @@ export function CustomerHighlights() {
       }, transitionMs);
       exhibitsTimersRef.current.timer = setTimeout(
         () => setExhibitsAnimating(false),
-        transitionMs + 80
+        transitionMs + 40
       );
     } else {
       exhibitsTimersRef.current.timer = setTimeout(
         () => setExhibitsAnimating(false),
-        transitionMs + 30
+        transitionMs + 20
       );
     }
 
     Promise.race([
       preloadImages(urls, "high"),
-      new Promise((res) => setTimeout(res, 150)),
+      new Promise((res) => setTimeout(res, 120)),
     ]);
   };
 
@@ -239,7 +239,7 @@ export function CustomerHighlights() {
     setExhibitsNoTransition(false);
     setExhibitsIndex(newIndex);
 
-    const transitionMs = 620;
+    const transitionMs = 420;
     if (newIndex < offsetStart) {
       const normalized = (((newIndex - offsetStart) % n) + n) % n;
       const target = offsetStart + normalized;
@@ -250,18 +250,18 @@ export function CustomerHighlights() {
       }, transitionMs);
       exhibitsTimersRef.current.timer = setTimeout(
         () => setExhibitsAnimating(false),
-        transitionMs + 80
+        transitionMs + 40
       );
     } else {
       exhibitsTimersRef.current.timer = setTimeout(
         () => setExhibitsAnimating(false),
-        transitionMs + 30
+        transitionMs + 20
       );
     }
 
     Promise.race([
       preloadImages(urls, "high"),
-      new Promise((res) => setTimeout(res, 150)),
+      new Promise((res) => setTimeout(res, 120)),
     ]);
   };
 
@@ -442,7 +442,7 @@ export function CustomerHighlights() {
                     className={`flex will-change-transform ${
                       noTransition
                         ? ""
-                        : "transition-transform duration-600 ease-in-out"
+                        : "transition-transform duration-400 ease-in-out"
                     }`}
                     style={{
                       transform: `translateX(-${

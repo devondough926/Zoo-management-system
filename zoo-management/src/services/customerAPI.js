@@ -103,14 +103,23 @@ export const authAPI = {
         credentials: "include",
       });
 
+      // 401 is expected when user is not logged in - don't log as error
+      if (response.status === 401) {
+        return null;
+      }
+
       if (!response.ok) {
+        console.error("Session validation failed:", response.status);
         return null;
       }
 
       const data = await response.json();
       return data;
     } catch (error) {
-      console.error("Session validation error:", error);
+      // Only log network errors, not authentication failures
+      if (error.name !== "TypeError") {
+        console.error("Session validation error:", error);
+      }
       return null;
     }
   },

@@ -420,7 +420,7 @@ export const validateSession = async (req, res) => {
     const token = req.cookies.auth_token;
 
     if (!token) {
-      return res.status(401).json({ error: "Not authenticated" });
+      return res.status(200).json({ user: null });
     }
 
     // Verify token
@@ -435,7 +435,7 @@ export const validateSession = async (req, res) => {
       );
 
       if (customers.length === 0) {
-        return res.status(401).json({ error: "User not found" });
+        return res.status(200).json({ user: null });
       }
 
       return res.json({
@@ -452,7 +452,7 @@ export const validateSession = async (req, res) => {
       );
 
       if (jobTitles.length === 0) {
-        return res.status(401).json({ error: "User not found" });
+        return res.status(200).json({ user: null });
       }
 
       const jobTitle = jobTitles[0];
@@ -473,13 +473,14 @@ export const validateSession = async (req, res) => {
       });
     }
 
-    return res.status(401).json({ error: "Invalid token" });
+    return res.status(200).json({ user: null });
   } catch (error) {
     if (
       error.name === "JsonWebTokenError" ||
       error.name === "TokenExpiredError"
     ) {
-      return res.status(401).json({ error: "Invalid or expired session" });
+      // Treat invalid/expired token as unauthenticated (don't return 500/401)
+      return res.status(200).json({ user: null });
     }
     console.error("Error validating session:", error);
     res.status(500).json({ error: "Failed to validate session" });

@@ -91,7 +91,7 @@ export function useOptimizedFetch(cacheKey, fetchFn, options = {}) {
     };
 
     fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [cacheKey, enabled, cacheTime]); // fetchFn is intentionally excluded to prevent re-fetching
 
   // Function to manually invalidate cache and refetch

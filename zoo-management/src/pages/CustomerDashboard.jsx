@@ -212,7 +212,6 @@ export function CustomerDashboard({ user }) {
         const details = await purchasesAPI.getDetails(
           selectedPurchase.Purchase_ID
         );
-        console.log("Fetched purchase details:", details);
         setSelectedPurchaseDetails(details);
       } catch (error) {
         console.error("Error fetching purchase details:", error);

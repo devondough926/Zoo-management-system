@@ -48,6 +48,10 @@ app.use(morgan("dev"));
 app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use((req, res, next) => {
+  next();
+});
+
 
 app.get("/health", (req, res) => {
   res.status(200).json({
@@ -89,24 +93,14 @@ const startServer = async () => {
       console.error("[WARNING] Server starting without database connection");
     }
 
-    if (isAzureConfigured()) {
-      console.log("[SUCCESS] Azure Blob Storage is configured");
-    } else {
+    // Check Azure configuration
+    if (!isAzureConfigured()) {
       console.error(
         "[WARNING] Azure Blob Storage is NOT configured - image uploads will fail"
       );
     }
 
-    app.listen(PORT, () => {
-      console.log(`\n[SERVER] Running on port ${PORT}`);
-      console.log(`Environment: ${process.env.NODE_ENV || "development"}`);
-      console.log(`Health check: http://localhost:${PORT}/health`);
-      console.log(
-        `Images: Stored in Azure Blob Storage (${
-          process.env.AZURE_STORAGE_CONTAINER_NAME || "not configured"
-        })\n`
-      );
-    });
+    app.listen(PORT, () => {});
   } catch (error) {
     console.error("Failed to start server:", error);
     process.exit(1);

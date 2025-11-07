@@ -1,21 +1,19 @@
-@custom-variant dark (&:is(.dark *));
-
 :root {
   --font-size: 16px;
-  --background: #F5F5DC;
+  --background: #f5f5dc;
   --foreground: oklch(0.145 0 0);
   --card: #ffffff;
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: #4CAF50;
+  --primary: #4caf50;
   --primary-foreground: oklch(1 0 0);
   --secondary: oklch(0.95 0.0058 120);
-  --secondary-foreground: #4CAF50;
+  --secondary-foreground: #4caf50;
   --muted: #ececf0;
   --muted-foreground: #717182;
   --accent: #dcfce7;
-  --accent-foreground: #4CAF50;
+  --accent-foreground: #4caf50;
   --destructive: #d4183d;
   --destructive-foreground: #ffffff;
   --border: rgba(0, 0, 0, 0.1);
@@ -33,7 +31,7 @@
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: #4CAF50;
+  --sidebar-primary: #4caf50;
   --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-accent: oklch(0.97 0 0);
   --sidebar-accent-foreground: oklch(0.205 0 0);
@@ -78,7 +76,7 @@
   --sidebar-ring: oklch(0.439 0 0);
 }
 
-@theme inline {
+:root {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -117,30 +115,30 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
-  
+
   /* New Color Palette Variables */
   --color-green-50: #e8f5e9;
   --color-green-100: #c8e6c9;
   --color-green-200: #a5d6a7;
   --color-green-300: #81c784;
   --color-green-400: #66bb6a;
-  --color-green-500: #4CAF50;
-  --color-green-600: #4CAF50;
+  --color-green-500: #4caf50;
+  --color-green-600: #4caf50;
   --color-green-700: #45a049;
   --color-green-800: #2e7d32;
   --color-green-900: #1b5e20;
-  
+
   --color-emerald-50: #e8f5e9;
   --color-emerald-100: #c8e6c9;
   --color-emerald-200: #a5d6a7;
   --color-emerald-300: #81c784;
   --color-emerald-400: #66bb6a;
-  --color-emerald-500: #4CAF50;
-  --color-emerald-600: #4CAF50;
+  --color-emerald-500: #4caf50;
+  --color-emerald-600: #4caf50;
   --color-emerald-700: #45a049;
   --color-emerald-800: #2e7d32;
   --color-emerald-900: #1b5e20;
-  
+
   --color-teal-50: #e0f2f1;
   --color-teal-100: #b2dfdb;
   --color-teal-200: #80cbc4;
@@ -151,24 +149,24 @@
   --color-teal-700: #00695c;
   --color-teal-800: #004d40;
   --color-teal-900: #003830;
-  
+
   --color-yellow-50: #fffde7;
   --color-yellow-100: #fff9c4;
   --color-yellow-200: #fff59d;
   --color-yellow-300: #fff176;
   --color-yellow-400: #ffee58;
-  --color-yellow-500: #FFD700;
+  --color-yellow-500: #ffd700;
   --color-yellow-600: #ffd000;
   --color-yellow-700: #fbc02d;
   --color-yellow-800: #f9a825;
   --color-yellow-900: #f57f17;
-  
+
   --color-cyan-50: #e0f7fa;
   --color-cyan-100: #b2ebf2;
   --color-cyan-200: #80deea;
   --color-cyan-300: #4dd0e1;
-  --color-cyan-400: #40E0D0;
-  --color-cyan-500: #40E0D0;
+  --color-cyan-400: #40e0d0;
+  --color-cyan-500: #40e0d0;
   --color-cyan-600: #30d0c0;
   --color-cyan-700: #00acc1;
   --color-cyan-800: #00838f;
@@ -177,11 +175,16 @@
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    /* Plain-CSS equivalents for Tailwind @apply utilities so plain CSS linters won't complain.
+       These provide sensible defaults; adjust if you rely on Tailwind's exact behavior. */
+    box-sizing: border-box;
+    border-color: var(--color-border);
+    outline-color: var(--color-ring);
   }
 
   body {
-    @apply bg-background text-foreground;
+    background-color: var(--color-background);
+    color: var(--color-foreground);
   }
 }
 
@@ -189,7 +192,7 @@
  * Base typography. This is not applied to elements which have an ancestor with a Tailwind text class.
  */
 @layer base {
-  :where(:not(:has([class*=" text-"]), :not(:has([class^="text-"])))) {
+  :where(:not(:has([class*="text-"])), :not(:has([class^="text-"]))) {
     h1 {
       font-size: var(--text-2xl);
       font-weight: var(--font-weight-medium);
