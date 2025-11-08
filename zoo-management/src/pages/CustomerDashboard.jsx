@@ -11,6 +11,7 @@ import {
   Check,
   Crown,
   UtensilsCrossed,
+  ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useState, useEffect } from "react";
@@ -496,62 +497,91 @@ export function CustomerDashboard({ user }) {
             </h2>
             <Dialog open={orderHistoryOpen} onOpenChange={setOrderHistoryOpen}>
               <DialogTrigger asChild>
-                <button className="text-green-600 hover:text-green-700 font-semibold underline cursor-pointer transition-colors">
+                <button className="text-gray-900 hover:text-green-600 hover:underline cursor-pointer transition-colors">
                   View All
                 </button>
               </DialogTrigger>
-              <DialogContent className="max-w-3xl max-h-[80vh]">
-                <DialogHeader>
-                  <DialogTitle>Order History</DialogTitle>
-                  <DialogDescription>
-                    View all past purchases and receipts
-                  </DialogDescription>
-                </DialogHeader>
-                <ScrollArea className="h-[60vh] pr-4">
-                  <div className="space-y-4">
-                    {customerPurchases.length > 0 ? (
-                      customerPurchases.map((purchase) => (
-                        <div
-                          key={purchase.Purchase_ID}
-                          className="p-4 border rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
-                          onClick={() => {
-                            setOrderHistoryOpen(false);
-                            setSelectedPurchase(purchase);
-                          }}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="flex-1">
-                              <div className="flex items-center space-x-3 mb-2">
-                                <Badge variant="secondary">
-                                  {purchase.Payment_Method}
-                                </Badge>
-                                <span className="text-sm text-gray-600">
-                                  {formatDateTime(purchase.Purchase_Date)}
-                                </span>
+              <DialogContent className="max-w-4xl max-h-[70vh] p-0">
+                <div className="flex flex-col h-full max-h-[70vh]">
+                  <DialogHeader className="px-6 py-4 border-b flex-shrink-0">
+                    <DialogTitle className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+                      <ShoppingCart className="h-6 w-6 text-green-600" />
+                      Order History
+                    </DialogTitle>
+                    <DialogDescription className="text-gray-600">
+                      View all past purchases and receipts
+                    </DialogDescription>
+                  </DialogHeader>
+                  <ScrollArea className="flex-1 overflow-y-auto px-6 py-4">
+                    <div className="space-y-4">
+                      {customerPurchases.length > 0 ? (
+                        customerPurchases.map((purchase) => (
+                          <Card
+                            key={purchase.Purchase_ID}
+                            className="p-6 hover:shadow-lg transition-all duration-300 cursor-pointer bg-white hover:bg-gray-50"
+                            onClick={() => {
+                              setOrderHistoryOpen(false);
+                              setSelectedPurchase(purchase);
+                            }}
+                          >
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1 space-y-3">
+                                <div className="flex items-center gap-3 flex-wrap">
+                                  <Badge
+                                    variant="secondary"
+                                    className="bg-green-100 text-green-700 font-semibold px-3 py-1"
+                                  >
+                                    {purchase.Payment_Method}
+                                  </Badge>
+                                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                                    <Calendar className="h-4 w-4" />
+                                    {formatDateTime(purchase.Purchase_Date)}
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Receipt className="h-4 w-4 text-gray-500" />
+                                  <span className="text-sm font-medium text-gray-700">
+                                    Order #
+                                    {getCustomerPurchaseNumber(
+                                      purchase.Purchase_ID
+                                    )}
+                                  </span>
+                                </div>
                               </div>
-                              <p className="text-sm text-gray-700">
-                                Order #
-                                {getCustomerPurchaseNumber(
-                                  purchase.Purchase_ID
-                                )}
-                              </p>
+                              <div className="text-right">
+                                <div className="text-2xl font-bold text-green-600 mb-1">
+                                  ${Number(purchase.Total_Amount).toFixed(2)}
+                                </div>
+                                <div className="text-xs text-gray-500 uppercase tracking-wide">
+                                  Total Amount
+                                </div>
+                              </div>
                             </div>
-                            <div className="text-right ml-6">
-                              <p className="text-2xl text-green-600 font-semibold">
-                                ${Number(purchase.Total_Amount).toFixed(2)}
-                              </p>
+                            <div className="mt-4 pt-4 border-t border-gray-100">
+                              <div className="flex items-center justify-between text-sm text-gray-600">
+                                <span>Click to view details</span>
+                                <ChevronRight className="h-4 w-4" />
+                              </div>
                             </div>
+                          </Card>
+                        ))
+                      ) : (
+                        <div className="text-center py-16">
+                          <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                            <ShoppingCart className="h-10 w-10 text-gray-400" />
                           </div>
+                          <h3 className="text-lg font-semibold text-gray-700 mb-2">
+                            No Purchase History
+                          </h3>
+                          <p className="text-gray-500 max-w-sm mx-auto">
+                            You haven't made any purchases yet. Start exploring
+                            our zoo and make your first purchase!
+                          </p>
                         </div>
-                      ))
-                    ) : (
-                      <div className="text-center py-12">
-                        <ShoppingCart className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-                        <p className="text-gray-600">No purchase history</p>
-                      </div>
-                    )}
-                  </div>
-                </ScrollArea>
+                      )}
+                    </div>
+                  </ScrollArea>
+                </div>
               </DialogContent>
             </Dialog>
           </div>
@@ -584,7 +614,7 @@ export function CustomerDashboard({ user }) {
                           </p>
                         </div>
                         <div className="text-right ml-6">
-                          <p className="text-3xl text-green-600 font-bold">
+                          <p className="text-2xl text-green-600 font-bold">
                             ${Number(purchase.Total_Amount).toFixed(2)}
                           </p>
                         </div>
@@ -857,7 +887,7 @@ export function CustomerDashboard({ user }) {
                       <p className="text-sm text-gray-600 mb-1 font-medium">
                         Total Purchases
                       </p>
-                      <p className="text-3xl font-bold text-green-600">
+                      <p className="text-2xl font-bold text-green-600">
                         {customerPurchases.length}
                       </p>
                     </div>
@@ -873,7 +903,7 @@ export function CustomerDashboard({ user }) {
                       <p className="text-sm text-gray-600 mb-1 font-medium">
                         Total Spent
                       </p>
-                      <p className="text-3xl font-bold text-blue-600">
+                      <p className="text-2xl font-bold text-blue-600">
                         $
                         {formatNumber(
                           customerPurchases.reduce(

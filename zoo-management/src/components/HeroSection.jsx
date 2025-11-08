@@ -87,7 +87,7 @@ export function HeroSection() {
     }
   }, [currentImageIndex]);
 
-  // Auto-advance carousel every 5 seconds (resets when buttons are clicked)
+  // Auto-advance carousel (resets when buttons are clicked)
   useEffect(() => {
     const timer = setInterval(() => {
       if (heroAnimating) return;
@@ -99,8 +99,8 @@ export function HeroSection() {
       heroTimerRef.current = setTimeout(() => {
         setHeroAnimating(false);
         heroTimerRef.current = null;
-      }, 820);
-    }, 3000);
+      }, 1200);
+    }, 3500);
 
     return () => {
       // Only clear the interval here. Don't clear heroTimerRef here because

@@ -35,7 +35,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../components/ui/select";
-import { concessionStands } from "../../data/mockData";
 import {
   LogOut,
   Plus,
@@ -66,6 +65,8 @@ export function ConcessionPortal({ user, onLogout }) {
 
   // Local state for menu items fetched from backend
   const [menuItems, setMenuItems] = useState([]);
+  // Local state for concession stands fetched from backend
+  const [allStands, setAllStands] = useState([]);
   // Selected stand filter ("All" shows all stands)
   const [selectedStand, setSelectedStand] = useState("All");
 
@@ -85,8 +86,22 @@ export function ConcessionPortal({ user, onLogout }) {
     fetchMenu();
   }, []); // Only fetch on mount
 
-  // All concession stands under management (Concession Worker manages all 4 stands)
-  const allStands = concessionStands;
+  // Fetch concession stands from backend on mount
+  useEffect(() => {
+    const fetchStands = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/admin/concession-stands`);
+        if (!res.ok) throw new Error("Failed to fetch concession stands");
+        const data = await res.json();
+        setAllStands(data);
+      } catch (err) {
+        console.error("❌ Failed to load concession stands:", err);
+        toast.error("Failed to load concession stands");
+      }
+    };
+    fetchStands();
+  }, []);
+
   const [showRevenueAllTime, setShowRevenueAllTime] = useState(false);
 
   // Edit dialog state
@@ -119,28 +134,91 @@ export function ConcessionPortal({ user, onLogout }) {
     topItemToday: null,
   });
 
-  // Fetch stats from backend on mount and periodically
+  // Compute stats from context (purchaseConcessionItems) and menu items.
+  // This avoids relying solely on the backend stats endpoint and will update
+  // automatically when purchaseConcessionItems or menuItems change.
   useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        const res = await fetch(`${API_BASE}/stats/concession`);
-        if (!res.ok) throw new Error("Failed to fetch stats");
-        const data = await res.json();
-        setStats(data);
-      } catch (err) {
-        console.error("❌ Failed to load stats:", err);
-        toast.error("Failed to load statistics");
-      }
-    };
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
 
-    // Fetch immediately
-    fetchStats();
+      // All-time revenue
+      const allTimeRevenue = purchaseConcessionItems.reduce((sum, rec) => {
+        const qty = Number(rec.Quantity ?? rec.quantity ?? 0);
+        const price = Number(rec.Unit_Price ?? rec.unit_price ?? 0);
+        return sum + qty * price;
+      }, 0);
 
-    // Refresh every 30 seconds
-    const interval = setInterval(fetchStats, 30000);
+      // Today's purchases
+      const purchaseIdsToday = new Set(
+        purchases
+          .filter((p) => {
+            const d = new Date(p.Purchase_Date);
+            d.setHours(0, 0, 0, 0);
+            return d.getTime() === today.getTime();
+          })
+          .map((p) => p.Purchase_ID)
+      );
 
-    return () => clearInterval(interval);
-  }, []);
+      const todaysConcessionItems = purchaseConcessionItems.filter((rec) =>
+        purchaseIdsToday.has(rec.Purchase_ID)
+      );
+
+      const todayRevenue = todaysConcessionItems.reduce((sum, rec) => {
+        const qty = Number(rec.Quantity ?? rec.quantity ?? 0);
+        const price = Number(rec.Unit_Price ?? rec.unit_price ?? 0);
+        return sum + qty * price;
+      }, 0);
+
+      const itemsSoldToday = todaysConcessionItems.reduce((sum, rec) => {
+        return sum + (Number(rec.Quantity ?? rec.quantity ?? 0) || 0);
+      }, 0);
+
+      // Top selling item today
+      const counts = {};
+      todaysConcessionItems.forEach((rec) => {
+        const id =
+          rec.Concession_Item_ID ?? rec.concession_item_id ?? rec.Item_ID;
+        const qty = Number(rec.Quantity ?? rec.quantity ?? 0) || 0;
+        if (!id) return;
+        counts[id] = (counts[id] || 0) + qty;
+      });
+
+      const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+      const topItemToday = top
+        ? {
+            Item_Name:
+              (
+                menuItems.find(
+                  (m) => String(m.Concession_Item_ID) === String(top[0])
+                ) || {}
+              ).Item_Name || `Item ${top[0]}`,
+            Quantity: Number(top[1]),
+          }
+        : null;
+
+      setStats({
+        todayRevenue: Number(todayRevenue.toFixed(2)),
+        allTimeRevenue: Number(allTimeRevenue.toFixed(2)),
+        itemsSoldToday,
+        topItemToday,
+      });
+    } catch (err) {
+      console.error("Error computing concession stats from context:", err);
+      // as a fallback, try to call the backend endpoint so we still surface something
+      (async () => {
+        try {
+          const res = await fetch(`${API_BASE}/stats/concession`);
+          if (res.ok) {
+            const data = await res.json();
+            setStats(data);
+          }
+        } catch (e) {
+          console.error("Fallback stats fetch failed:", e);
+        }
+      })();
+    }
+  }, [purchaseConcessionItems, menuItems, purchases]);
 
   // Fetch purchase concession items from backend and compute top/bottom sellers
   const [purchaseConcessionData, setPurchaseConcessionData] = useState([]);
@@ -335,13 +413,21 @@ export function ConcessionPortal({ user, onLogout }) {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="bg-white border-b sticky top-0 z-50">
+      <header
+        className="sticky top-0 z-50 shadow-sm border-b transition-colors duration-150 text-white"
+        style={{ backgroundColor: "rgba(180, 255, 249)" }}
+      >
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <ZooLogo size={40} />
+              <ZooLogo size={64} />
               <div>
-                <h1 className="font-semibold text-xl">Staff Portal</h1>
+                <h1
+                  className="font-semibold text-xl text-emerald-600"
+                  style={{ color: "#059669" }}
+                >
+                  Staff Portal
+                </h1>
                 <p className="text-sm text-gray-600">
                   Concession Stand Dashboard
                 </p>
@@ -349,23 +435,30 @@ export function ConcessionPortal({ user, onLogout }) {
             </div>
             <div className="flex items-center space-x-4">
               <div className="text-right">
-                <p className="font-medium">
+                <p
+                  className="font-medium text-emerald-600"
+                  style={{ color: "#059669" }}
+                >
                   Welcome, {user.First_Name} {user.Last_Name}
                 </p>
                 <p className="text-sm text-gray-600">Concession Worker</p>
               </div>
               <Button
-                variant="outline"
+                variant="default"
+                size="sm"
+                aria-label="View Food Menu"
                 onClick={() => navigate("/food")}
-                className="border-teal-600 text-teal-600 cursor-pointer"
+                className="bg-green-600 text-white rounded-full px-3 py-1.5 shadow-sm hover:bg-green-700 active:scale-95 focus:outline-none focus:ring-2 focus:ring-green-300 transition-colors duration-150"
               >
                 <Coffee className="h-4 w-4 mr-2" />
                 View Food Menu
               </Button>
               <Button
-                variant="outline"
+                variant="default"
+                size="sm"
+                aria-label="Logout"
                 onClick={onLogout}
-                className="border-green-600 text-green-600 cursor-pointer"
+                className="bg-green-600 text-white rounded-full px-3 py-1.5 shadow-sm hover:bg-green-700 active:scale-95 focus:outline-none focus:ring-2 focus:ring-green-300 transition-colors duration-150"
               >
                 <LogOut className="h-4 w-4 mr-2" />
                 Logout
@@ -468,7 +561,7 @@ export function ConcessionPortal({ user, onLogout }) {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="All">All Stands</SelectItem>
-                      {concessionStands.map((s) => (
+                      {allStands.map((s) => (
                         <SelectItem
                           key={s.Stand_ID}
                           value={s.Stand_ID.toString()}
@@ -483,7 +576,7 @@ export function ConcessionPortal({ user, onLogout }) {
                     className="bg-green-600 hover:bg-green-700 cursor-pointer"
                     onClick={() => setAddDialogOpen(true)}
                   >
-                    <Plus className="h-4 w-4 mr-2" />
+                    <Plus className="h-4 w-4 mr-2 text-white" />
                     Add New Item
                   </Button>
                 </div>
@@ -519,9 +612,8 @@ export function ConcessionPortal({ user, onLogout }) {
                       <div className="flex-1">
                         <h3 className="font-medium">{item.Item_Name}</h3>
                         <p className="text-sm text-gray-600">
-                          {concessionStands.find(
-                            (s) => s.Stand_ID === item.Stand_ID
-                          )?.Stand_Name || "Unknown Location"}
+                          {allStands.find((s) => s.Stand_ID === item.Stand_ID)
+                            ?.Stand_Name || "Unknown Location"}
                         </p>
                       </div>
                     </div>
@@ -545,7 +637,7 @@ export function ConcessionPortal({ user, onLogout }) {
                           variant="ghost"
                           size="sm"
                           onClick={() => handleDeleteClick(item)}
-                          className="cursor-pointer border-transparent text-red-600 hover:bg-red-50 hover:border-red-600 hover:text-red-600 focus:bg-red-50 focus:border-red-600 focus:text-red-600 transition-colors"
+                          className="cursor-pointer border-red-600 text-red-600 hover:bg-red-50"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -595,10 +687,15 @@ export function ConcessionPortal({ user, onLogout }) {
                         <h3 className="font-medium">
                           {topItem.item.Item_Name}
                         </h3>
-                        <p className="text-sm text-gray-600">
-                          {topItem.quantity} sold
+                        <p className="text-xs text-gray-500">
+                          Item #{topItem.item.Concession_Item_ID}
                         </p>
                       </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm text-gray-600">
+                        {topItem.quantity} sold
+                      </p>
                     </div>
                   </div>
                 ))}
@@ -642,10 +739,15 @@ export function ConcessionPortal({ user, onLogout }) {
                         <h3 className="font-medium">
                           {bottomItem.item.Item_Name}
                         </h3>
-                        <p className="text-sm text-gray-600">
-                          {bottomItem.quantity} sold
+                        <p className="text-xs text-gray-500">
+                          Item #{bottomItem.item.Concession_Item_ID}
                         </p>
                       </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm text-gray-600">
+                        {bottomItem.quantity} sold
+                      </p>
                     </div>
                   </div>
                 ))}

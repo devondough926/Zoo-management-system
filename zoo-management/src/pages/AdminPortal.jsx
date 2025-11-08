@@ -209,6 +209,7 @@ export function AdminPortal({ user, onLogout }) {
   }, [allEnclosures]);
   // start with no exhibit selected so the default animal list is empty
   const [animalExhibitFilter, setAnimalExhibitFilter] = useState("");
+  const [animalSearch, setAnimalSearch] = useState("");
 
   // Transaction sort state: clicking a column header toggles asc -> desc -> none
   const [transactionSortState, setTransactionSortState] = useState({
@@ -581,11 +582,28 @@ export function AdminPortal({ user, onLogout }) {
   const displayAnimals = useMemo(() => {
     // If no exhibit selected, return empty list by default
     if (!animalExhibitFilter) return [];
-    if (animalExhibitFilter === "All") return allAnimalsDB;
-    return allAnimalsDB.filter(
-      (animal) => animal.Enclosure_ID === animalExhibitFilter
-    );
-  }, [allAnimalsDB, animalExhibitFilter]);
+    // start with animals for the selected exhibit (or all animals)
+    const base =
+      animalExhibitFilter === "All"
+        ? allAnimalsDB
+        : allAnimalsDB.filter(
+            (animal) => animal.Enclosure_ID === animalExhibitFilter
+          );
+
+    // If there's a search term, filter the base list by ID, name, or species
+    if (animalSearch && animalSearch.trim() !== "") {
+      const s = animalSearch.trim().toLowerCase();
+      return base.filter((animal) => {
+        const idStr = (animal.Animal_ID ?? "").toString().toLowerCase();
+        const name = (animal.Animal_Name ?? "").toLowerCase();
+        const species = (animal.Species ?? "").toLowerCase();
+
+        return idStr.includes(s) || name.includes(s) || species.includes(s);
+      });
+    }
+
+    return base;
+  }, [allAnimalsDB, animalExhibitFilter, animalSearch]);
 
   // Group animals by exhibit
   const animalsByExhibit = useMemo(() => {
@@ -1573,13 +1591,18 @@ export function AdminPortal({ user, onLogout }) {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="bg-white border-b sticky top-0 z-50">
+      <header
+        className="sticky top-0 z-50 shadow-sm border-b transition-colors duration-150 text-white"
+        style={{ backgroundColor: "rgba(180, 255, 249)" }}
+      >
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <ZooLogo size={40} />
+              <ZooLogo size={64} />
               <div>
-                <h1 className="font-semibold text-xl">Admin Portal</h1>
+                <h1 className="font-semibold text-xl text-emerald-600" style={{ color: "#059669" }}>
+                  Admin Portal
+                </h1>
                 <p className="text-sm text-gray-600">
                   WildWood Zoo Management Dashboard
                 </p>
@@ -1587,21 +1610,27 @@ export function AdminPortal({ user, onLogout }) {
             </div>
             <div className="flex items-center space-x-4">
               <div className="text-right">
-                <p className="font-medium">Welcome, Administrator</p>
+                <p className="font-medium" style={{ color: "#059669" }}>
+                  Welcome, Administrator
+                </p>
                 <p className="text-sm text-gray-600">Full System Access</p>
               </div>
               <Button
-                variant="outline"
+                variant="default"
+                size="sm"
+                aria-label="View Public Site"
                 onClick={() => navigate("/")}
-                className="border-teal-600 text-teal-600 cursor-pointer"
+                className="bg-green-600 text-white rounded-full px-3 py-1.5 shadow-sm hover:bg-green-700 active:scale-95 focus:outline-none focus:ring-2 focus:ring-green-300 transition-colors duration-150"
               >
                 <Home className="h-4 w-4 mr-2" />
                 View Public Site
               </Button>
               <Button
-                variant="outline"
+                variant="default"
+                size="sm"
+                aria-label="Logout"
                 onClick={onLogout}
-                className="border-green-600 text-green-600 cursor-pointer"
+                className="bg-green-600 text-white rounded-full px-3 py-1.5 shadow-sm hover:bg-green-700 active:scale-95 focus:outline-none focus:ring-2 focus:ring-green-300 transition-colors duration-150"
               >
                 <LogOut className="h-4 w-4 mr-2" />
                 Logout
@@ -1694,7 +1723,7 @@ export function AdminPortal({ user, onLogout }) {
                 >
                   <PopoverTrigger asChild>
                     <button
-                      className="inline-flex items-center space-x-2 px-3 py-1 rounded-md border bg-white hover:bg-gray-50"
+                      className="inline-flex items-center space-x-2 px-3 py-1 rounded-md border bg-white hover:bg-gray-50 cursor-pointer"
                       aria-label="Open date range picker"
                     >
                       <Calendar className="h-5 w-5 text-gray-600" />
@@ -1986,199 +2015,227 @@ export function AdminPortal({ user, onLogout }) {
             </div>
             <Card>
               <CardContent className="pt-6">
-                <div className="w-full rounded-md border">
-                  <Table>
-                    <TableHeader className="bg-gray-100">
-                      <TableRow>
-                        <TableHead
-                          className="w-[100px] cursor-pointer select-none hover:bg-gray-50"
-                          onClick={() => toggleTransactionSort("Purchase_ID")}
-                        >
-                          Purchase ID
-                          {transactionSortState.col === "Purchase_ID" && (
-                            <span className="ml-1 text-xs">
-                              {transactionSortState.dir === "asc" ? "▲" : "▼"}
-                            </span>
-                          )}
-                        </TableHead>
-                        <TableHead
-                          className="cursor-pointer select-none hover:bg-gray-50"
-                          onClick={() => toggleTransactionSort("Purchase_Date")}
-                        >
-                          Date & Time
-                          {transactionSortState.col === "Purchase_Date" && (
-                            <span className="ml-1 text-xs">
-                              {transactionSortState.dir === "asc" ? "▲" : "▼"}
-                            </span>
-                          )}
-                        </TableHead>
-                        <TableHead
-                          className="cursor-pointer select-none hover:bg-gray-50"
-                          onClick={() => toggleTransactionSort("Customer_Name")}
-                        >
-                          Customer
-                          {transactionSortState.col === "Customer_Name" && (
-                            <span className="ml-1 text-xs">
-                              {transactionSortState.dir === "asc" ? "▲" : "▼"}
-                            </span>
-                          )}
-                        </TableHead>
-                        <TableHead
-                          className="cursor-pointer select-none hover:bg-gray-50"
-                          onClick={() => toggleTransactionSort("Category")}
-                        >
-                          Category
-                          {transactionSortState.col === "Category" && (
-                            <span className="ml-1 text-xs">
-                              {transactionSortState.dir === "asc" ? "▲" : "▼"}
-                            </span>
-                          )}
-                        </TableHead>
-                        <TableHead
-                          className="cursor-pointer select-none hover:bg-gray-50"
-                          onClick={() =>
-                            toggleTransactionSort("Item_Description")
-                          }
-                        >
-                          Description
-                          {transactionSortState.col === "Item_Description" && (
-                            <span className="ml-1 text-xs">
-                              {transactionSortState.dir === "asc" ? "▲" : "▼"}
-                            </span>
-                          )}
-                        </TableHead>
-                        <TableHead
-                          className="text-center cursor-pointer select-none hover:bg-gray-50"
-                          onClick={() => toggleTransactionSort("Quantity")}
-                        >
-                          Quantity
-                          {transactionSortState.col === "Quantity" && (
-                            <span className="ml-1 text-xs">
-                              {transactionSortState.dir === "asc" ? "▲" : "▼"}
-                            </span>
-                          )}
-                        </TableHead>
-                        <TableHead
-                          className="text-right cursor-pointer select-none hover:bg-gray-50"
-                          onClick={() => toggleTransactionSort("Unit_Price")}
-                        >
-                          Unit Price
-                          {transactionSortState.col === "Unit_Price" && (
-                            <span className="ml-1 text-xs">
-                              {transactionSortState.dir === "asc" ? "▲" : "▼"}
-                            </span>
-                          )}
-                        </TableHead>
-                        <TableHead
-                          className="text-right cursor-pointer select-none hover:bg-gray-50"
-                          onClick={() => toggleTransactionSort("Total_Amount")}
-                        >
-                          Total
-                          {transactionSortState.col === "Total_Amount" && (
-                            <span className="ml-1 text-xs">
-                              {transactionSortState.dir === "asc" ? "▲" : "▼"}
-                            </span>
-                          )}
-                        </TableHead>
-                        <TableHead
-                          className="cursor-pointer select-none hover:bg-gray-50"
-                          onClick={() =>
-                            toggleTransactionSort("Payment_Method")
-                          }
-                        >
-                          Payment
-                          {transactionSortState.col === "Payment_Method" && (
-                            <span className="ml-1 text-xs">
-                              {transactionSortState.dir === "asc" ? "▲" : "▼"}
-                            </span>
-                          )}
-                        </TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {displayedTransactions.length === 0 ? (
+                {/* Strong scroll wrapper with inline overrides to force horizontal scroll */}
+                <div
+                  className="w-full rounded-md border"
+                  style={{
+                    overflowX: "auto",
+                    WebkitOverflowScrolling: "touch",
+                  }}
+                >
+                  {/* inner container to avoid flex-parent min-width problems */}
+                  <div className="min-w-0">
+                    <Table
+                      className="min-w-[900px] table-auto"
+                      style={{
+                        minWidth: "900px",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      <TableHeader className="bg-gray-100">
                         <TableRow>
-                          <TableCell
-                            colSpan={9}
-                            className="text-center py-8 text-gray-500"
+                          <TableHead
+                            className="w-[100px] cursor-pointer select-none hover:bg-gray-50"
+                            onClick={() => toggleTransactionSort("Purchase_ID")}
                           >
-                            No transactions found for the selected date range
-                          </TableCell>
+                            Purchase ID
+                            {transactionSortState.col === "Purchase_ID" && (
+                              <span className="ml-1 text-xs">
+                                {transactionSortState.dir === "asc" ? "▲" : "▼"}
+                              </span>
+                            )}
+                          </TableHead>
+                          <TableHead
+                            className="cursor-pointer select-none hover:bg-gray-50"
+                            onClick={() =>
+                              toggleTransactionSort("Purchase_Date")
+                            }
+                          >
+                            Date & Time
+                            {transactionSortState.col === "Purchase_Date" && (
+                              <span className="ml-1 text-xs">
+                                {transactionSortState.dir === "asc" ? "▲" : "▼"}
+                              </span>
+                            )}
+                          </TableHead>
+                          <TableHead
+                            className="cursor-pointer select-none hover:bg-gray-50"
+                            onClick={() =>
+                              toggleTransactionSort("Customer_Name")
+                            }
+                          >
+                            Customer
+                            {transactionSortState.col === "Customer_Name" && (
+                              <span className="ml-1 text-xs">
+                                {transactionSortState.dir === "asc" ? "▲" : "▼"}
+                              </span>
+                            )}
+                          </TableHead>
+                          <TableHead
+                            className="cursor-pointer select-none hover:bg-gray-50"
+                            onClick={() => toggleTransactionSort("Category")}
+                          >
+                            Category
+                            {transactionSortState.col === "Category" && (
+                              <span className="ml-1 text-xs">
+                                {transactionSortState.dir === "asc" ? "▲" : "▼"}
+                              </span>
+                            )}
+                          </TableHead>
+                          <TableHead
+                            className="cursor-pointer select-none hover:bg-gray-50"
+                            onClick={() =>
+                              toggleTransactionSort("Item_Description")
+                            }
+                          >
+                            Description
+                            {transactionSortState.col ===
+                              "Item_Description" && (
+                              <span className="ml-1 text-xs">
+                                {transactionSortState.dir === "asc" ? "▲" : "▼"}
+                              </span>
+                            )}
+                          </TableHead>
+                          <TableHead
+                            className="text-center cursor-pointer select-none hover:bg-gray-50"
+                            onClick={() => toggleTransactionSort("Quantity")}
+                          >
+                            Quantity
+                            {transactionSortState.col === "Quantity" && (
+                              <span className="ml-1 text-xs">
+                                {transactionSortState.dir === "asc" ? "▲" : "▼"}
+                              </span>
+                            )}
+                          </TableHead>
+                          <TableHead
+                            className="text-right cursor-pointer select-none hover:bg-gray-50"
+                            onClick={() => toggleTransactionSort("Unit_Price")}
+                          >
+                            Unit Price
+                            {transactionSortState.col === "Unit_Price" && (
+                              <span className="ml-1 text-xs">
+                                {transactionSortState.dir === "asc" ? "▲" : "▼"}
+                              </span>
+                            )}
+                          </TableHead>
+                          <TableHead
+                            className="text-right cursor-pointer select-none hover:bg-gray-50"
+                            onClick={() =>
+                              toggleTransactionSort("Total_Amount")
+                            }
+                          >
+                            Total
+                            {transactionSortState.col === "Total_Amount" && (
+                              <span className="ml-1 text-xs">
+                                {transactionSortState.dir === "asc" ? "▲" : "▼"}
+                              </span>
+                            )}
+                          </TableHead>
+                          <TableHead
+                            className="cursor-pointer select-none hover:bg-gray-50"
+                            onClick={() =>
+                              toggleTransactionSort("Payment_Method")
+                            }
+                          >
+                            Payment
+                            {transactionSortState.col === "Payment_Method" && (
+                              <span className="ml-1 text-xs">
+                                {transactionSortState.dir === "asc" ? "▲" : "▼"}
+                              </span>
+                            )}
+                          </TableHead>
                         </TableRow>
-                      ) : (
-                        displayedTransactions.map((transaction, index) => (
-                          <TableRow key={`${transaction.Purchase_ID}-${index}`}>
-                            <TableCell className="font-medium">
-                              #{transaction.Purchase_ID}
-                            </TableCell>
-                            <TableCell className="whitespace-nowrap">
-                              {new Date(
-                                transaction.Purchase_Date
-                              ).toLocaleString("en-US", {
-                                month: "short",
-                                day: "numeric",
-                                year: "numeric",
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </TableCell>
-                            <TableCell className="whitespace-nowrap">
-                              {transaction.Customer_Name}
-                            </TableCell>
-                            <TableCell>
-                              <Badge
-                                variant="outline"
-                                className={
-                                  transaction.Category === "Ticket"
-                                    ? "bg-green-50 text-green-700 border-green-200"
-                                    : transaction.Category === "Membership"
-                                    ? "bg-purple-50 text-purple-700 border-purple-200"
-                                    : transaction.Category === "Gift Shop"
-                                    ? "bg-blue-50 text-blue-700 border-blue-200"
-                                    : ""
-                                }
-                                style={
-                                  transaction.Category !== "Ticket" &&
-                                  transaction.Category !== "Membership" &&
-                                  transaction.Category !== "Gift Shop"
-                                    ? {
-                                        backgroundColor: "#FFF7ED",
-                                        color: "#C2410C",
-                                        border: "1px solid #FED7AA",
-                                      }
-                                    : {}
-                                }
-                              >
-                                {transaction.Category}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              {transaction.Item_Description
-                                ? transaction.Item_Description.replace(
-                                    /\s*\([^)]*\)\s*$/,
-                                    ""
-                                  )
-                                : ""}
-                            </TableCell>
-                            <TableCell className="text-center">
-                              {transaction.Quantity}
-                            </TableCell>
-                            <TableCell className="text-right whitespace-nowrap">
-                              ${parseFloat(transaction.Unit_Price).toFixed(2)}
-                            </TableCell>
-                            <TableCell className="text-right font-semibold text-green-600 whitespace-nowrap">
-                              ${parseFloat(transaction.Total_Amount).toFixed(2)}
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="secondary">
-                                {transaction.Payment_Method}
-                              </Badge>
+                      </TableHeader>
+                      <TableBody>
+                        {displayedTransactions.length === 0 ? (
+                          <TableRow>
+                            <TableCell
+                              colSpan={9}
+                              className="text-center py-8 text-gray-500"
+                            >
+                              No transactions found for the selected date range
                             </TableCell>
                           </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
+                        ) : (
+                          displayedTransactions.map((transaction, index) => (
+                            <TableRow
+                              key={`${transaction.Purchase_ID}-${index}`}
+                            >
+                              <TableCell className="font-medium">
+                                #{transaction.Purchase_ID}
+                              </TableCell>
+                              <TableCell className="whitespace-nowrap">
+                                {new Date(
+                                  transaction.Purchase_Date
+                                ).toLocaleString("en-US", {
+                                  month: "short",
+                                  day: "numeric",
+                                  year: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </TableCell>
+                              <TableCell className="whitespace-nowrap">
+                                {transaction.Customer_Name}
+                              </TableCell>
+                              <TableCell>
+                                <Badge
+                                  variant="outline"
+                                  className={
+                                    transaction.Category === "Ticket"
+                                      ? "bg-green-50 text-green-700 border-green-200"
+                                      : transaction.Category === "Membership"
+                                      ? "bg-purple-50 text-purple-700 border-purple-200"
+                                      : transaction.Category === "Gift Shop"
+                                      ? "bg-blue-50 text-blue-700 border-blue-200"
+                                      : ""
+                                  }
+                                  style={
+                                    transaction.Category !== "Ticket" &&
+                                    transaction.Category !== "Membership" &&
+                                    transaction.Category !== "Gift Shop"
+                                      ? {
+                                          backgroundColor: "#FFF7ED",
+                                          color: "#C2410C",
+                                          border: "1px solid #FED7AA",
+                                        }
+                                      : {}
+                                  }
+                                >
+                                  {transaction.Category}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                {transaction.Item_Description
+                                  ? transaction.Item_Description.replace(
+                                      /\s*\([^)]*\)\s*$/,
+                                      ""
+                                    )
+                                  : ""}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                {transaction.Quantity}
+                              </TableCell>
+                              <TableCell className="text-right whitespace-nowrap">
+                                ${parseFloat(transaction.Unit_Price).toFixed(2)}
+                              </TableCell>
+                              <TableCell className="text-right font-semibold text-green-600 whitespace-nowrap">
+                                $
+                                {parseFloat(transaction.Total_Amount).toFixed(
+                                  2
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant="secondary">
+                                  {transaction.Payment_Method}
+                                </Badge>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </div>
                 <div className="mt-4 flex items-center justify-between text-sm text-gray-600">
                   <span>
@@ -3111,6 +3168,15 @@ export function AdminPortal({ user, onLogout }) {
                   <p className="text-sm text-gray-600">
                     Manage zoo animals organized by their exhibits
                   </p>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      placeholder="Search by ID, or keywords"
+                      value={animalSearch}
+                      onChange={(e) => setAnimalSearch(e.target.value)}
+                      className="w-64"
+                    />
+                    <Search className="h-4 w-4 text-gray-500" />
+                  </div>
                 </div>
                 <div
                   className={
@@ -3158,14 +3224,9 @@ export function AdminPortal({ user, onLogout }) {
                                 const enclosure = allEnclosures.find(
                                   (e) => e.Enclosure_ID === animal.Enclosure_ID
                                 );
-                                const daysAgo = (animal.Animal_ID * 13) % 365;
-                                const dateAdded = new Date();
-                                dateAdded.setDate(
-                                  dateAdded.getDate() - daysAgo
-                                );
-                                const dateAddedString = formatDate(
-                                  dateAdded.toISOString().split("T")[0]
-                                );
+                                const dateAddedString = animal.Date_Added
+                                  ? formatDate(animal.Date_Added)
+                                  : "N/A";
 
                                 return (
                                   <div
@@ -3671,176 +3732,207 @@ export function AdminPortal({ user, onLogout }) {
                   </div>
                   <Card id="animals">
                     <CardContent className="pt-2">
-                      <div className="w-full rounded-md border">
-                        <Table id="animal-table">
-                          <TableHeader className="bg-gray-100">
-                            <TableRow>
-                              <TableHead
-                                className="w-[80px] cursor-pointer select-none hover:bg-gray-50"
-                                onClick={() => toggleAnimalSort("Animal_ID")}
-                              >
-                                ID
-                                {animalSortState.col === "Animal_ID" && (
-                                  <span className="ml-1 text-xs">
-                                    {animalSortState.dir === "asc" ? "▲" : "▼"}
-                                  </span>
-                                )}
-                              </TableHead>
-                              <TableHead
-                                className="cursor-pointer select-none hover:bg-gray-50"
-                                onClick={() => toggleAnimalSort("Animal_Name")}
-                              >
-                                Name
-                                {animalSortState.col === "Animal_Name" && (
-                                  <span className="ml-1 text-xs">
-                                    {animalSortState.dir === "asc" ? "▲" : "▼"}
-                                  </span>
-                                )}
-                              </TableHead>
-                              <TableHead
-                                className="cursor-pointer select-none hover:bg-gray-50"
-                                onClick={() => toggleAnimalSort("Species")}
-                              >
-                                Species
-                                {animalSortState.col === "Species" && (
-                                  <span className="ml-1 text-xs">
-                                    {animalSortState.dir === "asc" ? "▲" : "▼"}
-                                  </span>
-                                )}
-                              </TableHead>
-                              <TableHead
-                                className="cursor-pointer select-none hover:bg-gray-50"
-                                onClick={() => toggleAnimalSort("Gender")}
-                              >
-                                Gender
-                                {animalSortState.col === "Gender" && (
-                                  <span className="ml-1 text-xs">
-                                    {animalSortState.dir === "asc" ? "▲" : "▼"}
-                                  </span>
-                                )}
-                              </TableHead>
-                              <TableHead
-                                className="cursor-pointer select-none hover:bg-gray-50"
-                                onClick={() => toggleAnimalSort("Age")}
-                              >
-                                Age
-                                {animalSortState.col === "Age" && (
-                                  <span className="ml-1 text-xs">
-                                    {animalSortState.dir === "asc" ? "▲" : "▼"}
-                                  </span>
-                                )}
-                              </TableHead>
-                              <TableHead
-                                className="cursor-pointer select-none hover:bg-gray-50 text-center"
-                                onClick={() => toggleAnimalSort("Weight")}
-                              >
-                                Weight (lbs)
-                                {animalSortState.col === "Weight" && (
-                                  <span className="ml-1 text-xs">
-                                    {animalSortState.dir === "asc" ? "▲" : "▼"}
-                                  </span>
-                                )}
-                              </TableHead>
-                              <TableHead
-                                className="cursor-pointer select-none hover:bg-gray-50"
-                                onClick={() =>
-                                  toggleAnimalSort("Health_Status")
-                                }
-                              >
-                                Health Status
-                                {animalSortState.col === "Health_Status" && (
-                                  <span className="ml-1 text-xs">
-                                    {animalSortState.dir === "asc" ? "▲" : "▼"}
-                                  </span>
-                                )}
-                              </TableHead>
-                              <TableHead
-                                className="cursor-pointer select-none hover:bg-gray-50"
-                                onClick={() =>
-                                  toggleAnimalSort("Enclosure_Name")
-                                }
-                              >
-                                Enclosure
-                                {animalSortState.col === "Enclosure_Name" && (
-                                  <span className="ml-1 text-xs">
-                                    {animalSortState.dir === "asc" ? "▲" : "▼"}
-                                  </span>
-                                )}
-                              </TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {displayedAnimals.length === 0 ? (
+                      {/* Strong scroll wrapper for Animals table to force horizontal scroll */}
+                      <div
+                        className="w-full rounded-md border"
+                        style={{
+                          overflowX: "auto",
+                          WebkitOverflowScrolling: "touch",
+                        }}
+                      >
+                        <div className="min-w-0">
+                          <Table
+                            id="animal-table"
+                            className="min-w-[900px] table-auto"
+                            style={{ minWidth: "900px", whiteSpace: "nowrap" }}
+                          >
+                            <TableHeader className="bg-gray-100">
                               <TableRow>
-                                <TableCell
-                                  colSpan={8}
-                                  className="text-center py-8 text-gray-500"
+                                <TableHead
+                                  className="w-[80px] cursor-pointer select-none hover:bg-gray-50"
+                                  onClick={() => toggleAnimalSort("Animal_ID")}
                                 >
-                                  No animals found for the current page
-                                </TableCell>
+                                  ID
+                                  {animalSortState.col === "Animal_ID" && (
+                                    <span className="ml-1 text-xs">
+                                      {animalSortState.dir === "asc"
+                                        ? "▲"
+                                        : "▼"}
+                                    </span>
+                                  )}
+                                </TableHead>
+                                <TableHead
+                                  className="cursor-pointer select-none hover:bg-gray-50"
+                                  onClick={() =>
+                                    toggleAnimalSort("Animal_Name")
+                                  }
+                                >
+                                  Name
+                                  {animalSortState.col === "Animal_Name" && (
+                                    <span className="ml-1 text-xs">
+                                      {animalSortState.dir === "asc"
+                                        ? "▲"
+                                        : "▼"}
+                                    </span>
+                                  )}
+                                </TableHead>
+                                <TableHead
+                                  className="cursor-pointer select-none hover:bg-gray-50"
+                                  onClick={() => toggleAnimalSort("Species")}
+                                >
+                                  Species
+                                  {animalSortState.col === "Species" && (
+                                    <span className="ml-1 text-xs">
+                                      {animalSortState.dir === "asc"
+                                        ? "▲"
+                                        : "▼"}
+                                    </span>
+                                  )}
+                                </TableHead>
+                                <TableHead
+                                  className="cursor-pointer select-none hover:bg-gray-50"
+                                  onClick={() => toggleAnimalSort("Gender")}
+                                >
+                                  Gender
+                                  {animalSortState.col === "Gender" && (
+                                    <span className="ml-1 text-xs">
+                                      {animalSortState.dir === "asc"
+                                        ? "▲"
+                                        : "▼"}
+                                    </span>
+                                  )}
+                                </TableHead>
+                                <TableHead
+                                  className="cursor-pointer select-none hover:bg-gray-50"
+                                  onClick={() => toggleAnimalSort("Age")}
+                                >
+                                  Age
+                                  {animalSortState.col === "Age" && (
+                                    <span className="ml-1 text-xs">
+                                      {animalSortState.dir === "asc"
+                                        ? "▲"
+                                        : "▼"}
+                                    </span>
+                                  )}
+                                </TableHead>
+                                <TableHead
+                                  className="cursor-pointer select-none hover:bg-gray-50 text-center"
+                                  onClick={() => toggleAnimalSort("Weight")}
+                                >
+                                  Weight (lbs)
+                                  {animalSortState.col === "Weight" && (
+                                    <span className="ml-1 text-xs">
+                                      {animalSortState.dir === "asc"
+                                        ? "▲"
+                                        : "▼"}
+                                    </span>
+                                  )}
+                                </TableHead>
+                                <TableHead
+                                  className="cursor-pointer select-none hover:bg-gray-50"
+                                  onClick={() =>
+                                    toggleAnimalSort("Health_Status")
+                                  }
+                                >
+                                  Health Status
+                                  {animalSortState.col === "Health_Status" && (
+                                    <span className="ml-1 text-xs">
+                                      {animalSortState.dir === "asc"
+                                        ? "▲"
+                                        : "▼"}
+                                    </span>
+                                  )}
+                                </TableHead>
+                                <TableHead
+                                  className="cursor-pointer select-none hover:bg-gray-50"
+                                  onClick={() =>
+                                    toggleAnimalSort("Enclosure_Name")
+                                  }
+                                >
+                                  Enclosure
+                                  {animalSortState.col === "Enclosure_Name" && (
+                                    <span className="ml-1 text-xs">
+                                      {animalSortState.dir === "asc"
+                                        ? "▲"
+                                        : "▼"}
+                                    </span>
+                                  )}
+                                </TableHead>
                               </TableRow>
-                            ) : (
-                              displayedAnimals.map((animal) => (
-                                <TableRow key={animal.Animal_ID}>
-                                  <TableCell className="font-medium">
-                                    #{animal.Animal_ID}
-                                  </TableCell>
-                                  <TableCell>{animal.Animal_Name}</TableCell>
-                                  <TableCell>{animal.Species}</TableCell>
-                                  <TableCell>{animal.Gender}</TableCell>
-                                  <TableCell>
-                                    {calculateAge(animal.Birthday)}
-                                  </TableCell>
-                                  <TableCell className="whitespace-nowrap text-center">
-                                    {typeof animal.Weight !== "undefined" &&
-                                    animal.Weight !== null &&
-                                    isFinite(Number(animal.Weight))
-                                      ? Number(animal.Weight).toFixed(2)
-                                      : "—"}
-                                  </TableCell>
-                                  <TableCell>
-                                    <Badge
-                                      variant="outline"
-                                      className={
-                                        animal.Health_Status === "Good"
-                                          ? "bg-green-50 text-green-700 border-green-200"
-                                          : ""
-                                      }
-                                      style={
-                                        animal.Health_Status === "Excellent"
-                                          ? {
-                                              backgroundColor: "#ECFEFF",
-                                              color: "#0E7490",
-                                              border: "1px solid #A5F3FC",
-                                            }
-                                          : animal.Health_Status === "Fair"
-                                          ? {
-                                              backgroundColor: "#FEFCE8",
-                                              color: "#ad7f49ff",
-                                              border: "1px solid #FEF08A",
-                                            }
-                                          : animal.Health_Status ===
-                                            "Needs Attention"
-                                          ? {
-                                              backgroundColor: "#FEF2F2",
-                                              color: "#B91C1C",
-                                              border: "1px solid #FECACA",
-                                            }
-                                          : {}
-                                      }
-                                    >
-                                      {animal.Health_Status}
-                                    </Badge>
-                                  </TableCell>
-                                  <TableCell>
-                                    {enclosureMap[animal.Enclosure_ID]
-                                      ?.Enclosure_Name || "Unknown"}
+                            </TableHeader>
+                            <TableBody>
+                              {displayedAnimals.length === 0 ? (
+                                <TableRow>
+                                  <TableCell
+                                    colSpan={8}
+                                    className="text-center py-8 text-gray-500"
+                                  >
+                                    No animals found for the current page
                                   </TableCell>
                                 </TableRow>
-                              ))
-                            )}
-                          </TableBody>
-                        </Table>
+                              ) : (
+                                displayedAnimals.map((animal) => (
+                                  <TableRow key={animal.Animal_ID}>
+                                    <TableCell className="font-medium">
+                                      #{animal.Animal_ID}
+                                    </TableCell>
+                                    <TableCell>{animal.Animal_Name}</TableCell>
+                                    <TableCell>{animal.Species}</TableCell>
+                                    <TableCell>{animal.Gender}</TableCell>
+                                    <TableCell>
+                                      {calculateAge(animal.Birthday)}
+                                    </TableCell>
+                                    <TableCell className="whitespace-nowrap text-center">
+                                      {typeof animal.Weight !== "undefined" &&
+                                      animal.Weight !== null &&
+                                      isFinite(Number(animal.Weight))
+                                        ? Number(animal.Weight).toFixed(2)
+                                        : "—"}
+                                    </TableCell>
+                                    <TableCell>
+                                      <Badge
+                                        variant="outline"
+                                        className={
+                                          animal.Health_Status === "Good"
+                                            ? "bg-green-50 text-green-700 border-green-200"
+                                            : ""
+                                        }
+                                        style={
+                                          animal.Health_Status === "Excellent"
+                                            ? {
+                                                backgroundColor: "#ECFEFF",
+                                                color: "#0E7490",
+                                                border: "1px solid #A5F3FC",
+                                              }
+                                            : animal.Health_Status === "Fair"
+                                            ? {
+                                                backgroundColor: "#FEFCE8",
+                                                color: "#ad7f49ff",
+                                                border: "1px solid #FEF08A",
+                                              }
+                                            : animal.Health_Status ===
+                                              "Needs Attention"
+                                            ? {
+                                                backgroundColor: "#FEF2F2",
+                                                color: "#B91C1C",
+                                                border: "1px solid #FECACA",
+                                              }
+                                            : {}
+                                        }
+                                      >
+                                        {animal.Health_Status}
+                                      </Badge>
+                                    </TableCell>
+                                    <TableCell>
+                                      {enclosureMap[animal.Enclosure_ID]
+                                        ?.Enclosure_Name || "Unknown"}
+                                    </TableCell>
+                                  </TableRow>
+                                ))
+                              )}
+                            </TableBody>
+                          </Table>
+                        </div>
                       </div>
                       <div className="mt-4 flex items-center justify-between text-sm text-gray-600">
                         <span>

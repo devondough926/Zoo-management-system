@@ -602,9 +602,12 @@ export const getAllAnimals = async (req, res) => {
         a.Image_URL,
         e.Enclosure_Name,
         e.Enclosure_Type,
-        e.Location_ID
+        e.Location_ID,
+        DATE_FORMAT(acl.Log_Date, '%Y-%m-%d') as Date_Added
       FROM Animal a
       LEFT JOIN Enclosure e ON a.Enclosure_ID = e.Enclosure_ID
+      LEFT JOIN animal_care_log acl ON a.Animal_ID = acl.Animal_ID 
+        AND acl.Log_Type = 'new'
       ORDER BY a.Animal_Name
     `);
     res.json(animals);
@@ -632,9 +635,12 @@ export const getAnimalById = async (req, res) => {
         a.Image_URL,
         e.Enclosure_Name,
         e.Enclosure_Type,
-        e.Location_ID
+        e.Location_ID,
+        DATE_FORMAT(acl.Log_Date, '%Y-%m-%d') as Date_Added
       FROM Animal a
       LEFT JOIN Enclosure e ON a.Enclosure_ID = e.Enclosure_ID
+      LEFT JOIN animal_care_log acl ON a.Animal_ID = acl.Animal_ID 
+        AND acl.Log_Type = 'new'
       WHERE a.Animal_ID = ?
     `,
       [id]
@@ -895,16 +901,19 @@ export const getRevenueData = async (req, res) => {
       params
     );
 
-    // Get membership revenue by summing Purchase.Total_Amount for purchases
-    // that are membership purchases (Purchase.Membership_ID IS NOT NULL).
+    // Get membership revenue by summing the authoritative Membership.Price
+    // for purchases that are membership purchases (Purchase.Membership_ID IS NOT NULL).
+    // This ensures only the membership portion is counted when a purchase
+    // contains other items as well.
     const membershipFilter = dateFilter
       ? `${dateFilter} AND p.Membership_ID IS NOT NULL`
       : "WHERE p.Membership_ID IS NOT NULL";
 
     const [membershipRevenue] = await db.query(
       `
-      SELECT COALESCE(SUM(p.Total_Amount), 0) as revenue
+      SELECT COALESCE(SUM(m.Price), 0) as revenue
       FROM Purchase p
+      JOIN Membership m ON p.Membership_ID = m.Membership_ID
       ${membershipFilter}
     `,
       params
@@ -1245,10 +1254,11 @@ export const getDetailedTransactions = async (req, res) => {
           'Annual Membership' as Item_Description,
           'Membership' as Category,
           1 as Quantity,
-          p.Total_Amount as Unit_Price,
-          p.Total_Amount as Total_Amount
+          m.Price as Unit_Price,
+          m.Price as Total_Amount
   FROM Purchase p
   LEFT JOIN Customer c ON p.Customer_ID = c.Customer_ID
+  JOIN Membership m ON p.Membership_ID = m.Membership_ID
   ${membershipFilter}
       )
       ORDER BY Purchase_Date DESC, Purchase_ID, Category
@@ -1357,5 +1367,48 @@ export const updatePricing = async (req, res) => {
   } catch (error) {
     console.error("Error updating pricing:", error);
     res.status(500).json({ error: "Failed to update pricing" });
+  }
+};
+
+// ============================================
+// CONCESSION STANDS
+// ============================================
+
+export const getAllConcessionStands = async (req, res) => {
+  try {
+    const [stands] = await db.query(`
+      SELECT 
+        Stand_ID,
+        Stand_Name,
+        Stand_Type,
+        Location_ID
+      FROM concession_stand
+      ORDER BY Stand_ID
+    `);
+    res.json(stands);
+  } catch (error) {
+    console.error("Error fetching concession stands:", error);
+    res.status(500).json({ error: "Failed to fetch concession stands" });
+  }
+};
+
+// ============================================
+// GIFT SHOPS
+// ============================================
+
+export const getAllGiftShops = async (req, res) => {
+  try {
+    const [shops] = await db.query(`
+      SELECT 
+        Shop_ID,
+        Shop_Name,
+        Location_ID
+      FROM gift_shop
+      ORDER BY Shop_ID
+    `);
+    res.json(shops);
+  } catch (error) {
+    console.error("Error fetching gift shops:", error);
+    res.status(500).json({ error: "Failed to fetch gift shops" });
   }
 };

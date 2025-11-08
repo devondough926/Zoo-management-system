@@ -29,7 +29,6 @@ import { VeterinarianPortal } from "./pages/staff/VeterinarianPortal.jsx";
 import { ZookeeperPortal } from "./pages/staff/ZookeeperPortal.jsx";
 import { GiftShopPortal } from "./pages/staff/GiftShopPortal.jsx";
 import { ConcessionPortal } from "./pages/staff/ConcessionPortal.jsx";
-import { ManagerPortal } from "./pages/staff/ManagerPortal.jsx";
 import { AdminPortal } from "./pages/AdminPortal.jsx";
 
 // Login
@@ -215,8 +214,7 @@ function AppContent() {
         return <GiftShopPortal user={employee} onLogout={handleLogout} />;
       case "concession":
         return <ConcessionPortal user={employee} onLogout={handleLogout} />;
-      case "supervisor":
-        return <ManagerPortal user={employee} onLogout={handleLogout} />;
+      /* Manager role mapping removed: supervisors will fall through to default behavior */
       default:
         return <Navigate to="/" replace />;
     }

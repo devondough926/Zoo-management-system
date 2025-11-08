@@ -24,7 +24,6 @@ import {
 } from "../../components/ui/select";
 import { Label } from "../../components/ui/label";
 import { Switch } from "../../components/ui/switch";
-import { enclosures } from "../../data/mockData";
 import {
   LogOut,
   ClipboardList,
@@ -44,6 +43,9 @@ export function ZookeeperPortal({ user, onLogout }) {
   const [selectedHabitat, setSelectedHabitat] = useState(1);
   const [careDialogOpen, setCareDialogOpen] = useState(false);
   const [selectedAnimal, setSelectedAnimal] = useState(null);
+
+  // Fetch enclosures from backend
+  const [enclosures, setEnclosures] = useState([]);
 
   // Real data from API
   const [stats, setStats] = useState({
@@ -110,7 +112,21 @@ export function ZookeeperPortal({ user, onLogout }) {
   // Load initial data
   useEffect(() => {
     fetchStats();
+    fetchEnclosures();
   }, []);
+
+  // Fetch enclosures from backend
+  const fetchEnclosures = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/zookeeper/enclosures`);
+      if (!response.ok) throw new Error("Failed to fetch enclosures");
+      const data = await response.json();
+      setEnclosures(data);
+    } catch (error) {
+      console.error("Error fetching enclosures:", error);
+      toast.error("Failed to load enclosures");
+    }
+  };
 
   // Fetch animals and status when habitat changes
   useEffect(() => {
@@ -208,27 +224,40 @@ export function ZookeeperPortal({ user, onLogout }) {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="bg-white border-b sticky top-0 z-50">
+      <header
+        className="sticky top-0 z-50 shadow-sm border-b transition-colors duration-150 text-white"
+        style={{ backgroundColor: "rgba(180, 255, 249)" }}
+      >
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <ZooLogo size={40} />
+              <ZooLogo size={64} />
               <div>
-                <h1 className="font-semibold text-xl">Staff Portal</h1>
+                <h1
+                  className="font-semibold text-xl text-emerald-600"
+                  style={{ color: "#059669" }}
+                >
+                  Staff Portal
+                </h1>
                 <p className="text-sm text-gray-600">Zookeeper Dashboard</p>
               </div>
             </div>
             <div className="flex items-center space-x-4">
               <div className="text-right">
-                <p className="font-medium">
+                <p
+                  className="font-medium text-emerald-600"
+                  style={{ color: "#059669" }}
+                >
                   Welcome, {user.First_Name} {user.Last_Name}
                 </p>
                 <p className="text-sm text-gray-600">{user.Job_Title?.Title}</p>
               </div>
               <Button
-                variant="outline"
+                variant="default"
+                size="sm"
+                aria-label="Logout"
                 onClick={onLogout}
-                className="border-green-600 text-green-600 cursor-pointer"
+                className="bg-green-600 text-white rounded-full px-3 py-1.5 shadow-sm hover:bg-green-700 active:scale-95 focus:outline-none focus:ring-2 focus:ring-green-300 transition-colors duration-150"
               >
                 <LogOut className="h-4 w-4 mr-2" />
                 Logout

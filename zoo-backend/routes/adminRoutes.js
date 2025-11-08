@@ -35,6 +35,8 @@ import {
   getDetailedTransactions,
   getPricing,
   updatePricing,
+  getAllConcessionStands,
+  getAllGiftShops,
 } from "../controllers/adminController.js";
 
 const router = express.Router();
@@ -254,5 +256,11 @@ router.get("/transactions/detailed", getDetailedTransactions);
 // Pricing routes
 router.get("/pricing", getPricing);
 router.patch("/pricing", updatePricing);
+
+// Concession stands route
+router.get("/concession-stands", getAllConcessionStands);
+
+// Gift shops route
+router.get("/gift-shops", getAllGiftShops);
 
 export default router;

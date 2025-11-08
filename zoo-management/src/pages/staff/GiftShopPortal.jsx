@@ -28,7 +28,6 @@ import {
 } from "../../components/ui/alert-dialog";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
-import { giftShops } from "../../data/mockData";
 import {
   LogOut,
   Plus,
@@ -39,6 +38,13 @@ import {
   TrendingUp,
   Trash2,
 } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../components/ui/select";
 import { toast } from "sonner";
 import { ZooLogo } from "../../components/ZooLogo";
 import { ImageWithFallback } from "../../components/figma/ImageWithFallback";
@@ -65,7 +71,8 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
     purchaseItems,
   } = useData();
 
-  const allShops = giftShops;
+  const [allShops, setAllShops] = useState([]);
+  const [selectedCategory, setSelectedCategory] = useState("All");
   const [showRevenueAllTime, setShowRevenueAllTime] = useState(false);
 
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -93,6 +100,7 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
   const [itemsSoldToday, setItemsSoldToday] = useState(0);
   const [topSellingToday, setTopSellingToday] = useState(null);
   const [topItems, setTopItems] = useState([]);
+  const [bottomItems, setBottomItems] = useState([]);
   const [allTimeRevenue, setAllTimeRevenue] = useState(0);
 
   // Fetch analytics data from backend
@@ -147,9 +155,83 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
         console.error("Error fetching analytics:", error);
       }
     };
+    // Try fetching analytics; if that fails or returns no data, compute from local context
+    const tryFetchOrCompute = async () => {
+      let fetched = false;
+      try {
+        await fetchAnalytics();
+        fetched = true;
+      } catch (err) {
+        console.error(
+          "Analytics fetch failed, will compute from context:",
+          err
+        );
+      }
 
-    fetchAnalytics();
-  }, [shopItems]);
+      // If fetch didn't populate values (or returned zeros), compute from purchases/purchaseItems
+      const isTodayRevenueEmpty =
+        !todayRevenue ||
+        Number.isNaN(Number(todayRevenue)) ||
+        todayRevenue === 0;
+      const isItemsSoldEmpty = !itemsSoldToday || itemsSoldToday === 0;
+
+      if (!fetched || (isTodayRevenueEmpty && isItemsSoldEmpty)) {
+        try {
+          // compute from purchases + purchaseItems provided by DataContext
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+
+          const purchaseIdsToday = new Set(
+            purchases
+              .filter((p) => {
+                const d = new Date(p.Purchase_Date);
+                d.setHours(0, 0, 0, 0);
+                return d.getTime() === today.getTime();
+              })
+              .map((p) => p.Purchase_ID)
+          );
+
+          let revenue = 0;
+          let itemsSold = 0;
+          const soldById = {};
+
+          purchaseItems.forEach((pi) => {
+            if (!purchaseIdsToday.has(pi.Purchase_ID)) return;
+            // skip sentinel IDs (mirrors backend behavior)
+            if (pi.Item_ID === 9000) return;
+            const qty = Number(pi.Quantity || 0);
+            const price = Number(pi.Unit_Price || 0);
+            revenue += qty * price;
+            itemsSold += qty;
+            soldById[pi.Item_ID] = (soldById[pi.Item_ID] || 0) + qty;
+          });
+
+          setTodayRevenue(Number(revenue.toFixed(2)));
+          setItemsSoldToday(itemsSold);
+
+          // derive top selling today from soldById
+          const topEntry = Object.entries(soldById).sort(
+            (a, b) => b[1] - a[1]
+          )[0];
+          if (topEntry) {
+            const id = Number(topEntry[0]);
+            const qty = Number(topEntry[1]);
+            const item = shopItems.find((it) => it.Item_ID === id) || {
+              Item_Name: `Item ${id}`,
+            };
+            setTopSellingToday({
+              item: { Item_Name: item.Item_Name },
+              quantity: qty,
+            });
+          }
+        } catch (err) {
+          console.error("Error computing analytics from context:", err);
+        }
+      }
+    };
+
+    tryFetchOrCompute();
+  }, [shopItems, purchases, purchaseItems]);
 
   // Calculate all-time revenue from purchases
   useEffect(() => {
@@ -159,30 +241,50 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
     setAllTimeRevenue(revenue);
   }, [purchaseItems]);
 
-  const topSellingItemToday = topSellingToday;
+  // Compute Top 3 and Bottom 3 selling items from local context (purchaseItems + shopItems)
+  useEffect(() => {
+    try {
+      // Build counts for each item id
+      const counts = {};
+      purchaseItems.forEach((pi) => {
+        const id = Number(pi.Item_ID || pi.ItemId || pi.Item_ID);
+        if (!id || id === 9000) return; // skip sentinel
+        const qty = Number(pi.Quantity ?? pi.quantity ?? 0) || 0;
+        counts[id] = (counts[id] || 0) + qty;
+      });
 
-  const totalItemCount = 32;
-  const actualItemCount = shopItems.length;
-  const bottomItems =
-    actualItemCount >= 3
-      ? [
-          {
-            item: shopItems[Math.min(7, actualItemCount - 1)],
-            quantity: 18,
-            rank: totalItemCount,
-          },
-          {
-            item: shopItems[Math.min(3, actualItemCount - 2)],
-            quantity: 27,
-            rank: totalItemCount - 1,
-          },
-          {
-            item: shopItems[Math.min(4, actualItemCount - 3)],
-            quantity: 35,
-            rank: totalItemCount - 2,
-          },
-        ].filter((t) => t.item)
-      : [];
+      // Map shop items to include computed quantity (default 0)
+      const itemsWithCounts = shopItems.map((it) => ({
+        item: it,
+        quantity: counts[it.Item_ID] || counts[it.ItemId] || 0,
+      }));
+
+      // Top 3 (most sold)
+      const sortedDesc = [...itemsWithCounts].sort(
+        (a, b) => b.quantity - a.quantity
+      );
+      const top3 = sortedDesc
+        .slice(0, 3)
+        .map((t, i) => ({ ...t, rank: i + 1 }));
+      setTopItems(top3);
+
+      // Bottom 3 (least sold) — include zero-sales items
+      const sortedAsc = [...itemsWithCounts].sort(
+        (a, b) => a.quantity - b.quantity
+      );
+      const bottom3 = sortedAsc.slice(0, 3).map((t, i) => ({
+        ...t,
+        rank: Math.max(shopItems.length - i, 1),
+      }));
+      setBottomItems(bottom3);
+    } catch (err) {
+      console.error("Error computing top/bottom items:", err);
+      setTopItems([]);
+      setBottomItems([]);
+    }
+  }, [shopItems, purchaseItems]);
+
+  const topSellingItemToday = topSellingToday;
 
   const handleEditClick = (item) => {
     setEditingItem(item);
@@ -312,37 +414,52 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b sticky top-0 z-50">
+      <header
+        className="sticky top-0 z-50 shadow-sm border-b transition-colors duration-150 text-white"
+        style={{ backgroundColor: "rgba(180, 255, 249)" }}
+      >
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <ZooLogo size={40} />
+              <ZooLogo size={64} />
               <div>
-                <h1 className="font-semibold text-xl">Staff Portal</h1>
+                <h1
+                  className="font-semibold text-xl text-emerald-600"
+                  style={{ color: "#059669" }}
+                >
+                  Staff Portal
+                </h1>
                 <p className="text-sm text-gray-600">Gift Shop Dashboard</p>
               </div>
             </div>
             <div className="flex items-center space-x-4">
               <div className="text-right">
-                <p className="font-medium">
+                <p
+                  className="font-medium text-emerald-600"
+                  style={{ color: "#059669" }}
+                >
                   Welcome, {user.First_Name} {user.Last_Name}
                 </p>
                 <p className="text-sm text-gray-600">Gift Shop Worker</p>
               </div>
               <Button
-                variant="outline"
+                variant="default"
+                size="sm"
+                aria-label="View Gift Shop"
                 onClick={() =>
                   onNavigate ? onNavigate("shop") : navigate("/shop")
                 }
-                className="border-teal-600 text-teal-600 cursor-pointer"
+                className="bg-green-600 text-white rounded-full px-3 py-1.5 shadow-sm hover:bg-green-700 active:scale-95 focus:outline-none focus:ring-2 focus:ring-green-300 transition-colors duration-150"
               >
                 <ShoppingBag className="h-4 w-4 mr-2" />
                 View Gift Shop
               </Button>
               <Button
-                variant="outline"
+                variant="default"
+                size="sm"
+                aria-label="Logout"
                 onClick={onLogout}
-                className="border-green-600 text-green-600 cursor-pointer"
+                className="bg-green-600 text-white rounded-full px-3 py-1.5 shadow-sm hover:bg-green-700 active:scale-95 focus:outline-none focus:ring-2 focus:ring-green-300 transition-colors duration-150"
               >
                 <LogOut className="h-4 w-4 mr-2" />
                 Logout
@@ -422,69 +539,94 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
                 <ShoppingBag className="h-5 w-5 mr-2 text-green-600" />
                 Current Inventory ({shopItems.length} items)
               </CardTitle>
-              <Button
-                className="bg-green-600 hover:bg-green-700 cursor-pointer"
-                onClick={() => setAddDialogOpen(true)}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Add New Item
-              </Button>
+              <div className="flex items-center gap-3">
+                <Select
+                  value={selectedCategory}
+                  onValueChange={(v) => setSelectedCategory(v)}
+                >
+                  <SelectTrigger className="w-44 cursor-pointer">
+                    <SelectValue placeholder="All Categories" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="All">All Categories</SelectItem>
+                    {giftShopCategories.map((c) => (
+                      <SelectItem key={c} value={c}>
+                        {c}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Button
+                  className="bg-green-600 text-white rounded-full px-3 py-1.5 shadow-sm hover:bg-green-700 active:scale-95 focus:outline-none focus:ring-2 focus:ring-green-300 transition-colors duration-150"
+                  onClick={() => setAddDialogOpen(true)}
+                >
+                  <Plus className="h-4 w-4 mr-2 text-white" />
+                  Add New Item
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent>
             <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2">
-              {shopItems.map((product) => (
-                <div
-                  key={product.Item_ID}
-                  className="flex items-center justify-between p-4 rounded-lg border hover:border-green-600 transition-colors"
-                >
-                  <div className="flex items-center space-x-4 flex-1">
-                    <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden">
-                      {product.Image_URL || product.image ? (
-                        <ImageWithFallback
-                          src={product.Image_URL || product.image}
-                          alt={product.Item_Name}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <ShoppingBag className="h-8 w-8 text-gray-400" />
-                      )}
+              {shopItems
+                .filter((product) =>
+                  selectedCategory === "All"
+                    ? true
+                    : String(product.Category) === String(selectedCategory)
+                )
+                .map((product) => (
+                  <div
+                    key={product.Item_ID}
+                    className="flex items-center justify-between p-4 rounded-lg border hover:border-green-600 transition-colors"
+                  >
+                    <div className="flex items-center space-x-4 flex-1">
+                      <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden">
+                        {product.Image_URL || product.image ? (
+                          <ImageWithFallback
+                            src={product.Image_URL || product.image}
+                            alt={product.Item_Name}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <ShoppingBag className="h-8 w-8 text-gray-400" />
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-medium">{product.Item_Name}</h3>
+                        <p className="text-sm text-gray-600">
+                          {product.Category || "Uncategorized"}
+                        </p>
+                      </div>
                     </div>
-                    <div className="flex-1">
-                      <h3 className="font-medium">{product.Item_Name}</h3>
-                      <p className="text-sm text-gray-600">
-                        {product.Category || "Uncategorized"}
-                      </p>
+                    <div className="flex items-center space-x-4">
+                      <div className="text-right">
+                        <p className="text-2xl font-semibold text-green-600">
+                          ${parseFloat(product.Price).toFixed(2)}
+                        </p>
+                      </div>
+                      <div className="flex space-x-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEditClick(product)}
+                          className="cursor-pointer border-transparent hover:bg-blue-50 hover:border-blue-300 hover:text-blue-600 focus:bg-blue-50 focus:border-blue-300 focus:text-blue-600 transition-colors"
+                        >
+                          <Edit2 className="h-4 w-4 mr-1" />
+                          Edit
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDeleteClick(product)}
+                          className="cursor-pointer border-red-600 text-red-600 hover:bg-red-50"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-4">
-                    <div className="text-right">
-                      <p className="text-2xl font-semibold text-green-600">
-                        ${parseFloat(product.Price).toFixed(2)}
-                      </p>
-                    </div>
-                    <div className="flex space-x-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleEditClick(product)}
-                        className="cursor-pointer"
-                      >
-                        <Edit2 className="h-4 w-4 mr-1" />
-                        Edit
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleDeleteClick(product)}
-                        className="cursor-pointer border-red-600 text-red-600 hover:bg-red-50"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              ))}
+                ))}
             </div>
           </CardContent>
         </Card>
@@ -511,9 +653,9 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
                         #{topItem.rank}
                       </div>
                       <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden">
-                        {topItem.item.Image_URL ? (
+                        {topItem.item.Image_URL || topItem.item.image ? (
                           <ImageWithFallback
-                            src={topItem.item.Image_URL}
+                            src={topItem.item.Image_URL || topItem.item.image}
                             alt={topItem.item.Item_Name}
                             className="w-full h-full object-cover"
                           />
@@ -525,10 +667,15 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
                         <h3 className="font-medium">
                           {topItem.item.Item_Name}
                         </h3>
-                        <p className="text-sm text-gray-600">
-                          {topItem.quantity} sold
+                        <p className="text-xs text-gray-500">
+                          Item #{topItem.item.Item_ID}
                         </p>
                       </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm text-gray-600">
+                        {topItem.quantity} sold
+                      </p>
                     </div>
                   </div>
                 ))}
@@ -557,9 +704,11 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
                         #{bottomItem.rank}
                       </div>
                       <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden">
-                        {bottomItem.item.image ? (
+                        {bottomItem.item.Image_URL || bottomItem.item.image ? (
                           <ImageWithFallback
-                            src={bottomItem.item.image}
+                            src={
+                              bottomItem.item.Image_URL || bottomItem.item.image
+                            }
                             alt={bottomItem.item.Item_Name}
                             className="w-full h-full object-cover"
                           />
@@ -571,10 +720,15 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
                         <h3 className="font-medium">
                           {bottomItem.item.Item_Name}
                         </h3>
-                        <p className="text-sm text-gray-600">
-                          {bottomItem.quantity} sold
+                        <p className="text-xs text-gray-500">
+                          Item #{bottomItem.item.Item_ID}
                         </p>
                       </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm text-gray-600">
+                        {bottomItem.quantity} sold
+                      </p>
                     </div>
                   </div>
                 ))}

@@ -234,14 +234,14 @@ export function ShopPage({ addToCart, allowCartActions = true }) {
 
   // Convert database items to ShopItem format
   const shopItemsFromDb = dbItems
-  .filter((item) => item && item.Item_ID && item.Item_Name && item.Price)
-  .map((item) => ({
-    id: item.Item_ID.toString(),
-    name: item.Item_Name,
-    price: parseFloat(item.Price),
-    category: item.Category || "Uncategorized",
-    image: item.Image_URL || item.image,
-  }));
+    .filter((item) => item && item.Item_ID && item.Item_Name && item.Price)
+    .map((item) => ({
+      id: item.Item_ID.toString(),
+      name: item.Item_Name,
+      price: parseFloat(item.Price),
+      category: item.Category || "Uncategorized",
+      image: item.Image_URL || item.image,
+    }));
 
   const filteredItems =
     selectedCategory === "All"
@@ -339,10 +339,10 @@ export function ShopPage({ addToCart, allowCartActions = true }) {
                 key={category}
                 onClick={() => setSelectedCategory(category)}
                 variant={selectedCategory === category ? "default" : "outline"}
-                className={`cursor-pointer ${
+                className={`cursor-pointer transition-colors duration-150 ${
                   selectedCategory === category
-                    ? "bg-green-600 hover:bg-green-700"
-                    : "border-green-600 text-green-600 hover:bg-green-50"
+                    ? "!bg-green-200 !text-black hover:!bg-green-300 border-green-200"
+                    : "border-green-600 text-black hover:bg-green-50 bg-transparent"
                 }`}
               >
                 {category}

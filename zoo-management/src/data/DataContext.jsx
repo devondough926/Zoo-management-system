@@ -11,10 +11,6 @@
  */
 
 import { createContext, useContext, useState, useEffect } from "react";
-import {
-  mockAnimals,
-  concessionItems as initialConcessionItems,
-} from "./mockData";
 
 const DataContext = createContext(undefined);
 
@@ -22,16 +18,59 @@ const API_BASE_URL =
   import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
 export function DataProvider({ children }) {
-  const [animals, setAnimals] = useState(mockAnimals);
+  const [animals, setAnimals] = useState([]);
   const [items, setItems] = useState([]);
-  const [concessionItems, setConcessionItems] = useState(
-    initialConcessionItems
-  );
+  const [concessionItems, setConcessionItems] = useState([]);
   const [purchases, setPurchases] = useState([]);
   const [tickets, setTickets] = useState([]);
   const [purchaseItems, setPurchaseItems] = useState([]);
   const [purchaseConcessionItems, setPurchaseConcessionItems] = useState([]);
   const [memberships, setMemberships] = useState([]);
+
+  // Fetch animals from backend on mount
+  useEffect(() => {
+    const fetchAnimals = async () => {
+      try {
+        console.log("Fetching animals...");
+        const response = await fetch(`${API_BASE_URL}/admin/animals`);
+        console.log("Animals response status:", response.status);
+        if (response.ok) {
+          const data = await response.json();
+          console.log("Fetched animals:", data.length);
+          setAnimals(data);
+        } else {
+          console.error("Failed to fetch animals, status:", response.status);
+        }
+      } catch (error) {
+        console.error("Error fetching animals:", error);
+      }
+    };
+    fetchAnimals();
+  }, []);
+
+  // Fetch concession items from backend on mount
+  useEffect(() => {
+    const fetchConcessionItems = async () => {
+      try {
+        console.log("Fetching concession items...");
+        const response = await fetch(`${API_BASE_URL}/food`);
+        console.log("Concession items response status:", response.status);
+        if (response.ok) {
+          const data = await response.json();
+          console.log("Fetched concession items:", data.length);
+          setConcessionItems(data);
+        } else {
+          console.error(
+            "Failed to fetch concession items, status:",
+            response.status
+          );
+        }
+      } catch (error) {
+        console.error("Error fetching concession items:", error);
+      }
+    };
+    fetchConcessionItems();
+  }, []);
 
   // Fetch shop items from backend on mount
   useEffect(() => {
@@ -72,6 +111,19 @@ export function DataProvider({ children }) {
         if (purchaseItemsResponse.ok) {
           const purchaseItemsData = await purchaseItemsResponse.json();
           setPurchaseItems(purchaseItemsData);
+        }
+
+        // Also fetch concession purchase items so staff portals can compute stats locally
+        try {
+          const pcRes = await fetch(
+            `${API_BASE_URL}/admin/purchase-concession-items`
+          );
+          if (pcRes.ok) {
+            const pcData = await pcRes.json();
+            setPurchaseConcessionItems(pcData);
+          }
+        } catch (err) {
+          console.error("Error fetching concession purchase items:", err);
         }
       } catch (error) {
         console.error("Error fetching purchase data:", error);

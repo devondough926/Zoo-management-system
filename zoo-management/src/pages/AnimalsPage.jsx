@@ -223,10 +223,10 @@ export function AnimalsPage() {
                     variant={
                       selectedHabitat === habitat ? "default" : "outline"
                     }
-                    className={`cursor-pointer ${
+                    className={`cursor-pointer transition-colors duration-150 ${
                       selectedHabitat === habitat
-                        ? "bg-green-600 hover:bg-green-700"
-                        : "border-green-600 text-green-600 hover:bg-green-50"
+                        ? "!bg-green-200 !text-black hover:!bg-green-300 border-green-200"
+                        : "border-green-600 text-black hover:bg-green-50 bg-transparent"
                     }`}
                   >
                     {habitat}
