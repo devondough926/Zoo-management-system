@@ -411,7 +411,7 @@ export function ConcessionPortal({ user, onLogout }) {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-100">
       {/* Header */}
       <header
         className="sticky top-0 z-50 shadow-sm border-b transition-colors duration-150 text-white"

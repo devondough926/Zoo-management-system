@@ -104,12 +104,20 @@ export function AnimalsPage() {
 
     setCurrentPage(page);
 
-    // Slower custom smooth scroll so users observe the transition
+    // Smooth scroll to the animals section title (not to top of page)
     try {
       if (typeof window !== "undefined") {
         const start = window.scrollY || window.pageYOffset || 0;
-        if (start > 0) {
-          const duration = 900;
+        const targetEl = document.getElementById("animals-section");
+        if (targetEl) {
+          const rect = targetEl.getBoundingClientRect();
+          // small offset so title isn't flush to top (adjust if you have a fixed header)
+          const offset = 20;
+          const target = Math.round(
+            (window.scrollY || window.pageYOffset || 0) + rect.top - offset
+          );
+
+          const duration = 600;
           const startTime = performance.now();
           const easeInOutQuad = (t) =>
             t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
@@ -118,7 +126,8 @@ export function AnimalsPage() {
             const elapsed = now - startTime;
             const progress = Math.min(elapsed / duration, 1);
             const ease = easeInOutQuad(progress);
-            window.scrollTo(0, Math.round(start * (1 - ease)));
+            const pos = Math.round(start + (target - start) * ease);
+            window.scrollTo({ top: pos, left: 0 });
             if (elapsed < duration) requestAnimationFrame(step);
           };
 
@@ -237,7 +246,7 @@ export function AnimalsPage() {
           </section>
 
           {/* Animals Grid */}
-          <section className="py-16 pb-24">
+          <section id="animals-section" className="py-16 pb-24">
             <div className="container mx-auto px-6">
               <h2 className="text-2xl mb-8 text-center">
                 {selectedHabitat === "All" ? "All Animals" : selectedHabitat}

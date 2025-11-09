@@ -14,52 +14,46 @@ export function generatePaginationArray(
   totalPages,
   maxVisible = 5
 ) {
-  // If total pages is very small (3 or less), show all
-  if (totalPages <= 3) {
-    return Array.from({ length: totalPages }, (_, i) => i + 1);
-  }
+  // New behavior:
+  // - Show a centered window currentPage +/- 2
+  // - Always include first and last
+  // - Use 'ellipsis' when the gap between window and ends is > 1
+  // - If the gap is exactly 1, include the intervening page (no ellipsis)
+  const total = Math.max(1, totalPages);
+
+  // For very small totals show all pages
+  if (total <= 5) return Array.from({ length: total }, (_, i) => i + 1);
+
+  const left = Math.max(1, currentPage - 2);
+  const right = Math.min(total, currentPage + 2);
 
   const pages = [];
-  const showEllipsis = "ellipsis";
 
-  // Always show first page
+  // always first
   pages.push(1);
 
-  // Determine if we're closer to the start or end
-  const isNearStart = currentPage <= 2;
-  const isNearEnd = currentPage >= totalPages - 1;
-
-  if (isNearStart) {
-    // Show: 1, 2, 3 ... lastPage
-    for (let i = 2; i <= Math.min(3, totalPages - 1); i++) {
-      pages.push(i);
-    }
-    if (totalPages > 4) {
-      pages.push(showEllipsis);
-    }
-  } else if (isNearEnd) {
-    // Show: 1 ... lastPage-2, lastPage-1, lastPage
-    if (totalPages > 4) {
-      pages.push(showEllipsis);
-    }
-    for (let i = Math.max(2, totalPages - 2); i < totalPages; i++) {
-      pages.push(i);
-    }
-  } else {
-    // Show: 1 ... currentPage-1, currentPage, currentPage+1 ... lastPage
-    pages.push(showEllipsis);
-    pages.push(currentPage - 1);
-    pages.push(currentPage);
-    pages.push(currentPage + 1);
-    pages.push(showEllipsis);
+  // leading gap
+  if (left > 2) {
+    pages.push("ellipsis");
+  } else if (left === 2) {
+    pages.push(2);
   }
 
-  // Always show last page if not already included
-  if (pages[pages.length - 1] !== totalPages) {
-    pages.push(totalPages);
+  const start = Math.max(left, 2);
+  const end = Math.min(right, total - 1);
+  for (let p = start; p <= end; p++) pages.push(p);
+
+  // trailing gap
+  if (right < total - 1) {
+    pages.push("ellipsis");
+  } else if (right === total - 1) {
+    pages.push(total - 1);
   }
 
-  return pages;
+  if (total > 1) pages.push(total);
+
+  // remove duplicates while preserving order
+  return pages.filter((v, i, arr) => arr.indexOf(v) === i);
 }
 
 /**

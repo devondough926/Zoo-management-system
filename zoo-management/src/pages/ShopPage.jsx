@@ -262,13 +262,38 @@ export function ShopPage({ addToCart, allowCartActions = true }) {
     setCurrentPage(1);
   }, [selectedCategory]);
 
-  // Scroll to top of the page/hero when pagination changes
+  // Scroll to the shop section title when pagination changes
   useEffect(() => {
-    // Use a slightly slower, custom smooth scroll so the user sees the transition
     try {
-      smoothScrollToTop(900);
+      if (typeof window !== "undefined") {
+        const start = window.scrollY || window.pageYOffset || 0;
+        const targetEl = document.getElementById("shop-section");
+        if (targetEl) {
+          const rect = targetEl.getBoundingClientRect();
+          const offset = 20; // small offset to avoid flush-to-top
+          const target = Math.round(
+            (window.scrollY || window.pageYOffset || 0) + rect.top - offset
+          );
+
+          const duration = 600;
+          const startTime = performance.now();
+          const easeInOutQuad = (t) =>
+            t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+
+          const step = (now) => {
+            const elapsed = now - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            const ease = easeInOutQuad(progress);
+            const pos = Math.round(start + (target - start) * ease);
+            window.scrollTo({ top: pos, left: 0 });
+            if (elapsed < duration) requestAnimationFrame(step);
+          };
+
+          requestAnimationFrame(step);
+        }
+      }
     } catch (e) {
-      // ignore errors in non-browser environments
+      // ignore for non-browser environments
     }
   }, [currentPage]);
 
@@ -353,7 +378,7 @@ export function ShopPage({ addToCart, allowCartActions = true }) {
       </section>
 
       {/* Products Grid */}
-      <section className="py-16 pb-24">
+      <section id="shop-section" className="py-16 pb-24">
         <div className="container mx-auto px-6">
           <h2 className="text-2xl mb-8 text-center">
             {selectedCategory === "All" ? "All Products" : selectedCategory}

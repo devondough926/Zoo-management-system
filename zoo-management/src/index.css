@@ -321,7 +321,8 @@
   iframe,
   embed,
   object {
-    vertical-align: middle;
+    /* display block for replaced elements for responsive layout; vertical-align
+       is ignored on block-level elements so remove it to avoid tooling warnings */
     display: block;
   }
 
@@ -2960,6 +2961,7 @@
       .\*\:data-\[slot\=select-value\]\:line-clamp-1 > *
     )[data-slot="select-value"] {
     -webkit-line-clamp: 1;
+    line-clamp: 1;
     -webkit-box-orient: vertical;
     display: -webkit-box;
     overflow: hidden;

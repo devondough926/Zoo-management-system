@@ -413,7 +413,7 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-100">
       <header
         className="sticky top-0 z-50 shadow-sm border-b transition-colors duration-150 text-white"
         style={{ backgroundColor: "rgba(180, 255, 249)" }}

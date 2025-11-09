@@ -1317,8 +1317,9 @@ export function AdminPortal({ user, onLogout }) {
         weight: parseFloat(formData.weight),
         birthday: formData.birthday,
         healthStatus: formData.healthStatus || "Good",
-        isVaccinated: formData.isVaccinated || false,
         enclosureId: parseInt(formData.enclosureId),
+        meals: formData.meals ? parseInt(formData.meals) : undefined,
+        feedingFrequency: formData.feedingFrequency || undefined,
       };
 
       const newAnimal = await animalAPI.create(animalData);
@@ -1600,7 +1601,10 @@ export function AdminPortal({ user, onLogout }) {
             <div className="flex items-center space-x-4">
               <ZooLogo size={64} />
               <div>
-                <h1 className="font-semibold text-xl text-emerald-600" style={{ color: "#059669" }}>
+                <h1
+                  className="font-semibold text-xl text-emerald-600"
+                  style={{ color: "#059669" }}
+                >
                   Admin Portal
                 </h1>
                 <p className="text-sm text-gray-600">
@@ -3155,7 +3159,6 @@ export function AdminPortal({ user, onLogout }) {
                   ) : (
                     <div className="flex items-center gap-2 mt-6">
                       <Filter className="h-5 w-5 text-gray-600" />
-                      <span className="font-semibold text-gray-700">Sort</span>
                     </div>
                   )}
                 </div>
@@ -3352,7 +3355,7 @@ export function AdminPortal({ user, onLogout }) {
                   ) : (
                     <div className="flex items-center gap-2">
                       <Filter className="h-5 w-5 text-gray-600" />
-                      <h3 className="font-semibold text-gray-700">Sort</h3>
+                      <h3 className="font-semibold text-gray-700"></h3>
                     </div>
                   )}
                 </div>
@@ -3560,7 +3563,13 @@ export function AdminPortal({ user, onLogout }) {
                 Excellent: "#06B6D4",
                 Good: "#059669",
                 Fair: "#F59E0B",
-                "Needs Attention": "#EF4444",
+                "Needs Attention": "#EF4444", // Stored as "Needs Attention" in DB but displayed as "Critical"
+              };
+
+              // Helper to convert backend status to display label
+              const backendToDisplayLabel = (backendStatus) => {
+                if (backendStatus === "Needs Attention") return "Critical";
+                return backendStatus;
               };
 
               // Health status distribution for pie chart
@@ -3585,7 +3594,7 @@ export function AdminPortal({ user, onLogout }) {
                   fill: healthColors.Fair,
                 },
                 {
-                  name: "Needs Attention",
+                  name: "Critical",
                   value: sortedAnimals.filter(
                     (a) => a.Health_Status === "Needs Attention"
                   ).length,
@@ -3707,9 +3716,7 @@ export function AdminPortal({ user, onLogout }) {
                           </p>
                         </div>
                         <div className="text-center p-4 bg-red-50 rounded-lg">
-                          <p className="text-sm text-gray-600 mb-1">
-                            Needs Attention
-                          </p>
+                          <p className="text-sm text-gray-600 mb-1">Critical</p>
                           <p
                             className="text-3xl font-semibold"
                             style={{ color: healthColors["Needs Attention"] }}
@@ -3920,7 +3927,9 @@ export function AdminPortal({ user, onLogout }) {
                                             : {}
                                         }
                                       >
-                                        {animal.Health_Status}
+                                        {backendToDisplayLabel(
+                                          animal.Health_Status
+                                        )}
                                       </Badge>
                                     </TableCell>
                                     <TableCell>
@@ -4116,6 +4125,7 @@ export function AdminPortal({ user, onLogout }) {
                                   />
                                   <Bar
                                     dataKey="Needs Attention"
+                                    name="Critical"
                                     stackId="a"
                                     fill={healthColors["Needs Attention"]}
                                   />
@@ -4977,6 +4987,9 @@ function AddAnimalDialog({
     birthday: "",
     enclosureId: "1",
     imageFile: null,
+    healthStatus: "Good",
+    feedingFrequency: "Daily",
+    meals: "2",
   });
   const [imagePreview, setImagePreview] = useState(null);
 
@@ -4995,6 +5008,25 @@ function AddAnimalDialog({
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    // Basic client-side validation
+    if (!formData.name.trim() || !formData.species.trim()) {
+      toast.error("Please provide animal name and species");
+      return;
+    }
+    // Block negative weights at submission time — zero is allowed if the caller permits it
+    if (formData.weight && Number(formData.weight) < 0) {
+      toast.error("Weight cannot be negative");
+      return;
+    }
+    if (formData.birthday) {
+      const b = new Date(formData.birthday);
+      const now = new Date();
+      if (isNaN(b.getTime()) || b > now) {
+        toast.error("Birthday must be a valid date in the past");
+        return;
+      }
+    }
+
     onAdd(formData);
     setFormData({
       name: "",
@@ -5004,6 +5036,9 @@ function AddAnimalDialog({
       birthday: "",
       enclosureId: "1",
       imageFile: null,
+      healthStatus: "Good",
+      feedingFrequency: "Daily",
+      meals: "2",
     });
     setImagePreview(null);
   };
@@ -5077,10 +5112,88 @@ function AddAnimalDialog({
                 step="0.1"
                 placeholder="e.g., 250"
                 value={formData.weight}
-                onChange={(e) =>
-                  setFormData({ ...formData, weight: e.target.value })
-                }
+                min="0"
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v === "") {
+                    setFormData({ ...formData, weight: "" });
+                    return;
+                  }
+                  const n = Number(v);
+                  if (!Number.isNaN(n)) {
+                    // Clamp negative values up to 0 so negative input is not retained
+                    setFormData({
+                      ...formData,
+                      weight: String(Math.max(0, n)),
+                    });
+                  } else {
+                    setFormData({ ...formData, weight: v });
+                  }
+                }}
                 required
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="healthStatus">Health Status</Label>
+              <Select
+                value={formData.healthStatus}
+                onValueChange={(value) =>
+                  setFormData({ ...formData, healthStatus: value })
+                }
+              >
+                <SelectTrigger className="cursor-pointer">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Excellent">Excellent</SelectItem>
+                  <SelectItem value="Good">Good</SelectItem>
+                  <SelectItem value="Fair">Fair</SelectItem>
+                  <SelectItem value="Needs Attention">
+                    Needs Attention
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {/* Vaccinated input removed per UI request */}
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="feedingFrequency">Feeding Frequency</Label>
+              <Select
+                value={formData.feedingFrequency}
+                onValueChange={(value) => {
+                  // adjust default meals for common frequencies
+                  const defaultMeals = value === "Daily" ? "2" : "1";
+                  setFormData({
+                    ...formData,
+                    feedingFrequency: value,
+                    meals: defaultMeals,
+                  });
+                }}
+              >
+                <SelectTrigger className="cursor-pointer">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Daily">Daily</SelectItem>
+                  <SelectItem value="Weekly">Weekly</SelectItem>
+                  <SelectItem value="Bi-Weekly">Bi-Weekly</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="meals">Meals per cycle</Label>
+              <Input
+                id="meals"
+                type="number"
+                min="1"
+                value={formData.meals}
+                onChange={(e) =>
+                  setFormData({ ...formData, meals: e.target.value })
+                }
               />
             </div>
           </div>
@@ -5130,8 +5243,7 @@ function AddAnimalDialog({
               onChange={handleImageChange}
             />
             <p className="text-sm text-gray-500 mt-1">
-              Upload a photo of this animal (JPG, PNG, WebP - max 5MB). If not
-              provided, a default species image will be used.
+              Upload a photo of this animal.
             </p>
             {imagePreview && (
               <div className="relative inline-block mt-2">
@@ -5276,6 +5388,12 @@ function EditAnimalDialog({
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    // Prevent negative weights on edit
+    if (formData.weight && Number(formData.weight) < 0) {
+      toast.error("Weight cannot be negative");
+      return;
+    }
+
     onUpdate(formData);
   };
 
@@ -5344,9 +5462,23 @@ function EditAnimalDialog({
                 step="0.1"
                 placeholder="e.g., 250"
                 value={formData.weight}
-                onChange={(e) =>
-                  setFormData({ ...formData, weight: e.target.value })
-                }
+                min="0"
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v === "") {
+                    setFormData({ ...formData, weight: "" });
+                    return;
+                  }
+                  const n = Number(v);
+                  if (!Number.isNaN(n)) {
+                    setFormData({
+                      ...formData,
+                      weight: String(Math.max(0, n)),
+                    });
+                  } else {
+                    setFormData({ ...formData, weight: v });
+                  }
+                }}
                 required
               />
             </div>
