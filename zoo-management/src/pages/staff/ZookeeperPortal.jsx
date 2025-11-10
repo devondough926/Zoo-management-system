@@ -58,6 +58,17 @@ import { CleaningCard } from "../../components/CleaningCard";
 import { zookeeperAPI, employeeAPI } from "../../services/zookeeperAPI";
 
 export function ZookeeperPortal({ user, onLogout }) {
+  // Helper: format a Date to MySQL DATETIME string 'YYYY-MM-DD HH:MM:SS'
+  const toMySQLDatetime = (date) => {
+    const pad = (n) => String(n).padStart(2, "0");
+    const y = date.getFullYear();
+    const m = pad(date.getMonth() + 1);
+    const d = pad(date.getDate());
+    const hh = pad(date.getHours());
+    const mm = pad(date.getMinutes());
+    const ss = pad(date.getSeconds());
+    return `${y}-${m}-${d} ${hh}:${mm}:${ss}`;
+  };
   const [feedingTasks, setFeedingTasks] = useState([]);
   const [cleaningSchedules, setCleaningSchedules] = useState([]);
   const [cleaningCardData, setCleaningCardData] = useState([]);
@@ -484,13 +495,14 @@ export function ZookeeperPortal({ user, onLogout }) {
           return;
         }
 
-        // Create feeding log
+        // Create feeding log (include client timestamp formatted for MySQL)
         await zookeeperAPI.createCareLog({
           animalId: feedingTask.Animal_ID,
           employeeId: parseInt(selectedEmployeeId),
           activity: `Fed ${feedingTask.Animal_Name}`,
           logType: "fed",
           notes: taskNotes || null,
+          logDate: toMySQLDatetime(new Date()),
         });
 
         toast.success(`Feeding logged for ${feedingTask.Animal_Name}`, {
@@ -520,6 +532,7 @@ export function ZookeeperPortal({ user, onLogout }) {
           activity: `Cleaned ${cleaningSchedule.Enclosure_Name}`,
           logType: "maintenance",
           notes: taskNotes || null,
+          logDate: toMySQLDatetime(new Date()),
         });
 
         toast.success(`${cleaningSchedule.Enclosure_Name} marked as cleaned`, {
@@ -1153,10 +1166,18 @@ export function ZookeeperPortal({ user, onLogout }) {
                           className={`p-4 rounded-lg border transition-all ${
                             task.Status === "unfed"
                               ? "border-red-300 bg-red-50"
-                              : task.Status === "partial"
-                              ? "border-orange-300 bg-orange-50"
-                              : "border-green-300 bg-green-50 opacity-60"
+                              : task.Status === "complete"
+                              ? "border-green-300 bg-green-50 opacity-60"
+                              : ""
                           }`}
+                          style={
+                            task.Status === "partial"
+                              ? {
+                                  border: "1px solid #fdba74",
+                                  backgroundColor: "#fff7ed",
+                                }
+                              : undefined
+                          }
                         >
                           <div className="flex items-start justify-between">
                             <div className="flex items-start space-x-4 flex-1">

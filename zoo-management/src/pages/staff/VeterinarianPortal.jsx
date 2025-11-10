@@ -782,22 +782,37 @@ export function VeterinarianPortal(
     const now = new Date();
     const nextDue = new Date(now.getTime() + 365 * 86400000);
     try {
-      // Create vaccination log using the new endpoint
+      // Create vaccination log using the new endpoint.
+      // Send an explicit UTC ISO timestamp (logDate) so the backend stores
+      // the exact client-side time the action was taken. The backend will
+      // still accept this and return the persisted Log_Date which we then
+      // convert to ISO for consistent local rendering.
       const response = await veterinarianAPI.createVaccinationLog({
         animalId: selectedAnimal.Animal_ID,
         employeeId: selectedVetId,
         vaccine: "Vaccination",
         notes: vaccinationNotes || "Vaccination administered",
         markVaccinated: true,
+        logDate: now.toISOString(),
       });
+
+      // Prefer the backend-returned Log_Date (formatted as 'YYYY-MM-DD HH:mm:ss').
+      // Convert it to an ISO string for consistent client-side usage. If the
+      // backend doesn't return it for some reason, fall back to our local now.
+      const savedLogDateRaw = response?.log?.Log_Date;
+      const savedLogDate = savedLogDateRaw
+        ? new Date(savedLogDateRaw).toISOString()
+        : now.toISOString();
 
       const newVaccination = {
         Vaccine_ID: `VAC-${response.log.Log_ID}`,
         Animal_ID: selectedAnimal.Animal_ID,
         Animal_Name: selectedAnimal.Animal_Name,
         Vaccine_Type: "Vaccination",
-        Date_Administered: now.toISOString(),
-        Next_Due_Date: nextDue.toISOString(),
+        Date_Administered: savedLogDate,
+        Next_Due_Date: new Date(
+          new Date(savedLogDate).getTime() + 365 * 86400000
+        ).toISOString(),
         Administered_By: selectedVetId,
         Notes: vaccinationNotes || "Vaccination administered",
       };
@@ -823,7 +838,8 @@ export function VeterinarianPortal(
         {
           id: `VACCLOG-${response.log.Log_ID}`,
           type: "vaccination",
-          timestamp: now.toISOString(),
+          // use the persisted date if available so UI matches backend
+          timestamp: savedLogDate,
           animal_name: selectedAnimal.Animal_Name,
           details: `Vaccination administered`,
           veterinarian_name: vetName,
@@ -1768,15 +1784,6 @@ export function VeterinarianPortal(
                   <SelectValue placeholder="Select veterinarian" />
                 </SelectTrigger>
                 <SelectContent className="max-h-60 overflow-auto">
-                  {(vets || []).map((v) => (
-                    <SelectItem key={v.id} value={String(v.id)}>
-                      <span className="font-mono mr-2">#{v.id}</span>
-                      <span>
-                        {v.lastName ? `${v.lastName}, ${v.firstName}` : v.name}
-                        {v.title ? ` — ${v.title}` : ""}
-                      </span>
-                    </SelectItem>
-                  ))}
                   {(sortedVets || []).map((v) => (
                     <SelectItem key={v.id} value={String(v.id)}>
                       <span className="font-mono mr-2">#{v.id}</span>

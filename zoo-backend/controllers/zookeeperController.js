@@ -539,7 +539,11 @@ export const getFeedingTasks = async (req, res) => {
     `);
 
     const now = new Date();
-    const today = now.toISOString().split("T")[0];
+    // Use server-local YYYY-MM-DD date to match MySQL DATETIME date part
+    const pad = (n) => String(n).padStart(2, "0");
+    const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(
+      now.getDate()
+    )}`;
 
     // Build feeding tasks with status
     const feedingTasks = animals.map((animal) => {
