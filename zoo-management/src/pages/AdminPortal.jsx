@@ -10,6 +10,7 @@ import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import { Textarea } from "../components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -17,6 +18,7 @@ import {
   DialogTitle,
   DialogDescription,
   DialogTrigger,
+  DialogFooter,
 } from "../components/ui/dialog";
 import {
   AlertDialog,
@@ -182,6 +184,12 @@ export function AdminPortal({ user, onLogout }) {
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [isSaving, setIsSaving] = useState(false);
   const [activeTab, setActiveTab] = useState("overview");
+
+  // Activity management state
+  const [isActivityDialogOpen, setIsActivityDialogOpen] = useState(false);
+  const [selectedExhibitForActivities, setSelectedExhibitForActivities] =
+    useState(null);
+  const [exhibitActivities, setExhibitActivities] = useState([]);
 
   // set active tab and scroll to top for better navigation
   const handleSetActiveTab = (tab) => {
@@ -513,14 +521,51 @@ export function AdminPortal({ user, onLogout }) {
 
   const formatDate = (dateString) => {
     if (!dateString) return "N/A";
-
-    let dateStr = dateString.replace("T", " ").split(" ")[0];
-    const parts = dateStr.match(/(\d{4})-(\d{2})-(\d{2})/);
-    if (!parts) return "Invalid Date";
-
-    const [, year, month, day] = parts;
-    return `${month}/${day}/${year}`;
+    const d = parseServerDate(dateString);
+    if (!d) return "Invalid Date";
+    return d.toLocaleDateString("en-US");
   };
+
+  // Convert backend TIME strings ("HH:MM:SS" or "HH:MM") to 12-hour display
+  const formatTime = (time) => {
+    if (!time) return "";
+    try {
+      const [hoursStr, minutesStr] = time.split(":");
+      const hours = parseInt(hoursStr, 10);
+      const minutes = minutesStr ? minutesStr.split(":")[0] : "00";
+      if (Number.isNaN(hours)) return time;
+      const period = hours >= 12 ? "PM" : "AM";
+      const displayHour = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+      return `${displayHour}:${minutes} ${period}`;
+    } catch (e) {
+      return time;
+    }
+  };
+
+  // Parse server-side DATETIME/ISO strings as UTC when timezone is not provided.
+  // Accepts Date objects or strings like 'YYYY-MM-DD HH:MM:SS' and converts
+  // MySQL-style datetimes to ISO UTC so the JS Date will represent the same
+  // instant across client timezones.
+  function parseServerDate(input) {
+    if (!input) return null;
+    if (input instanceof Date) return input;
+    if (typeof input !== "string") return new Date(input);
+
+    if (/Z$/.test(input) || /[+-]\d{2}:?\d{2}$/.test(input)) {
+      const d = new Date(input);
+      return isNaN(d.getTime()) ? null : d;
+    }
+
+    const m = input.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2})?)$/);
+    if (m) {
+      const iso = `${m[1]}T${m[2]}Z`;
+      const d = new Date(iso);
+      return isNaN(d.getTime()) ? null : d;
+    }
+
+    const d = new Date(input);
+    return isNaN(d.getTime()) ? null : d;
+  }
 
   const formatNumber = (num) => {
     return num.toLocaleString("en-US");
@@ -1227,6 +1272,14 @@ export function AdminPortal({ user, onLogout }) {
       if (formData.displayTime !== (editingExhibit.Display_Time || "")) {
         exhibitData.displayTime = formData.displayTime || null;
       }
+      // If exhibitType was changed, include it in the update payload.
+      // Try to compare against any existing Exhibit_Type or Type fields on the exhibit.
+      const existingType =
+        editingExhibit.Exhibit_Type || editingExhibit.Type || "";
+      if ((formData.exhibitType || "") !== existingType) {
+        exhibitData.exhibitType = formData.exhibitType || null;
+      }
+
       if (
         formData.locationId !== (editingExhibit.Location_ID || "").toString()
       ) {
@@ -1514,6 +1567,126 @@ export function AdminPortal({ user, onLogout }) {
     } catch (error) {
       console.error("Error deleting animal:", error);
       toast.error("Failed to delete animal");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleManageActivities = async (exhibit) => {
+    setSelectedExhibitForActivities(exhibit);
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/admin/exhibits/${exhibit.Exhibit_ID}/activities`
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setExhibitActivities(data);
+      } else {
+        setExhibitActivities([]);
+      }
+    } catch (error) {
+      console.error("Error loading activities:", error);
+      setExhibitActivities([]);
+    }
+    setIsActivityDialogOpen(true);
+  };
+
+  const handleSaveActivity = async (
+    activityOrder,
+    activityName,
+    activityDescription,
+    duration
+  ) => {
+    if (!selectedExhibitForActivities) return;
+
+    try {
+      setIsSaving(true);
+
+      // Check if activity already exists for this order
+      const existingActivity = exhibitActivities.find(
+        (a) => a.Activity_Order === activityOrder
+      );
+
+      if (existingActivity) {
+        // Update existing activity
+        const res = await fetch(
+          `${API_BASE_URL}/admin/activities/${existingActivity.Activity_ID}`,
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              activityName,
+              activityDescription,
+              duration,
+            }),
+          }
+        );
+
+        if (!res.ok) throw new Error("Failed to update activity");
+        toast.success("Activity updated successfully");
+      } else {
+        // Create new activity
+        const res = await fetch(
+          `${API_BASE_URL}/admin/exhibits/${selectedExhibitForActivities.Exhibit_ID}/activities`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              activityName,
+              activityDescription,
+              activityOrder,
+              duration,
+            }),
+          }
+        );
+
+        if (!res.ok) throw new Error("Failed to add activity");
+        toast.success("Activity added successfully");
+      }
+
+      // Reload activities
+      const res = await fetch(
+        `${API_BASE_URL}/admin/exhibits/${selectedExhibitForActivities.Exhibit_ID}/activities`
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setExhibitActivities(data);
+      }
+    } catch (error) {
+      console.error("Error saving activity:", error);
+      toast.error("Failed to save activity");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteActivity = async (activityId) => {
+    try {
+      setIsSaving(true);
+      const res = await fetch(
+        `${API_BASE_URL}/admin/activities/${activityId}`,
+        {
+          method: "DELETE",
+        }
+      );
+
+      if (!res.ok) throw new Error("Failed to delete activity");
+
+      toast.success("Activity deleted successfully");
+
+      // Reload activities
+      if (selectedExhibitForActivities) {
+        const res = await fetch(
+          `${API_BASE_URL}/admin/exhibits/${selectedExhibitForActivities.Exhibit_ID}/activities`
+        );
+        if (res.ok) {
+          const data = await res.json();
+          setExhibitActivities(data);
+        }
+      }
+    } catch (error) {
+      console.error("Error deleting activity:", error);
+      toast.error("Failed to delete activity");
     } finally {
       setIsSaving(false);
     }
@@ -2175,7 +2348,7 @@ export function AdminPortal({ user, onLogout }) {
                                   month: "short",
                                   day: "numeric",
                                   year: "numeric",
-                                  hour: "2-digit",
+                                  hour: "numeric",
                                   minute: "2-digit",
                                 })}
                               </TableCell>
@@ -3043,12 +3216,23 @@ export function AdminPortal({ user, onLogout }) {
                             )}
                             {exhibit.Display_Time && (
                               <span>
-                                • Activity Scheduled for {exhibit.Display_Time}
+                                • Activity Scheduled for{" "}
+                                {formatTime(exhibit.Display_Time)}
                               </span>
                             )}
                           </div>
                         </div>
                         <div className="flex gap-1 ml-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleManageActivities(exhibit)}
+                            className="cursor-pointer text-purple-600 hover:text-purple-700 hover:bg-purple-50"
+                            disabled={isSaving}
+                            title="Manage Activities"
+                          >
+                            <Calendar className="h-4 w-4" />
+                          </Button>
                           <Button
                             variant="ghost"
                             size="sm"
@@ -4372,6 +4556,17 @@ export function AdminPortal({ user, onLogout }) {
           isSaving={isSaving}
         />
 
+        {/* Activity Management Dialog */}
+        <ActivityManagementDialog
+          isOpen={isActivityDialogOpen}
+          onOpenChange={setIsActivityDialogOpen}
+          exhibit={selectedExhibitForActivities}
+          activities={exhibitActivities}
+          onSaveActivity={handleSaveActivity}
+          onDeleteActivity={handleDeleteActivity}
+          isSaving={isSaving}
+        />
+
         {/* Delete Animal Confirmation Dialog */}
         <AlertDialog
           open={deleteConfirmAnimal !== null}
@@ -5610,6 +5805,330 @@ function EditAnimalDialog({
             </Button>
           </div>
         </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Activity Management Dialog Component
+function ActivityManagementDialog({
+  isOpen,
+  onOpenChange,
+  exhibit,
+  activities,
+  onSaveActivity,
+  onDeleteActivity,
+  isSaving,
+}) {
+  const [activity1Name, setActivity1Name] = useState("");
+  const [activity1Description, setActivity1Description] = useState("");
+  const [activity1Duration, setActivity1Duration] = useState(30);
+  const [activity2Name, setActivity2Name] = useState("");
+  const [activity2Description, setActivity2Description] = useState("");
+  const [activity2Duration, setActivity2Duration] = useState(30);
+  const [pendingDelete, setPendingDelete] = useState(null);
+
+  useEffect(() => {
+    if (activities && activities.length > 0) {
+      const act1 = activities.find((a) => a.Activity_Order === 1);
+      const act2 = activities.find((a) => a.Activity_Order === 2);
+
+      setActivity1Name(act1?.Activity_Name || "");
+      setActivity1Description(act1?.Activity_Description || "");
+      setActivity1Duration(act1?.Duration || 30);
+      setActivity2Name(act2?.Activity_Name || "");
+      setActivity2Description(act2?.Activity_Description || "");
+      setActivity2Duration(act2?.Duration || 30);
+    } else {
+      setActivity1Name("");
+      setActivity1Description("");
+      setActivity1Duration(30);
+      setActivity2Name("");
+      setActivity2Description("");
+      setActivity2Duration(30);
+    }
+  }, [activities]);
+
+  const handleSave1 = (e) => {
+    e.preventDefault();
+    if (
+      activity1Name.trim() &&
+      activity1Duration > 0 &&
+      activity1Duration <= 90
+    ) {
+      onSaveActivity(1, activity1Name, activity1Description, activity1Duration);
+    }
+  };
+
+  const handleSave2 = (e) => {
+    e.preventDefault();
+    if (
+      activity2Name.trim() &&
+      activity2Duration > 0 &&
+      activity2Duration <= 90
+    ) {
+      onSaveActivity(2, activity2Name, activity2Description, activity2Duration);
+    }
+  };
+
+  const handleDelete1 = () => {
+    const act1 = activities.find((a) => a.Activity_Order === 1);
+    if (act1) {
+      // open custom confirmation dialog
+      setPendingDelete({ id: act1.Activity_ID, name: act1.Activity_Name });
+    }
+  };
+
+  const handleDelete2 = () => {
+    const act2 = activities.find((a) => a.Activity_Order === 2);
+    if (act2) {
+      // open custom confirmation dialog
+      setPendingDelete({ id: act2.Activity_ID, name: act2.Activity_Name });
+    }
+  };
+
+  const activity1Exists = activities.some((a) => a.Activity_Order === 1);
+  const activity2Exists = activities.some((a) => a.Activity_Order === 2);
+
+  // Find original activity objects for comparison to detect changes
+  const act1 = activities.find((a) => a.Activity_Order === 1);
+  const act2 = activities.find((a) => a.Activity_Order === 2);
+
+  const isActivity1Dirty = useMemo(() => {
+    if (!activity1Exists) {
+      return (
+        activity1Name.trim() && activity1Duration > 0 && activity1Duration <= 90
+      );
+    }
+    return (
+      activity1Name.trim() !== (act1?.Activity_Name || "") ||
+      activity1Description !== (act1?.Activity_Description || "") ||
+      Number(activity1Duration) !== Number(act1?.Duration ?? 30)
+    );
+  }, [activity1Name, activity1Description, activity1Duration, activities]);
+
+  const isActivity2Dirty = useMemo(() => {
+    if (!activity2Exists) {
+      return (
+        activity2Name.trim() && activity2Duration > 0 && activity2Duration <= 90
+      );
+    }
+    return (
+      activity2Name.trim() !== (act2?.Activity_Name || "") ||
+      activity2Description !== (act2?.Activity_Description || "") ||
+      Number(activity2Duration) !== Number(act2?.Duration ?? 30)
+    );
+  }, [activity2Name, activity2Description, activity2Duration, activities]);
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Calendar className="h-5 w-5 text-purple-600" />
+            Manage Activities - {exhibit?.exhibit_Name}
+          </DialogTitle>
+          <DialogDescription>
+            Configure two activities for this exhibit: one for even days and one
+            for odd days.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex flex-col md:flex-row gap-6 py-4">
+          {/* Activity 1 - Even Days */}
+          <div className="border border-gray-200 rounded-lg p-4 bg-gray-50 flex-1">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-lg flex items-center gap-2">
+                <Badge variant="outline" className="bg-blue-50 text-blue-700">
+                  Activity 1
+                </Badge>
+                <span className="text-sm text-gray-600">Even Days</span>
+              </h3>
+              {activity1Exists && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleDelete1}
+                  className="text-red-600 hover:text-red-700 hover:bg-red-50 cursor-pointer"
+                  disabled={isSaving}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+            <form onSubmit={handleSave1} className="space-y-3">
+              <div>
+                <Label htmlFor="activity1-name">Activity Name *</Label>
+                <Input
+                  id="activity1-name"
+                  value={activity1Name}
+                  onChange={(e) => setActivity1Name(e.target.value)}
+                  placeholder="e.g., Lion Feeding Time"
+                  required
+                  disabled={isSaving}
+                />
+              </div>
+              <div>
+                <Label htmlFor="activity1-description">Description</Label>
+                <Textarea
+                  id="activity1-description"
+                  value={activity1Description}
+                  onChange={(e) => setActivity1Description(e.target.value)}
+                  placeholder="Describe the activity..."
+                  rows={3}
+                  disabled={isSaving}
+                />
+              </div>
+              <div>
+                <Label htmlFor="activity1-duration">Duration (minutes) *</Label>
+                <Input
+                  id="activity1-duration"
+                  type="number"
+                  min="1"
+                  max="90"
+                  value={activity1Duration}
+                  onChange={(e) =>
+                    setActivity1Duration(parseInt(e.target.value) || 30)
+                  }
+                  placeholder="30"
+                  required
+                  disabled={isSaving}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Must be between 1 and 90 minutes
+                </p>
+              </div>
+              <Button
+                type="submit"
+                disabled={
+                  isSaving ||
+                  !activity1Name.trim() ||
+                  activity1Duration <= 0 ||
+                  activity1Duration > 90 ||
+                  (activity1Exists ? !isActivity1Dirty : false)
+                }
+                className="w-full bg-blue-600 hover:bg-blue-700 cursor-pointer"
+              >
+                <Save className="h-4 w-4 mr-2" />
+                {activity1Exists ? "Update Activity 1" : "Add Activity 1"}
+              </Button>
+            </form>
+          </div>
+
+          {/* Activity 2 - Odd Days */}
+          <div className="border border-gray-200 rounded-lg p-4 bg-gray-50 flex-1">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-lg flex items-center gap-2">
+                <Badge variant="outline" className="bg-green-50 text-green-700">
+                  Activity 2
+                </Badge>
+                <span className="text-sm text-gray-600">Odd Days</span>
+              </h3>
+              {activity2Exists && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleDelete2}
+                  className="text-red-600 hover:text-red-700 hover:bg-red-50 cursor-pointer"
+                  disabled={isSaving}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+            <form onSubmit={handleSave2} className="space-y-3">
+              <div>
+                <Label htmlFor="activity2-name">Activity Name *</Label>
+                <Input
+                  id="activity2-name"
+                  value={activity2Name}
+                  onChange={(e) => setActivity2Name(e.target.value)}
+                  placeholder="e.g., Big Cat Talk"
+                  required
+                  disabled={isSaving}
+                />
+              </div>
+              <div>
+                <Label htmlFor="activity2-description">Description</Label>
+                <Textarea
+                  id="activity2-description"
+                  value={activity2Description}
+                  onChange={(e) => setActivity2Description(e.target.value)}
+                  placeholder="Describe the activity..."
+                  rows={3}
+                  disabled={isSaving}
+                />
+              </div>
+              <div>
+                <Label htmlFor="activity2-duration">Duration (minutes) *</Label>
+                <Input
+                  id="activity2-duration"
+                  type="number"
+                  min="1"
+                  max="90"
+                  value={activity2Duration}
+                  onChange={(e) =>
+                    setActivity2Duration(parseInt(e.target.value) || 30)
+                  }
+                  placeholder="30"
+                  required
+                  disabled={isSaving}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Must be between 1 and 90 minutes
+                </p>
+              </div>
+              <Button
+                type="submit"
+                disabled={
+                  isSaving ||
+                  !activity2Name.trim() ||
+                  activity2Duration <= 0 ||
+                  activity2Duration > 90 ||
+                  (activity2Exists ? !isActivity2Dirty : false)
+                }
+                className="w-full bg-green-600 hover:bg-green-700 cursor-pointer"
+              >
+                <Save className="h-4 w-4 mr-2" />
+                {activity2Exists ? "Update Activity 2" : "Add Activity 2"}
+              </Button>
+            </form>
+          </div>
+        </div>
+        {/* Delete confirmation dialog for activities */}
+        <AlertDialog
+          open={pendingDelete !== null}
+          onOpenChange={() => setPendingDelete(null)}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Activity</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete
+                <strong> {pendingDelete?.name} </strong>
+                {exhibit?.exhibit_Name ? `for ${exhibit.exhibit_Name}` : ""}?
+                This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel className="cursor-pointer" disabled={isSaving}>
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  if (pendingDelete) {
+                    onDeleteActivity(pendingDelete.id);
+                    setPendingDelete(null);
+                  }
+                }}
+                className="bg-red-600 hover:bg-red-700 cursor-pointer"
+                disabled={isSaving}
+              >
+                <Trash2 className="h-4 w-4 mr-2" /> Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </DialogContent>
     </Dialog>
   );

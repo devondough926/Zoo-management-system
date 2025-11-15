@@ -232,7 +232,7 @@ export function VeterinarianPortal(
 
     switch (ui) {
       case "Healthy":
-        return "Good"; // choose Good (could be Excellent); TODO: allow explicit selection
+        return "Good";
       case "Under Observation":
         return "Fair";
       case "Sick":
@@ -551,6 +551,42 @@ export function VeterinarianPortal(
         return "bg-gray-100 text-gray-800";
     }
   };
+
+  // Date helpers
+  const isSameLocalDay = (a, b) => {
+    try {
+      const da = new Date(a);
+      const db = new Date(b);
+      return (
+        da.getFullYear() === db.getFullYear() &&
+        da.getMonth() === db.getMonth() &&
+        da.getDate() === db.getDate()
+      );
+    } catch (e) {
+      return false;
+    }
+  };
+
+  // Today's medical logs memoized and responsive container height
+  const todaysMedicalLogs = useMemo(() => {
+    try {
+      return (medicalLog || []).filter(
+        (log) =>
+          log &&
+          log.timestamp &&
+          isSameLocalDay(log.timestamp, new Date()) &&
+          log.type === "medical"
+      );
+    } catch (e) {
+      return [];
+    }
+  }, [medicalLog]);
+
+  // Compute a responsive height: each item approx 96px, min 150px, max 600px
+  const medicalListHeight = Math.min(
+    600,
+    Math.max(150, (todaysMedicalLogs.length || 0) * 96)
+  );
 
   // Derived values used across the UI (pagination, stats, filters)
   const enclosureOptions = useMemo(() => {
@@ -1429,79 +1465,76 @@ export function VeterinarianPortal(
               <CardHeader>
                 <CardTitle className="flex items-center text-cyan-600">
                   <ClipboardCheck className="h-5 w-5 mr-2 text-cyan-600" />
-                  Medical Activity Log
+                  Daily Medical Log
                 </CardTitle>
                 <CardDescription>
-                  Records of all animal health status changes.
+                  Records of animal health activity for today.
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <ScrollArea className="h-[600px]">
+                <ScrollArea
+                  style={{
+                    maxHeight: "600px",
+                    height: `${medicalListHeight}px`,
+                  }}
+                >
                   <div className="space-y-3">
-                    {medicalLog
-                      .filter((log) => log.type === "medical")
-                      .map((log) => (
-                        <div
-                          key={log.id}
-                          style={{
-                            padding: "1rem",
-                            borderRadius: "0.5rem",
-                            background:
-                              "linear-gradient(to right, #eff6ff, #ecfeff)",
-                            transition: "all 0.2s ease",
-                            border: "1px solid #e5e7eb",
-                            boxShadow: "none",
-                          }}
-                        >
-                          <div className="flex items-start gap-3">
-                            <div className="mt-1">
-                              {getLogTypeIcon(log.type)}
-                            </div>
-                            <div className="flex-1">
-                              <div className="flex items-start justify-between mb-2">
-                                <div>
-                                  <p className="font-medium text-gray-900">
-                                    {log.animal_name}
+                    {todaysMedicalLogs.map((log) => (
+                      <div
+                        key={log.id}
+                        style={{
+                          padding: "1rem",
+                          borderRadius: "0.5rem",
+                          background:
+                            "linear-gradient(to right, #eff6ff, #ecfeff)",
+                          transition: "all 0.2s ease",
+                          border: "1px solid #e5e7eb",
+                          boxShadow: "none",
+                        }}
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="mt-1">{getLogTypeIcon(log.type)}</div>
+                          <div className="flex-1">
+                            <div className="flex items-start justify-between mb-2">
+                              <div>
+                                <p className="font-medium text-gray-900">
+                                  {log.animal_name}
+                                </p>
+                                <p className="text-sm text-gray-700">
+                                  {log.details}
+                                </p>
+                                {log.Notes && (
+                                  <p className="text-sm text-gray-700 mt-3 pt-2 border-t border-transparent">
+                                    {log.Notes}
                                   </p>
-                                  <p className="text-sm text-gray-700">
-                                    {log.details}
-                                  </p>
-                                  {log.Notes && (
-                                    <p className="text-sm text-gray-700 mt-3 pt-2 border-t border-transparent">
-                                      {log.Notes}
-                                    </p>
-                                  )}
-                                </div>
-                                {/* datetime shown at far right */}
-                                <div className="text-xs text-gray-500 whitespace-nowrap ml-4">
-                                  {new Date(log.timestamp).toLocaleString()}
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-4 text-xs text-gray-500 mt-2">
-                                <span>By: {log.veterinarian_name}</span>
-                                {log.health_status && (
-                                  <>
-                                    <span>•</span>
-                                    <Badge
-                                      className={getHealthBadgeColor(
-                                        uiToBackendHealth(
-                                          log.health_status || ""
-                                        )
-                                      )}
-                                    >
-                                      {backendToDisplayLabel(
-                                        uiToBackendHealth(
-                                          log.health_status || ""
-                                        )
-                                      )}
-                                    </Badge>
-                                  </>
                                 )}
                               </div>
+                              {/* datetime shown at far right */}
+                              <div className="text-xs text-gray-500 whitespace-nowrap ml-4">
+                                {new Date(log.timestamp).toLocaleString()}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-4 text-xs text-gray-500 mt-2">
+                              <span>By: {log.veterinarian_name}</span>
+                              {log.health_status && (
+                                <>
+                                  <span>•</span>
+                                  <Badge
+                                    className={getHealthBadgeColor(
+                                      uiToBackendHealth(log.health_status || "")
+                                    )}
+                                  >
+                                    {backendToDisplayLabel(
+                                      uiToBackendHealth(log.health_status || "")
+                                    )}
+                                  </Badge>
+                                </>
+                              )}
                             </div>
                           </div>
                         </div>
-                      ))}
+                      </div>
+                    ))}
                   </div>
                 </ScrollArea>
               </CardContent>

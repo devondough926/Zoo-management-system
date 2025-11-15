@@ -26,7 +26,7 @@ import {
   getRevenueData,
   getStatistics,
   getAllJobTitles,
-  getAllEnclosures,
+  getExhibitsForAnimalManagement,
   getAllPurchases,
   getAllTickets,
   getPurchaseItems,
@@ -37,6 +37,11 @@ import {
   updatePricing,
   getAllConcessionStands,
   getAllGiftShops,
+  getExhibitActivities,
+  addExhibitActivity,
+  updateExhibitActivity,
+  deleteExhibitActivity,
+  getItemPriceWithMembership,
 } from "../controllers/adminController.js";
 
 const router = express.Router();
@@ -58,6 +63,12 @@ router.patch("/locations/:id/supervisor", updateLocationSupervisor);
 router.get("/exhibits", getAllExhibits);
 router.get("/exhibits/:id", getExhibitById);
 router.put("/exhibits/:id", updateExhibit);
+
+// Exhibit activities routes
+router.get("/exhibits/:exhibitId/activities", getExhibitActivities);
+router.post("/exhibits/:exhibitId/activities", addExhibitActivity);
+router.put("/activities/:activityId", updateExhibitActivity);
+router.delete("/activities/:activityId", deleteExhibitActivity);
 
 // Animal routes
 router.get("/animals", getAllAnimals);
@@ -242,8 +253,8 @@ router.get("/statistics", getStatistics);
 // Job titles route
 router.get("/job-titles", getAllJobTitles);
 
-// Enclosures route
-router.get("/enclosures", getAllEnclosures);
+// Exhibits route (for animal management)
+router.get("/exhibits-for-animals", getExhibitsForAnimalManagement);
 
 // Purchase & transaction routes
 router.get("/purchases", getAllPurchases);
@@ -262,5 +273,8 @@ router.get("/concession-stands", getAllConcessionStands);
 
 // Gift shops route
 router.get("/gift-shops", getAllGiftShops);
+
+// Membership pricing preview route
+router.get("/pricing/membership-preview", getItemPriceWithMembership);
 
 export default router;

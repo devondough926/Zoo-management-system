@@ -25,6 +25,8 @@ import { PaginationControls } from "../components/PaginationControls";
 import { useHeroImage } from "../utils/heroImages";
 import { generatePaginationArray } from "../utils/paginationHelper";
 
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+
 const categories = [
   "All",
   "Accessories & Souvenirs",
@@ -297,7 +299,7 @@ export function ShopPage({ addToCart, allowCartActions = true }) {
     }
   }, [currentPage]);
 
-  const handleAddToCart = (product) => {
+  const handleAddToCart = async (product) => {
     if (!user) {
       // Prompt anonymous user to log in instead of navigating away
       toast.info("Please log in to add items to your cart.");
@@ -310,12 +312,38 @@ export function ShopPage({ addToCart, allowCartActions = true }) {
     }
 
     if (addToCart) {
+      // Fetch pricing with membership discount
+      let originalPrice = product.price;
+      let discountedPrice = product.price;
+      let hasMembership = false;
+
+      if (user && "Customer_ID" in user) {
+        try {
+          const productId =
+            parseInt(product.id.replace(/\D/g, "")) ||
+            Math.floor(Math.random() * 10000);
+          const res = await fetch(
+            `${API_BASE}/admin/pricing/membership-preview?customerId=${user.Customer_ID}&itemType=item&itemId=${productId}`
+          );
+          if (res.ok) {
+            const data = await res.json();
+            originalPrice = data.originalPrice;
+            discountedPrice = data.discountedPrice;
+            hasMembership = data.hasMembership;
+          }
+        } catch (err) {
+          console.error("Failed to fetch membership pricing:", err);
+        }
+      }
+
       addToCart({
         id:
           parseInt(product.id.replace(/\D/g, "")) ||
           Math.floor(Math.random() * 10000),
         name: product.name,
-        price: product.price,
+        price: discountedPrice,
+        originalPrice: originalPrice,
+        hasMembership: hasMembership,
         type: "item",
         image: product.image,
       });

@@ -51,12 +51,12 @@ export const getAllAnimals = async (req, res) => {
         a.Is_Vaccinated,
         a.Enclosure_ID,
         a.Image_URL,
-        e.Enclosure_Name,
+        e.exhibit_Name as Enclosure_Name,
         e.Enclosure_Type,
         l.Zone,
         TIMESTAMPDIFF(YEAR, a.Birthday, CURDATE()) as Age
       FROM Animal a
-      LEFT JOIN Enclosure e ON a.Enclosure_ID = e.Enclosure_ID
+      LEFT JOIN exhibit e ON a.Enclosure_ID = e.Exhibit_ID
       LEFT JOIN Location l ON e.Location_ID = l.Location_ID
       ORDER BY a.Animal_Name`
     );
@@ -88,11 +88,11 @@ export const getAnimalsByEnclosure = async (req, res) => {
         a.Is_Vaccinated,
         a.Enclosure_ID,
         a.Image_URL,
-        e.Enclosure_Name,
+        e.exhibit_Name,
         e.Enclosure_Type,
         TIMESTAMPDIFF(YEAR, a.Birthday, CURDATE()) as Age
       FROM Animal a
-      LEFT JOIN Enclosure e ON a.Enclosure_ID = e.Enclosure_ID
+      LEFT JOIN exhibit e ON a.Enclosure_ID = e.Exhibit_ID
       WHERE a.Enclosure_ID = ?
       ORDER BY a.Animal_Name`,
       [enclosureId]
@@ -177,16 +177,6 @@ export const createVetVisit = async (req, res) => {
   try {
     const { animalId, employeeId, visitDate, diagnosis, treatment } = req.body;
 
-    // Log incoming payload to help debugging
-    console.log("[createVetVisit] payload:", {
-      animalId,
-      employeeId,
-      visitDate,
-      diagnosis,
-      treatment,
-    });
-
-    // Validate required fields
     if (!animalId) {
       return res.status(400).json({ error: "Animal ID is required" });
     }
@@ -194,7 +184,6 @@ export const createVetVisit = async (req, res) => {
     const employeeIdValue =
       employeeId !== undefined && employeeId !== null ? employeeId : null;
 
-    // Normalize visit date to a JS Date (DB driver will handle formatting)
     const rawVisitDate = visitDate || new Date();
     const parsedDate = new Date(rawVisitDate);
     const visitDateValue = isNaN(parsedDate.getTime())
@@ -287,11 +276,11 @@ export const updateAnimalHealthInfo = async (req, res) => {
         a.Is_Vaccinated,
         a.Enclosure_ID,
         a.Image_URL,
-        e.Enclosure_Name,
+        e.exhibit_Name as Enclosure_Name,
         e.Enclosure_Type,
         TIMESTAMPDIFF(YEAR, a.Birthday, CURDATE()) as Age
       FROM Animal a
-      LEFT JOIN Enclosure e ON a.Enclosure_ID = e.Enclosure_ID
+      LEFT JOIN exhibit e ON a.Enclosure_ID = e.Exhibit_ID
       WHERE a.Animal_ID = ?`,
       [animalId]
     );
@@ -476,30 +465,30 @@ export const createVaccinationLog = async (req, res) => {
 // For future improvement consider ALTER TABLE to expand enum and store granular states directly to reduce ambiguity.
 
 // ============================================
-// GET ALL ENCLOSURES
+// GET ALL EXHIBITS
 // ============================================
 
-export const getAllEnclosures = async (req, res) => {
+export const getAllExhibits = async (req, res) => {
   try {
-    const [enclosures] = await db.query(`
+    const [exhibits] = await db.query(`
       SELECT 
-        e.Enclosure_ID,
-        e.Enclosure_Name,
+        e.Exhibit_ID as Enclosure_ID,
+        e.exhibit_Name as Enclosure_Name,
         e.Location_ID,
         e.Size,
         e.Enclosure_Type,
         l.Zone,
         l.Location_Description,
         COUNT(a.Animal_ID) as Animal_Count
-      FROM Enclosure e
+      FROM exhibit e
       LEFT JOIN Location l ON e.Location_ID = l.Location_ID
-      LEFT JOIN Animal a ON e.Enclosure_ID = a.Enclosure_ID
-      GROUP BY e.Enclosure_ID, e.Enclosure_Name, e.Location_ID, e.Size, e.Enclosure_Type, l.Zone, l.Location_Description
-      ORDER BY e.Enclosure_Name
+      LEFT JOIN Animal a ON e.Exhibit_ID = a.Enclosure_ID
+      GROUP BY e.Exhibit_ID, e.exhibit_Name, e.Location_ID, e.Size, e.Enclosure_Type, l.Zone, l.Location_Description
+      ORDER BY e.exhibit_Name
     `);
-    res.json(enclosures);
+    res.json(exhibits);
   } catch (error) {
-    console.error("Error fetching enclosures:", error);
-    res.status(500).json({ error: "Failed to fetch enclosures" });
+    console.error("Error fetching exhibits:", error);
+    res.status(500).json({ error: "Failed to fetch exhibits" });
   }
 };

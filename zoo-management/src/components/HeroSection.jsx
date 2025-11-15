@@ -159,12 +159,71 @@ export function HeroSection() {
         }}
       />
 
-      {/* Counter indicator */}
-      <div className="absolute top-4 right-4 z-10 bg-black/50 text-white px-4 py-2 rounded">
-        {((currentImageIndex - 1 + backgroundImages.length) %
-          backgroundImages.length) +
-          1}{" "}
-        / {backgroundImages.length}
+      {/* Pagination dots (single, consolidated) - inline styles for visibility */}
+      <div
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          bottom: 24,
+          // Lower z-index so pagination sits beneath the site navigation
+          zIndex: 5,
+          display: "flex",
+          justifyContent: "center",
+          pointerEvents: "auto",
+        }}
+      >
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            backgroundColor: "rgba(0,0,0,0.25)",
+            backdropFilter: "blur(6px)",
+            borderRadius: 9999,
+            padding: "6px 12px",
+          }}
+        >
+          {backgroundImages.map((_, index) => {
+            const displayIndex =
+              (currentImageIndex - 1 + backgroundImages.length) %
+              backgroundImages.length;
+            const isActive = index === displayIndex;
+            const disabled = !isTransitioning || heroAnimating;
+            return (
+              <button
+                key={index}
+                onClick={() => {
+                  if (disabled) return;
+                  setIsTransitioning(true);
+                  setCurrentImageIndex(index + 1); // +1 because of clone at start
+                  setLastInteraction(Date.now());
+                  // guard indicator click
+                  setHeroAnimating(true);
+                  if (heroTimerRef.current) clearTimeout(heroTimerRef.current);
+                  heroTimerRef.current = setTimeout(() => {
+                    setHeroAnimating(false);
+                    heroTimerRef.current = null;
+                  }, 820);
+                }}
+                disabled={disabled}
+                aria-label={`Go to slide ${index + 1}`}
+                style={{
+                  height: 8,
+                  width: isActive ? 32 : 8,
+                  borderRadius: 9999,
+                  transition: "all 200ms ease",
+                  backgroundColor: isActive
+                    ? "#ffffff"
+                    : "rgba(255,255,255,0.5)",
+                  border: "none",
+                  padding: 0,
+                  cursor: disabled ? "default" : "pointer",
+                }}
+              />
+            );
+          })}
+        </div>
       </div>
 
       {/* Carousel Navigation Buttons - Inside section */}
@@ -204,9 +263,9 @@ export function HeroSection() {
         <ChevronRight className="h-10 w-10 md:h-12 md:w-12" />
       </button>
 
-      {/* Decorative Elements */}
-      <div className="absolute inset-0 z-5 pointer-events-none">
-        {/* Removed decorative leaf, tree, and flower elements */}
+      {/* Decorative Elements (placeholders removed) */}
+      <div className="absolute inset-0 pointer-events-none">
+        {/* Decorative elements intentionally omitted */}
       </div>
 
       {/* Content */}
@@ -223,38 +282,7 @@ export function HeroSection() {
         </p>
       </div>
 
-      {/* Carousel Indicators */}
-      <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 flex gap-2">
-        {backgroundImages.map((_, index) => {
-          const displayIndex =
-            (currentImageIndex - 1 + backgroundImages.length) %
-            backgroundImages.length;
-          return (
-            <button
-              key={index}
-              onClick={() => {
-                if (!isTransitioning || heroAnimating) return;
-                setIsTransitioning(true);
-                setCurrentImageIndex(index + 1); // +1 because of clone at start
-                setLastInteraction(Date.now());
-                // guard indicator click
-                setHeroAnimating(true);
-                if (heroTimerRef.current) clearTimeout(heroTimerRef.current);
-                heroTimerRef.current = setTimeout(() => {
-                  setHeroAnimating(false);
-                  heroTimerRef.current = null;
-                }, 820);
-              }}
-              className={`h-2 rounded-full transition-all ${
-                index === displayIndex
-                  ? "w-8 bg-white"
-                  : "w-2 bg-white/50 hover:bg-white/70"
-              }`}
-              aria-label={`Go to slide ${index + 1}`}
-            />
-          );
-        })}
-      </div>
+      {/* (Old carousel indicators removed — replaced by consolidated pagination above) */}
     </section>
   );
 }

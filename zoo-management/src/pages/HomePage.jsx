@@ -2,6 +2,7 @@ import { HeroSection } from "../components/HeroSection";
 import { CustomerHighlights } from "../components/CustomerHighlights";
 import { OperationalDashboard } from "../components/OperationalDashboard";
 import { ZooMap } from "../components/ZooMap";
+import { WeatherSelector } from "../components/WeatherSelector";
 
 export function HomePage() {
   return (
@@ -10,7 +11,11 @@ export function HomePage() {
       <CustomerHighlights />
       <OperationalDashboard />
 
+      {/* Spacer between Today's Activities and Weather section (no divider line) */}
+      <div className="py-16 bg-white" />
+
       {/* Zoo Map Section */}
+      <WeatherSelector />
       <section className="py-16 bg-gray-50">
         <div className="container mx-auto px-6">
           <div className="text-center mb-12">

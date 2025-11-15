@@ -249,6 +249,24 @@ export const activitiesAPI = {
     return data;
   },
 
+  getByOrder: async (order) => {
+    const response = await fetchWithCredentials(
+      `${API_BASE_URL}/customer/activities/order/${order}`
+    );
+    if (!response.ok) throw new Error("Failed to fetch activities by order");
+    const data = await response.json();
+    return data;
+  },
+
+  getActive: async () => {
+    const response = await fetchWithCredentials(
+      `${API_BASE_URL}/customer/activities/active`
+    );
+    if (!response.ok) throw new Error("Failed to fetch active activities");
+    const data = await response.json();
+    return data;
+  },
+
   getTodaysSchedule: async () => {
     const response = await fetchWithCredentials(
       `${API_BASE_URL}/customer/schedule/today`
@@ -273,9 +291,9 @@ export const animalsAPI = {
 export const enclosuresAPI = {
   getAll: async () => {
     const response = await fetchWithCredentials(
-      `${API_BASE_URL}/customer/enclosures`
+      `${API_BASE_URL}/customer/exhibits-for-animals`
     );
-    if (!response.ok) throw new Error("Failed to fetch enclosures");
+    if (!response.ok) throw new Error("Failed to fetch exhibits");
     const data = await response.json();
     return data;
   },

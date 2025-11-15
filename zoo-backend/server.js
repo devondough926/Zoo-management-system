@@ -14,6 +14,7 @@ import statsRoutes from "./routes/statsRoutes.js";
 import { isAzureConfigured } from "./middleware/azureUpload.js";
 import veterinarianRoutes from "./routes/veterinarianRoutes.js";
 import zookeeperRoutes from "./routes/zookeeperRoutes.js";
+import weatherRoutes from "./routes/weatherRoutes.js";
 
 dotenv.config();
 
@@ -69,6 +70,7 @@ app.use("/api/food", foodRoutes);
 app.use("/api/stats", statsRoutes);
 app.use("/api/veterinarian", veterinarianRoutes);
 app.use("/api/zookeeper", zookeeperRoutes);
+app.use("/api/weather", weatherRoutes);
 
 app.use((req, res) => {
   res.status(404).json({

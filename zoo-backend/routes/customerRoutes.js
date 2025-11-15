@@ -5,8 +5,10 @@ import {
   getAllActivities,
   getActivitiesByExhibit,
   getTodaysSchedule,
+  getActivitiesByOrder,
+  getActiveActivities,
   getAllAnimals,
-  getAllEnclosures,
+  getAllExhibitsForAnimals,
   getPurchaseHistory,
   getPurchaseDetails,
   getMembership,
@@ -21,6 +23,8 @@ router.get("/exhibits/:id", getExhibitById);
 
 // Activity routes
 router.get("/activities", getAllActivities);
+router.get("/activities/order/:order", getActivitiesByOrder);
+router.get("/activities/active", getActiveActivities);
 router.get("/exhibits/:exhibitId/activities", getActivitiesByExhibit);
 
 // Schedule routes
@@ -29,8 +33,8 @@ router.get("/schedule/today", getTodaysSchedule);
 // Animal routes
 router.get("/animals", getAllAnimals);
 
-// Enclosure routes
-router.get("/enclosures", getAllEnclosures);
+// Exhibit routes (for animal lookup)
+router.get("/exhibits-for-animals", getAllExhibitsForAnimals);
 
 // Purchase routes
 router.get("/purchases/history/:customerId", getPurchaseHistory);

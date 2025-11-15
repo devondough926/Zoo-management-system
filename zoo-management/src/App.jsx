@@ -38,6 +38,7 @@ import { Toaster } from "./components/ui/sonner";
 import { DataProvider } from "./data/DataContext";
 import { PricingProvider } from "./data/PricingContext";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { WeatherProvider } from "./contexts/WeatherContext";
 
 // Page titles mapping
 const PAGE_TITLES = {
@@ -167,6 +168,11 @@ function AppContent() {
           toast.error(
             "Membership already in cart. Proceed to checkout or remove it before adding another."
           );
+          return prevCart;
+        }
+        // Check if adding one more would exceed 50
+        if (existingItem.quantity >= 50) {
+          toast.error("Quantity for this item cannot exceed 50!.");
           return prevCart;
         }
         return prevCart.map((i) =>
@@ -362,9 +368,11 @@ export default function App() {
     <AuthProvider>
       <PricingProvider>
         <DataProvider>
-          <BrowserRouter>
-            <AppContent />
-          </BrowserRouter>
+          <WeatherProvider>
+            <BrowserRouter>
+              <AppContent />
+            </BrowserRouter>
+          </WeatherProvider>
         </DataProvider>
       </PricingProvider>
     </AuthProvider>

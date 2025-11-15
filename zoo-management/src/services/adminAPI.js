@@ -263,8 +263,8 @@ export const referenceAPI = {
   },
 
   getEnclosures: async () => {
-    const response = await fetch(`${API_BASE_URL}/admin/enclosures`);
-    if (!response.ok) throw new Error("Failed to fetch enclosures");
+    const response = await fetch(`${API_BASE_URL}/admin/exhibits-for-animals`);
+    if (!response.ok) throw new Error("Failed to fetch exhibits");
     return response.json();
   },
 };

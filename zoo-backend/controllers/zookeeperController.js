@@ -11,9 +11,9 @@ export const getZookeeperStats = async (req, res) => {
       "SELECT COUNT(*) as count FROM Animal"
     );
 
-    // Get total enclosures
-    const [totalEnclosures] = await db.query(
-      "SELECT COUNT(*) as count FROM Enclosure"
+    // Get total exhibits
+    const [totalExhibits] = await db.query(
+      "SELECT COUNT(*) as count FROM exhibit"
     );
 
     // Get animals fed today (from animal_care_log)
@@ -33,7 +33,7 @@ export const getZookeeperStats = async (req, res) => {
 
     res.json({
       totalAnimals: totalAnimals[0].count,
-      totalEnclosures: totalEnclosures[0].count,
+      totalExhibits: totalExhibits[0].count,
       animalsFedToday: animalsFedToday[0].count,
       careLogsToday: careLogsToday[0].count,
     });
@@ -63,11 +63,11 @@ export const getAnimalsByEnclosure = async (req, res) => {
         a.Is_Vaccinated,
         a.Enclosure_ID,
         a.Image_URL,
-        e.Enclosure_Name,
+        e.exhibit_Name as Enclosure_Name,
         e.Enclosure_Type,
         TIMESTAMPDIFF(YEAR, a.Birthday, CURDATE()) as Age
       FROM Animal a
-      LEFT JOIN Enclosure e ON a.Enclosure_ID = e.Enclosure_ID
+      LEFT JOIN exhibit e ON a.Enclosure_ID = e.Exhibit_ID
       WHERE a.Enclosure_ID = ?
       ORDER BY a.Animal_Name`,
       [enclosureId]
@@ -132,11 +132,11 @@ export const getAllCareLogs = async (req, res) => {
         e.Last_Name,
         a.Animal_Name,
         a.Species,
-        enc.Enclosure_Name
+        enc.exhibit_Name as Enclosure_Name
       FROM Animal_Care_Log acl
       LEFT JOIN Employee e ON acl.Employee_ID = e.Employee_ID
       LEFT JOIN Animal a ON acl.Animal_ID = a.Animal_ID
-      LEFT JOIN Enclosure enc ON a.Enclosure_ID = enc.Enclosure_ID
+      LEFT JOIN exhibit enc ON a.Enclosure_ID = enc.Exhibit_ID
       WHERE 1=1
     `;
 
@@ -163,9 +163,9 @@ export const getAllCareLogs = async (req, res) => {
       params.push(...types);
     }
 
-    // Search in activity, animal name, or enclosure name
+    // Search in activity, animal name, or exhibit name
     if (search) {
-      query += ` AND (acl.Activity LIKE ? OR a.Animal_Name LIKE ? OR enc.Enclosure_Name LIKE ?)`;
+      query += ` AND (acl.Activity LIKE ? OR a.Animal_Name LIKE ? OR enc.exhibit_Name LIKE ?)`;
       const searchPattern = `%${search}%`;
       params.push(searchPattern, searchPattern, searchPattern);
     }
@@ -256,11 +256,11 @@ export const getFeedingSchedule = async (req, res) => {
         DATE_FORMAT(fs.Feeding_Time, '%Y-%m-%d %H:%i:%s') as Feeding_Time,
         a.Animal_Name,
         a.Species,
-        e.Enclosure_Name,
-        e.Enclosure_ID
+        e.exhibit_Name as Enclosure_Name,
+        e.Exhibit_ID as Enclosure_ID
       FROM Feeding_Schedule fs
       LEFT JOIN Animal a ON fs.Animal_ID = a.Animal_ID
-      LEFT JOIN Enclosure e ON a.Enclosure_ID = e.Enclosure_ID
+      LEFT JOIN exhibit e ON a.Enclosure_ID = e.Exhibit_ID
     `;
 
     const params = [];
@@ -294,12 +294,12 @@ export const getFeedingScheduleByEnclosure = async (req, res) => {
         DATE_FORMAT(fs.Feeding_Time, '%Y-%m-%d %H:%i:%s') as Feeding_Time,
         a.Animal_Name,
         a.Species,
-        e.Enclosure_Name,
-        e.Enclosure_ID
+        e.exhibit_Name as Enclosure_Name,
+        e.Exhibit_ID as Enclosure_ID
       FROM Feeding_Schedule fs
       LEFT JOIN Animal a ON fs.Animal_ID = a.Animal_ID
-      LEFT JOIN Enclosure e ON a.Enclosure_ID = e.Enclosure_ID
-      WHERE e.Enclosure_ID = ?
+      LEFT JOIN exhibit e ON a.Enclosure_ID = e.Exhibit_ID
+      WHERE e.Exhibit_ID = ?
     `;
 
     const params = [enclosureId];
@@ -346,11 +346,11 @@ export const createFeedingSchedule = async (req, res) => {
         DATE_FORMAT(fs.Feeding_Time, '%Y-%m-%d %H:%i:%s') as Feeding_Time,
         a.Animal_Name,
         a.Species,
-        e.Enclosure_Name,
-        e.Enclosure_ID
+        e.exhibit_Name as Enclosure_Name,
+        e.Exhibit_ID as Enclosure_ID
       FROM Feeding_Schedule fs
       LEFT JOIN Animal a ON fs.Animal_ID = a.Animal_ID
-      LEFT JOIN Enclosure e ON a.Enclosure_ID = e.Enclosure_ID
+      LEFT JOIN exhibit e ON a.Enclosure_ID = e.Exhibit_ID
       WHERE fs.Feeding_ID = ?`,
       [result.insertId]
     );
@@ -403,11 +403,11 @@ export const updateFeedingSchedule = async (req, res) => {
         DATE_FORMAT(fs.Feeding_Time, '%Y-%m-%d %H:%i:%s') as Feeding_Time,
         a.Animal_Name,
         a.Species,
-        e.Enclosure_Name,
-        e.Enclosure_ID
+        e.exhibit_Name as Enclosure_Name,
+        e.Exhibit_ID as Enclosure_ID
       FROM Feeding_Schedule fs
       LEFT JOIN Animal a ON fs.Animal_ID = a.Animal_ID
-      LEFT JOIN Enclosure e ON a.Enclosure_ID = e.Enclosure_ID
+      LEFT JOIN exhibit e ON a.Enclosure_ID = e.Exhibit_ID
       WHERE fs.Feeding_ID = ?`,
       [feedingId]
     );
@@ -438,39 +438,39 @@ export const deleteFeedingSchedule = async (req, res) => {
 };
 
 // ============================================
-// GET ALL ENCLOSURES
+// GET ALL EXHIBITS
 // ============================================
 
-export const getAllEnclosures = async (req, res) => {
+export const getAllExhibits = async (req, res) => {
   try {
-    const [enclosures] = await db.query(`
+    const [exhibits] = await db.query(`
       SELECT 
-        e.Enclosure_ID,
-        e.Enclosure_Name,
+        e.Exhibit_ID as Enclosure_ID,
+        e.exhibit_Name as Enclosure_Name,
         e.Location_ID,
         e.Size,
         e.Enclosure_Type,
         l.Zone,
         l.Location_Description,
         COUNT(a.Animal_ID) as Animal_Count
-      FROM Enclosure e
+      FROM exhibit e
       LEFT JOIN Location l ON e.Location_ID = l.Location_ID
-      LEFT JOIN Animal a ON e.Enclosure_ID = a.Enclosure_ID
-      GROUP BY e.Enclosure_ID, e.Enclosure_Name, e.Location_ID, e.Size, e.Enclosure_Type, l.Zone, l.Location_Description
-      ORDER BY e.Enclosure_Name
+      LEFT JOIN Animal a ON e.Exhibit_ID = a.Enclosure_ID
+      GROUP BY e.Exhibit_ID, e.exhibit_Name, e.Location_ID, e.Size, e.Enclosure_Type, l.Zone, l.Location_Description
+      ORDER BY e.exhibit_Name
     `);
-    res.json(enclosures);
+    res.json(exhibits);
   } catch (error) {
-    console.error("Error fetching enclosures:", error);
-    res.status(500).json({ error: "Failed to fetch enclosures" });
+    console.error("Error fetching exhibits:", error);
+    res.status(500).json({ error: "Failed to fetch exhibits" });
   }
 };
 
 // ============================================
-// ENCLOSURE STATUS (for habitat cleaning tracking)
+// EXHIBIT STATUS (for habitat cleaning tracking)
 // ============================================
 
-export const getEnclosureStatus = async (req, res) => {
+export const getExhibitStatus = async (req, res) => {
   try {
     const { enclosureId } = req.params;
 
@@ -517,11 +517,11 @@ export const getFeedingTasks = async (req, res) => {
         a.Feeding_Frequency_Type,
         a.Meals as Meals_Per_Day,
         a.Image_URL,
-        e.Enclosure_Name,
-        e.Enclosure_ID,
+        e.exhibit_Name as Enclosure_Name,
+        e.Exhibit_ID as Enclosure_ID,
         l.Zone
       FROM Animal a
-      LEFT JOIN Enclosure e ON a.Enclosure_ID = e.Enclosure_ID
+      LEFT JOIN exhibit e ON a.Enclosure_ID = e.Exhibit_ID
       LEFT JOIN Location l ON e.Location_ID = l.Location_ID
       ORDER BY a.Animal_Name
     `);
@@ -633,13 +633,13 @@ export const getCleaningSchedules = async (req, res) => {
   try {
     const [enclosures] = await db.query(`
       SELECT 
-        e.Enclosure_ID,
-        e.Enclosure_Name,
+        e.Exhibit_ID as Enclosure_ID,
+        e.exhibit_Name as Enclosure_Name,
         e.Size,
         l.Zone
-      FROM Enclosure e
+      FROM exhibit e
       LEFT JOIN Location l ON e.Location_ID = l.Location_ID
-      ORDER BY e.Enclosure_Name
+      ORDER BY e.exhibit_Name
     `);
 
     // Get last cleaning for each enclosure
@@ -712,36 +712,47 @@ export const getNotifications = async (req, res) => {
   try {
     const notifications = [];
     const now = new Date();
-    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-    // Get new animals from past 7 days
+    // Support different time ranges
+    const range = req.query.range || "daily";
+    let timeInterval;
+    if (range === "24hours") {
+      timeInterval = 1; // 1 day
+    } else {
+      timeInterval = 7; // 7 days default
+    }
+
+    // Get new animals from past time interval
     const [newAnimals] = await db.query(
       `
       SELECT 
         acl.Log_ID,
         acl.Animal_ID,
-        acl.Log_Date,
+        DATE_FORMAT(acl.Log_Date, '%Y-%m-%dT%H:%i:%s.000Z') as Log_Date,
         acl.Activity,
         acl.Notes,
         a.Animal_Name,
         a.Species,
-        e.Enclosure_Name
+        e.exhibit_Name as Enclosure_Name
       FROM Animal_Care_Log acl
       JOIN Animal a ON acl.Animal_ID = a.Animal_ID
-      LEFT JOIN Enclosure e ON a.Enclosure_ID = e.Enclosure_ID
+      LEFT JOIN exhibit e ON a.Enclosure_ID = e.Exhibit_ID
       WHERE acl.Log_Type = 'new' 
-        AND acl.Log_Date >= ?
+        AND acl.Log_Date >= DATE_SUB(NOW(), INTERVAL ? DAY)
       ORDER BY acl.Log_Date DESC
+      LIMIT 50
     `,
-      [sevenDaysAgo.toISOString().split("T")[0]]
+      [timeInterval]
     );
 
     newAnimals.forEach((animal) => {
+      const timestamp = animal.Log_Date || new Date().toISOString();
+
       notifications.push({
         id: `new-animal-${animal.Log_ID}`,
         type: "new_animal",
         message: `New animal added: ${animal.Animal_Name}`,
-        timestamp: animal.Log_Date,
+        timestamp: timestamp,
         animal_id: animal.Animal_ID,
         details: `${animal.Species} added to ${animal.Enclosure_Name}`,
       });
@@ -750,17 +761,17 @@ export const getNotifications = async (req, res) => {
     // Get cleaning schedules for overdue enclosures
     const [enclosures] = await db.query(`
       SELECT 
-        e.Enclosure_ID,
-        e.Enclosure_Name,
+        e.Exhibit_ID as Enclosure_ID,
+        e.exhibit_Name as Enclosure_Name,
         l.Zone,
         MAX(acl.Log_Date) as Last_Cleaned
-      FROM Enclosure e
+      FROM exhibit e
       LEFT JOIN Location l ON e.Location_ID = l.Location_ID
-      LEFT JOIN Animal a ON e.Enclosure_ID = a.Enclosure_ID
+      LEFT JOIN Animal a ON e.Exhibit_ID = a.Enclosure_ID
       LEFT JOIN Animal_Care_Log acl ON a.Animal_ID = acl.Animal_ID 
         AND acl.Log_Type = 'maintenance' 
         AND acl.Activity LIKE '%clean%'
-      GROUP BY e.Enclosure_ID, e.Enclosure_Name, l.Zone
+      GROUP BY e.Exhibit_ID, e.exhibit_Name, l.Zone
     `);
 
     enclosures.forEach((enclosure) => {
@@ -778,7 +789,7 @@ export const getNotifications = async (req, res) => {
             id: `cleaning-due-${enclosure.Enclosure_ID}`,
             type: "cleaning_due",
             message: `${enclosure.Enclosure_Name} cleaning is now due`,
-            timestamp: nextDue.toISOString(),
+            timestamp: now.toISOString(), // Use current time since this is when the notification is generated
             enclosure_id: enclosure.Enclosure_ID,
             details: `7-day cleaning cycle completed for Zone ${enclosure.Zone}`,
           });
@@ -786,7 +797,6 @@ export const getNotifications = async (req, res) => {
       }
     });
 
-    // Sort by timestamp (newest first)
     notifications.sort(
       (a, b) =>
         new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
@@ -815,9 +825,11 @@ export const getCleaningCardData = async (req, res) => {
         skip_days,
         days_passed,
         days_remaining,
-        next_due,
+          next_due,
+          Is_Closed,
         progress_percent,
-        status
+        status,
+        Enclosure_Type
       FROM cleaning_card_data
       ORDER BY Zone ASC, Enclosure_Name ASC
     `);
@@ -840,9 +852,9 @@ export const markHabitatCleaned = async (req, res) => {
 
     // Update enclosure last_cleaned to full datetime (use NOW()) so time is preserved
     await db.query(
-      `UPDATE Enclosure 
+      `UPDATE exhibit 
        SET last_cleaned = NOW(), Is_Cleaned = 1 
-       WHERE Enclosure_ID = ?`,
+       WHERE Exhibit_ID = ?`,
       [enclosureId]
     );
 

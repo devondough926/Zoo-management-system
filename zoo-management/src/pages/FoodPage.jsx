@@ -13,6 +13,9 @@ import {
   ChevronLeft,
   ChevronRight,
   UtensilsCrossed,
+  IceCream,
+  CupSoda,
+  Pizza,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../contexts/AuthContext";
@@ -36,7 +39,6 @@ export function FoodPage({ addToCart, allowCartActions = true }) {
         const data = await res.json();
         setConcessionItems(data);
       } catch (err) {
-        console.error("❌ Failed to load food items:", err);
         toast.error("Failed to load food items");
       }
     };
@@ -52,10 +54,11 @@ export function FoodPage({ addToCart, allowCartActions = true }) {
         specialty: "Burgers & Grilled Items",
       },
       {
+        // Stand_ID 2 is Desert Diner in the DB
         id: 2,
-        name: "Polar Cafe",
+        name: "Desert Diner",
         zone: "Zone B",
-        specialty: "Ice Cream & Desserts",
+        specialty: "Pizza & Italian",
       },
       {
         id: 3,
@@ -64,10 +67,11 @@ export function FoodPage({ addToCart, allowCartActions = true }) {
         specialty: "Fresh & Healthy Options",
       },
       {
+        // Stand_ID 4 is Polar Cafe in the DB
         id: 4,
-        name: "Desert Diner",
+        name: "Polar Cafe",
         zone: "Zone D",
-        specialty: "Pizza & Italian",
+        specialty: "Ice Cream & Desserts",
       },
     ];
   }, []);
@@ -347,26 +351,64 @@ export function FoodPage({ addToCart, allowCartActions = true }) {
             {itemsByStand.map((stand) => (
               <Card
                 key={stand.name}
+                className="transform transition-all hover:-translate-y-1 hover:shadow-lg"
                 style={{
                   textAlign: "center",
                   overflow: "hidden",
-                  borderRadius: "0.5rem",
-                  // Outer card should be green now (was amber)
-                  backgroundColor: "#ecfdf5",
-                  border: "1px solid #d1fae5",
-                  transition: "box-shadow 0.2s ease-in-out",
+                  borderRadius: "0.75rem",
+                  // Outer card uses a soft teal palette
+                  backgroundColor: "#f0fdfa",
+                  border: "1px solid #c7f9f2",
+                  transition:
+                    "box-shadow 0.22s ease-in-out, transform 0.18s ease",
                 }}
               >
-                {/* Name header area should be amber */}
-                <CardHeader style={{ backgroundColor: "#fffbeb" }}>
-                  <CardTitle className="text-lg">{stand.name}</CardTitle>
+                {/* Name header area uses a soft cyan */}
+                <CardHeader
+                  style={{
+                    backgroundColor: "#e6fffa",
+                    padding: "12px 16px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                  }}
+                >
+                  {(() => {
+                    let Icon = null;
+                    switch (stand.id) {
+                      case 1:
+                        Icon = UtensilsCrossed;
+                        break;
+                      case 2:
+                        Icon = Pizza;
+                        break;
+                      case 3:
+                        Icon = CupSoda;
+                        break;
+                      case 4:
+                        Icon = IceCream;
+                        break;
+                      default:
+                        Icon = null;
+                    }
+                    return Icon ? (
+                      <Icon
+                        className="h-5 w-5 mr-2 text-teal-700"
+                        aria-hidden="true"
+                      />
+                    ) : null;
+                  })()}
+                  <CardTitle className="text-md font-semibold">
+                    {stand.name}
+                  </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-3">
+                <CardContent className="space-y-3 py-6">
                   <div className="flex items-center justify-center text-sm text-gray-600">
                     <MapPin className="h-4 w-4 mr-2 text-green-600" />
                     {stand.zone}
                   </div>
-                  <Badge className="bg-green-100 text-green-800 w-full justify-center">
+                  <Badge className="bg-green-100 text-green-800 w-full justify-center py-2 rounded-full">
                     {stand.specialty}
                   </Badge>
                 </CardContent>
@@ -504,7 +546,7 @@ export function FoodPage({ addToCart, allowCartActions = true }) {
                                     </span>
                                     <Button
                                       className="w-full bg-green-600 hover:bg-green-700 cursor-pointer"
-                                      onClick={() => {
+                                      onClick={async () => {
                                         if (!user) {
                                           toast.info(
                                             "Please log in to add items to your cart."
@@ -518,10 +560,39 @@ export function FoodPage({ addToCart, allowCartActions = true }) {
                                           return;
                                         }
                                         if (addToCart && item) {
+                                          // Fetch pricing with membership discount
+                                          let originalPrice = item.price;
+                                          let discountedPrice = item.price;
+                                          let hasMembership = false;
+
+                                          if (user && "Customer_ID" in user) {
+                                            try {
+                                              const res = await fetch(
+                                                `${API_BASE}/admin/pricing/membership-preview?customerId=${user.Customer_ID}&itemType=food&itemId=${item.id}`
+                                              );
+                                              if (res.ok) {
+                                                const data = await res.json();
+                                                originalPrice =
+                                                  data.originalPrice;
+                                                discountedPrice =
+                                                  data.discountedPrice;
+                                                hasMembership =
+                                                  data.hasMembership;
+                                              }
+                                            } catch (err) {
+                                              console.error(
+                                                "Failed to fetch membership pricing:",
+                                                err
+                                              );
+                                            }
+                                          }
+
                                           addToCart({
                                             id: item.id,
                                             name: item.name,
-                                            price: item.price,
+                                            price: discountedPrice,
+                                            originalPrice: originalPrice,
+                                            hasMembership: hasMembership,
                                             type: "food",
                                             image: item.image,
                                           });

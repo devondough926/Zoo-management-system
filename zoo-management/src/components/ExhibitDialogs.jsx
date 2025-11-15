@@ -33,7 +33,13 @@ export function EditExhibitDialog({
     description: exhibit?.exhibit_Description || "",
     capacity: exhibit?.Capacity?.toString() || "",
     displayTime: exhibit?.Display_Time || "",
+    // New: exhibitType replaces the previous Location (zone) selector
+    // Keep locationId in formData for backward compatibility, but default
+    // to empty string when not provided.
     locationId: exhibit?.Location_ID?.toString() || "",
+    // Also accept `Enclosure_Type` (existing data uses this key for many exhibits)
+    exhibitType:
+      exhibit?.Exhibit_Type || exhibit?.Type || exhibit?.Enclosure_Type || "",
     imageFile: null,
     removeImage: false,
   });
@@ -49,12 +55,57 @@ export function EditExhibitDialog({
         capacity: exhibit.Capacity?.toString() || "",
         displayTime: exhibit.Display_Time || "",
         locationId: exhibit.Location_ID?.toString() || "",
+        exhibitType:
+          exhibit.Exhibit_Type || exhibit.Type || exhibit.Enclosure_Type || "",
         imageFile: null,
         removeImage: false,
       };
       setFormData(data);
       setOriginalData(data);
       setImagePreview(null);
+    }
+  }, [exhibit]);
+
+  // Ensure exhibitType matches one of the allowed options (normalize casing/spacing)
+  const EXHIBIT_TYPE_OPTIONS = [
+    "Indoor",
+    "Outdoor",
+    "Hybrid",
+    "Climate Controlled",
+  ];
+
+  // Normalize a raw stored value into one of the select options when possible.
+  // Uses case-insensitive substring matching so values like "indoor exhibit",
+  // "Indoor", "INDOOR", or "climate-controlled" will map correctly.
+  function normalizeToOption(raw) {
+    if (!raw) return "";
+    const normalized = String(raw).trim().toLowerCase();
+    if (!normalized) return "";
+
+    // Try exact match first
+    const exact = EXHIBIT_TYPE_OPTIONS.find(
+      (opt) => opt.toLowerCase() === normalized
+    );
+    if (exact) return exact;
+
+    // Try substring match: if the raw contains an option or option contains raw
+    for (const opt of EXHIBIT_TYPE_OPTIONS) {
+      const o = opt.toLowerCase();
+      if (normalized.includes(o) || o.includes(normalized)) return opt;
+    }
+
+    // No match — return empty so the select shows placeholder rather than an unknown value
+    return "";
+  }
+
+  // When exhibit prop changes, normalize the exhibitType into one of the select options
+  useEffect(() => {
+    if (exhibit) {
+      const raw =
+        exhibit.Exhibit_Type || exhibit.Type || exhibit.Enclosure_Type || "";
+      const mapped = normalizeToOption(raw);
+      setFormData((prev) => ({ ...prev, exhibitType: mapped }));
+      setOriginalData((prev) => ({ ...prev, exhibitType: mapped }));
     }
   }, [exhibit]);
 
@@ -92,6 +143,7 @@ export function EditExhibitDialog({
       formData.capacity !== originalData.capacity ||
       formData.displayTime !== originalData.displayTime ||
       formData.locationId !== originalData.locationId ||
+      formData.exhibitType !== originalData.exhibitType ||
       formData.imageFile !== null ||
       formData.removeImage
     );
@@ -142,37 +194,38 @@ export function EditExhibitDialog({
               />
             </div>
             <div>
-              <Label htmlFor="editDisplayTime">Display Time</Label>
+              <Label htmlFor="editDisplayTime">
+                Display Time (24-hour format)
+              </Label>
               <Input
                 id="editDisplayTime"
+                type="time"
                 value={formData.displayTime}
                 onChange={(e) =>
                   setFormData({ ...formData, displayTime: e.target.value })
                 }
+                placeholder="HH:MM"
               />
             </div>
           </div>
           <div>
-            <Label htmlFor="editLocationId">Location (Zone)</Label>
+            <Label htmlFor="editExhibitType">Exhibit Type</Label>
             <Select
-              value={formData.locationId}
+              value={formData.exhibitType}
               onValueChange={(value) =>
-                setFormData({ ...formData, locationId: value })
+                setFormData({ ...formData, exhibitType: value })
               }
             >
               <SelectTrigger className="cursor-pointer">
-                <SelectValue placeholder="Select location" />
+                <SelectValue placeholder="Select exhibit type" />
               </SelectTrigger>
               <SelectContent>
-                {locations.map((loc) => (
-                  <SelectItem
-                    key={loc.Location_ID}
-                    value={loc.Location_ID.toString()}
-                  >
-                    {loc.Zone} -{" "}
-                    {loc.Location_Description?.replace(/\bNorth\b/g, "N.")}
-                  </SelectItem>
-                ))}
+                <SelectItem value="Indoor">Indoor</SelectItem>
+                <SelectItem value="Outdoor">Outdoor</SelectItem>
+                <SelectItem value="Hybrid">Hybrid</SelectItem>
+                <SelectItem value="Climate Controlled">
+                  Climate Controlled
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>

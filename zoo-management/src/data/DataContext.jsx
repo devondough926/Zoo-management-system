@@ -27,16 +27,13 @@ export function DataProvider({ children }) {
   const [purchaseConcessionItems, setPurchaseConcessionItems] = useState([]);
   const [memberships, setMemberships] = useState([]);
 
-  // Fetch animals from backend on mount
+  // Fetch animals on mount
   useEffect(() => {
     const fetchAnimals = async () => {
       try {
-        console.log("Fetching animals...");
         const response = await fetch(`${API_BASE_URL}/admin/animals`);
-        console.log("Animals response status:", response.status);
         if (response.ok) {
           const data = await response.json();
-          console.log("Fetched animals:", data.length);
           setAnimals(data);
         } else {
           console.error("Failed to fetch animals, status:", response.status);
@@ -48,16 +45,13 @@ export function DataProvider({ children }) {
     fetchAnimals();
   }, []);
 
-  // Fetch concession items from backend on mount
+  // Fetch concession items on mount
   useEffect(() => {
     const fetchConcessionItems = async () => {
       try {
-        console.log("Fetching concession items...");
         const response = await fetch(`${API_BASE_URL}/food`);
-        console.log("Concession items response status:", response.status);
         if (response.ok) {
           const data = await response.json();
-          console.log("Fetched concession items:", data.length);
           setConcessionItems(data);
         } else {
           console.error(
@@ -72,16 +66,13 @@ export function DataProvider({ children }) {
     fetchConcessionItems();
   }, []);
 
-  // Fetch shop items from backend on mount
+  // Fetch shop items on mount
   useEffect(() => {
     const fetchItems = async () => {
       try {
-        console.log("Fetching shop items...");
         const response = await fetch(`${API_BASE_URL}/shop/items`);
-        console.log("Response status:", response.status);
         if (response.ok) {
           const data = await response.json();
-          console.log("Fetched items:", data.length);
           setItems(data);
         } else {
           console.error("Failed to fetch items, status:", response.status);
@@ -113,7 +104,7 @@ export function DataProvider({ children }) {
           setPurchaseItems(purchaseItemsData);
         }
 
-        // Also fetch concession purchase items so staff portals can compute stats locally
+        // Also fetch concession purchase items for local stats
         try {
           const pcRes = await fetch(
             `${API_BASE_URL}/admin/purchase-concession-items`
@@ -164,7 +155,7 @@ export function DataProvider({ children }) {
     );
   };
 
-  // Item operations - NOW WITH API CALLS
+  // Item operations
   const addItem = async (item) => {
     try {
       const response = await fetch(`${API_BASE_URL}/shop/items`, {

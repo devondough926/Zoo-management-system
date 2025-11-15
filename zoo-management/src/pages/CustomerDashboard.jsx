@@ -12,9 +12,10 @@ import {
   Crown,
   UtensilsCrossed,
   ChevronRight,
+  AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Card,
@@ -37,10 +38,16 @@ import { ScrollArea } from "../components/ui/scroll-area";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { useData } from "../data/DataContext";
-import { authAPI, purchasesAPI, membershipAPI } from "../services/customerAPI";
+import {
+  authAPI,
+  purchasesAPI,
+  membershipAPI,
+  activitiesAPI,
+} from "../services/customerAPI";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { useHeroImage } from "../utils/heroImages";
 import { formatPhone, normalizePhone } from "../utils/phone";
+import { useWeather } from "../contexts/WeatherContext";
 
 const formatNumber = (num) => {
   return num.toLocaleString("en-US", {
@@ -95,6 +102,20 @@ const formatDateTime = (dateString) => {
   return `${monthName} ${dayNum}, ${yearNum}, ${hour12}:${minute} ${ampm}`;
 };
 
+// Format simple time strings like "14:00" or "14:00:00" to 12-hour with am/pm
+const formatTime12 = (timeStr) => {
+  if (!timeStr) return "";
+  // Extract HH:MM
+  const m = timeStr.match(/(\d{1,2}):(\d{2})/);
+  if (!m) return timeStr;
+  let hh = parseInt(m[1], 10);
+  const mm = m[2];
+  const isPM = hh >= 12;
+  const hour12 = hh % 12 === 0 ? 12 : hh % 12;
+  const ampm = isPM ? "PM" : "AM";
+  return `${hour12}:${mm} ${ampm}`;
+};
+
 export function CustomerDashboard({ user }) {
   const navigate = useNavigate();
   const {
@@ -106,18 +127,71 @@ export function CustomerDashboard({ user }) {
     concessionItems,
   } = useData();
   const heroImage = useHeroImage("customer");
+  const { selectedWeather, isExhibitClosed, getClosureReason } = useWeather();
+
+  const weatherAlert = (() => {
+    if (!selectedWeather) return null;
+    const t = selectedWeather.type;
+    if (["Rain", "Storm", "High Wind"].includes(t)) {
+      return {
+        title: "Weather Impact Information",
+        detail: "Outdoor and Hybrid exhibits are closed for visitor safety.",
+      };
+    }
+    if (t === "Snow") {
+      return {
+        title: "Weather Impact Information",
+        detail: "Outdoor exhibits are closed for visitor safety.",
+      };
+    }
+    if (["Extreme Heat", "Extreme Cold"].includes(t)) {
+      return {
+        title: "Weather Impact Information",
+        detail: "All exhibits are closed for visitor safety.",
+      };
+    }
+    return null;
+  })();
 
   const [isBackendConnected, setIsBackendConnected] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [backendPurchases, setBackendPurchases] = useState([]);
   const [purchasesLoading, setPurchasesLoading] = useState(false);
   const [membership, setMembership] = useState(null);
+  const [activeActivities, setActiveActivities] = useState([]);
+  const [activitiesLoading, setActivitiesLoading] = useState(false);
+  const activeFetchRef = useRef({ isFetching: false, intervalId: null });
 
   // Check backend connection and fetch membership on mount
   useEffect(() => {
     checkBackendConnection();
     fetchPurchaseHistory();
     fetchMembership();
+
+    // Poll active activities every second. Use a ref to avoid overlapping fetches.
+    const poll = async () => {
+      if (activeFetchRef.current.isFetching) return;
+      activeFetchRef.current.isFetching = true;
+      try {
+        const activities = await activitiesAPI.getActive();
+        setActiveActivities(activities || []);
+      } catch (err) {
+        console.error("Error polling active activities:", err);
+      } finally {
+        activeFetchRef.current.isFetching = false;
+      }
+    };
+
+    // Run immediately then start interval
+    poll();
+    const id = setInterval(poll, 1000);
+    activeFetchRef.current.intervalId = id;
+
+    return () => {
+      clearInterval(id);
+      activeFetchRef.current.intervalId = null;
+      activeFetchRef.current.isFetching = false;
+    };
   }, []);
 
   const checkBackendConnection = async () => {
@@ -152,6 +226,107 @@ export function CustomerDashboard({ user }) {
       console.error("Error fetching membership:", error);
       setMembership(null);
     }
+  };
+
+  const fetchActiveActivities = async () => {
+    setActivitiesLoading(true);
+    try {
+      const activities = await activitiesAPI.getActive();
+      setActiveActivities(activities || []);
+    } catch (error) {
+      console.error("Error fetching active activities:", error);
+      setActiveActivities([]);
+    } finally {
+      setActivitiesLoading(false);
+    }
+  };
+
+  // Countdown state for each active activity (keyed by index)
+  const [countdowns, setCountdowns] = useState({});
+
+  const parseTimeToToday = (timeStr) => {
+    if (!timeStr) return null;
+    const now = new Date();
+    timeStr = String(timeStr).trim();
+    // Match 12-hour with AM/PM
+    const ampm = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i.exec(timeStr);
+    let hours = 0,
+      minutes = 0;
+    if (ampm) {
+      hours = parseInt(ampm[1], 10);
+      minutes = parseInt(ampm[2], 10);
+      const isPM = ampm[3].toUpperCase() === "PM";
+      if (isPM && hours < 12) hours += 12;
+      if (!isPM && hours === 12) hours = 0;
+    } else {
+      // 24-hour format like 15:00 or 15:00:00
+      const parts = timeStr.split(":");
+      hours = parseInt(parts[0] || 0, 10);
+      minutes = parseInt(parts[1] || 0, 10);
+    }
+
+    return new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      hours,
+      minutes,
+      0
+    );
+  };
+
+  const formatRemaining = (seconds) => {
+    if (seconds <= 0) return "00:00";
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    if (h > 0)
+      return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+    return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  };
+
+  // Update countdowns every second based on activeActivities
+  useEffect(() => {
+    let mounted = true;
+    const update = () => {
+      const now = new Date();
+      const map = {};
+      activeActivities.forEach((a, i) => {
+        const startDate = parseTimeToToday(
+          a.start_time || a.Display_Time || a.Display_Time
+        );
+        const duration =
+          parseInt(a.duration_minutes || a.Duration || 0, 10) || 0;
+        if (!startDate || !duration) {
+          map[i] = "--:--";
+          return;
+        }
+        const endDate = new Date(startDate.getTime() + duration * 60000);
+        const remainingSec = Math.max(0, Math.floor((endDate - now) / 1000));
+        map[i] = remainingSec > 0 ? formatRemaining(remainingSec) : "Ended";
+      });
+      if (mounted) setCountdowns(map);
+    };
+
+    update();
+    const id = setInterval(update, 1000);
+    return () => {
+      mounted = false;
+      clearInterval(id);
+    };
+  }, [activeActivities]);
+
+  const computeEndLabel = (a) => {
+    const sd = parseTimeToToday(
+      a.start_time || a.Display_Time || a.Display_Time
+    );
+    const duration = parseInt(a.duration_minutes || a.Duration || 0, 10) || 0;
+    if (!sd || !duration) return a.end_time || "";
+    const end = new Date(sd.getTime() + duration * 60000);
+    return end.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+    });
   };
 
   const displayPurchases =
@@ -426,6 +601,303 @@ export function CustomerDashboard({ user }) {
           </div>
         </div>
       </section>
+
+      {/* Today's Activities Banner */}
+      {!activitiesLoading && activeActivities.length > 0 && (
+        <>
+          {/* Weather Alert - centered above activities */}
+          {weatherAlert && (
+            <div
+              style={{
+                paddingTop: 24,
+                paddingBottom: 0,
+                background: "#f3f4f6",
+                display: "flex",
+                justifyContent: "center",
+              }}
+            >
+              <div style={{ maxWidth: 880, width: "100%", padding: "0 24px" }}>
+                <Card className="rounded-lg shadow-sm border border-red-200 bg-red-100">
+                  <CardContent className="py-6 text-center">
+                    <div className="flex flex-col items-center">
+                      <AlertTriangle className="h-6 w-6 text-red-800 mb-2 pt-1" />
+                      <h3 className="font-semibold text-lg text-red-900">
+                        {weatherAlert.title}
+                      </h3>
+                      <p className="text-sm text-red-800 mt-2 max-w-xl">
+                        {weatherAlert.detail}
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          )}
+
+          <section
+            style={{ paddingTop: 24, paddingBottom: 24, background: "#f3f4f6" }}
+          >
+            <div
+              style={{ maxWidth: 1100, margin: "0 auto", padding: "0 24px" }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  marginBottom: 12,
+                  paddingTop: 16,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <Calendar
+                    style={{ height: 24, width: 24, color: "#b45309" }}
+                  />
+                  <h2
+                    style={{
+                      fontSize: 20,
+                      margin: 0,
+                      color: "#0f172a",
+                      fontWeight: 700,
+                      textAlign: "center",
+                    }}
+                  >
+                    Happening Now!
+                  </h2>
+                </div>
+              </div>
+
+              {/* keyframes for pulsing dot (inline) */}
+              <style>{`@keyframes pulse {0%{transform:scale(1);opacity:1}50%{transform:scale(1.6);opacity:.5}100%{transform:scale(1);opacity:1}}`}</style>
+
+              <div style={{ height: 0 }} />
+
+              {/* Render cards separately so we can insert countdown logic below */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns:
+                    activeActivities.length === 1
+                      ? "minmax(280px,720px)"
+                      : "repeat(auto-fit,minmax(280px,1fr))",
+                  gap: 16,
+                  marginTop: 12,
+                  justifyContent:
+                    activeActivities.length === 1 ? "center" : undefined,
+                }}
+              >
+                {activeActivities.map((activity, idx) => {
+                  // Determine if this activity's exhibit is closed
+                  const serverClosed = Boolean(activity.is_closed);
+                  const weatherClosed = isExhibitClosed({
+                    Enclosure_Type: activity.enclosure_type,
+                  });
+                  const isClosed = serverClosed || weatherClosed;
+
+                  return (
+                    <div
+                      key={idx}
+                      style={{
+                        background: "#fff",
+                        borderRadius: 12,
+                        padding: 18,
+                        boxShadow: "0 8px 24px rgba(15,23,42,0.06)",
+                        position: "relative",
+                        overflow: "hidden",
+                        border: "1px solid rgba(15,23,42,0.04)",
+                      }}
+                    >
+                      {/* CLOSED Banner - Diagonal across top right */}
+                      {isClosed && (
+                        <div
+                          style={{
+                            position: "absolute",
+                            top: 0,
+                            right: 0,
+                            width: "100%",
+                            height: "100%",
+                            pointerEvents: "none",
+                            overflow: "hidden",
+                            zIndex: 50,
+                          }}
+                        >
+                          <div
+                            className="absolute bg-red-600 text-white font-bold text-xs py-1 px-8 shadow-lg transform rotate-45 origin-top-right"
+                            style={{
+                              top: "28px",
+                              right: "-32px",
+                              width: "160px",
+                              textAlign: "center",
+                            }}
+                            title={
+                              getClosureReason({
+                                Enclosure_Type: activity.enclosure_type,
+                              }) || "Closed"
+                            }
+                          >
+                            CLOSED
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Card content with conditional blur */}
+                      <div
+                        style={{
+                          filter: isClosed ? "blur(2px)" : "none",
+                          transition: "filter 0.18s ease",
+                          pointerEvents: isClosed ? "none" : "auto",
+                        }}
+                      >
+                        {/* Live badge top-right */}
+                        <div
+                          style={{
+                            position: "absolute",
+                            top: 12,
+                            right: 12,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: 8,
+                              height: 8,
+                              background: "#dc2626",
+                              borderRadius: 8,
+                              boxShadow: "0 0 8px rgba(220,38,38,0.6)",
+                              animation: "pulse 1.5s infinite",
+                            }}
+                          />
+                          <div
+                            style={{
+                              fontSize: 12,
+                              fontWeight: 700,
+                              color: "#dc2626",
+                            }}
+                          >
+                            LIVE
+                          </div>
+                        </div>
+
+                        <h3
+                          style={{
+                            margin: "8px 0 10px 0",
+                            fontSize: 18,
+                            color: "#0f172a",
+                            fontWeight: 700,
+                          }}
+                        >
+                          {activity.activity_name}
+                        </h3>
+                        {activity.activity_description && (
+                          <div
+                            style={{
+                              color: "#475569",
+                              fontSize: 14,
+                              marginBottom: 8,
+                            }}
+                          >
+                            {activity.activity_description}
+                          </div>
+                        )}
+
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 12,
+                            marginBottom: 8,
+                            color: "#0f172a",
+                            fontWeight: 600,
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              flexDirection: "column",
+                              alignItems: "flex-start",
+                            }}
+                          >
+                            <div style={{ fontSize: 12, color: "#94a3b8" }}>
+                              Location
+                            </div>
+                            <div style={{ fontSize: 14 }}>
+                              {activity.exhibit_name}
+                              {activity.location
+                                ? ` — Zone ${activity.location}`
+                                : ""}
+                            </div>
+                          </div>
+                          <div
+                            style={{ marginLeft: "auto", textAlign: "right" }}
+                          >
+                            <div style={{ fontSize: 12, color: "#94a3b8" }}>
+                              Ends in
+                            </div>
+                            <div
+                              style={{
+                                fontSize: 16,
+                                fontWeight: 700,
+                                color: "#dc2626",
+                              }}
+                            >
+                              {countdowns[idx] || "--:--"}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            borderTop: "1px solid #f1f5f9",
+                            paddingTop: 10,
+                            fontSize: 13,
+                            color: "#64748b",
+                          }}
+                        >
+                          <div>
+                            Started:{" "}
+                            <strong style={{ color: "#0f172a" }}>
+                              {formatTime12(
+                                activity.start_time ||
+                                  activity.Display_Time ||
+                                  ""
+                              )}
+                            </strong>
+                          </div>
+                          <div>
+                            Ends:{" "}
+                            <strong style={{ color: "#0f172a" }}>
+                              {activity.end_time || computeEndLabel(activity)}
+                            </strong>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </section>
+
+          {/* subtle separator to replace the previous thick bottom border */}
+          <div style={{ display: "flex", justifyContent: "center" }}>
+            <div
+              style={{
+                width: "90%",
+                maxWidth: 1100,
+                height: 1,
+                background:
+                  "linear-gradient(90deg, rgba(15,23,42,0.06), rgba(15,23,42,0.02))",
+                margin: "12px 0",
+                borderRadius: 2,
+              }}
+            />
+          </div>
+        </>
+      )}
 
       {/* Quick Actions */}
       <section className="py-12 bg-gray-100">

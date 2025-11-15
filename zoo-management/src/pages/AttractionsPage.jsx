@@ -40,6 +40,7 @@ export function AttractionsPage() {
           activitiesAPI.getAll(),
         ]);
         setExhibits(exhibitsData || []);
+        // removed debug logging
         setActivities(activitiesData || []);
         setError(null);
       } catch (err) {
@@ -71,10 +72,13 @@ export function AttractionsPage() {
       name: exhibit.exhibit_Name,
       description: exhibit.exhibit_Description,
       zone: exhibit.Zone_Name,
+      enclosureType: exhibit.Enclosure_Type,
       imageUrl: getExhibitImage(exhibit),
       activities: activitiesByExhibit.get(exhibit.Exhibit_ID) || [],
     }));
   }, [exhibits, activitiesByExhibit]);
+
+  // debug logging removed
 
   // Preload exhibit images
   useEffect(() => {

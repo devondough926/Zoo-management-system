@@ -22,15 +22,15 @@ export const veterinarianAPI = {
 
   getAnimalsByEnclosure: async (enclosureId) => {
     const response = await fetch(
-      `${API_BASE_URL}/veterinarian/enclosures/${enclosureId}/animals`
+      `${API_BASE_URL}/veterinarian/exhibits/${enclosureId}/animals`
     );
-    if (!response.ok) throw new Error("Failed to fetch animals by enclosure");
+    if (!response.ok) throw new Error("Failed to fetch animals by exhibit");
     return response.json();
   },
 
   getEnclosures: async () => {
-    const response = await fetch(`${API_BASE_URL}/veterinarian/enclosures`);
-    if (!response.ok) throw new Error("Failed to fetch enclosures");
+    const response = await fetch(`${API_BASE_URL}/veterinarian/exhibits`);
+    if (!response.ok) throw new Error("Failed to fetch exhibits");
     return response.json();
   },
 

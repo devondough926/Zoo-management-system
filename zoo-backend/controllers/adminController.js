@@ -598,14 +598,15 @@ export const getAllAnimals = async (req, res) => {
         DATE_FORMAT(a.Birthday, '%Y-%m-%d') as Birthday,
         a.Health_Status,
         a.Is_Vaccinated,
-        a.Enclosure_ID,
+        -- Return Enclosure info from exhibit (ex-enclosure table) with aliases
+        e.Exhibit_ID as Enclosure_ID,
         a.Image_URL,
-        e.Enclosure_Name,
+        e.exhibit_Name as Enclosure_Name,
         e.Enclosure_Type,
         e.Location_ID,
         DATE_FORMAT(acl.Log_Date, '%Y-%m-%d') as Date_Added
       FROM Animal a
-      LEFT JOIN Enclosure e ON a.Enclosure_ID = e.Enclosure_ID
+      LEFT JOIN exhibit e ON a.Enclosure_ID = e.Exhibit_ID
       LEFT JOIN animal_care_log acl ON a.Animal_ID = acl.Animal_ID 
         AND acl.Log_Type = 'new'
       ORDER BY a.Animal_Name
@@ -633,12 +634,12 @@ export const getAnimalById = async (req, res) => {
         a.Is_Vaccinated,
         a.Enclosure_ID,
         a.Image_URL,
-        e.Enclosure_Name,
+        e.exhibit_Name as Enclosure_Name,
         e.Enclosure_Type,
         e.Location_ID,
         DATE_FORMAT(acl.Log_Date, '%Y-%m-%d') as Date_Added
       FROM Animal a
-      LEFT JOIN Enclosure e ON a.Enclosure_ID = e.Enclosure_ID
+      LEFT JOIN exhibit e ON a.Enclosure_ID = e.Exhibit_ID
       LEFT JOIN animal_care_log acl ON a.Animal_ID = acl.Animal_ID 
         AND acl.Log_Type = 'new'
       WHERE a.Animal_ID = ?
@@ -690,16 +691,16 @@ export const addAnimal = async (req, res) => {
       ]
     );
 
-    // Fetch the newly created animal with enclosure info
+    // Fetch the newly created animal with exhibit info
     const [newAnimal] = await db.query(
       `
       SELECT 
         a.*,
-        e.Enclosure_Name,
+        e.exhibit_Name as Enclosure_Name,
         e.Enclosure_Type,
         e.Location_ID
       FROM Animal a
-      LEFT JOIN Enclosure e ON a.Enclosure_ID = e.Enclosure_ID
+      LEFT JOIN exhibit e ON a.Enclosure_ID = e.Exhibit_ID
       WHERE a.Animal_ID = ?
     `,
       [result.insertId]
@@ -782,11 +783,11 @@ export const updateAnimal = async (req, res) => {
       `
       SELECT 
         a.*,
-        e.Enclosure_Name,
+        e.exhibit_Name as Enclosure_Name,
         e.Enclosure_Type,
         e.Location_ID
       FROM Animal a
-      LEFT JOIN Enclosure e ON a.Enclosure_ID = e.Enclosure_ID
+      LEFT JOIN exhibit e ON a.Enclosure_ID = e.Exhibit_ID
       WHERE a.Animal_ID = ?
     `,
       [id]
@@ -992,24 +993,32 @@ export const getAllJobTitles = async (req, res) => {
 };
 
 // ============================================
-// ENCLOSURES
+// EXHIBITS (for animal management - simplified)
 // ============================================
 
-export const getAllEnclosures = async (req, res) => {
+export const getExhibitsForAnimalManagement = async (req, res) => {
   try {
-    const [enclosures] = await db.query(`
+    const [exhibits] = await db.query(`
       SELECT 
-        e.*,
+        e.Exhibit_ID as Enclosure_ID,
+        e.exhibit_Name as Enclosure_Name,
+        e.Enclosure_Type,
+        e.Location_ID,
+        e.Size,
+        e.Display_Time,
+        e.Image_URL,
+        e.Is_Cleaned,
+        e.last_cleaned,
         l.Zone,
         l.Location_Description
-      FROM Enclosure e
+      FROM exhibit e
       LEFT JOIN Location l ON e.Location_ID = l.Location_ID
-      ORDER BY e.Enclosure_Name
+      ORDER BY e.exhibit_Name
     `);
-    res.json(enclosures);
+    res.json(exhibits);
   } catch (error) {
-    console.error("Error fetching enclosures:", error);
-    res.status(500).json({ error: "Failed to fetch enclosures" });
+    console.error("Error fetching exhibits:", error);
+    res.status(500).json({ error: "Failed to fetch exhibits" });
   }
 };
 
@@ -1410,5 +1419,259 @@ export const getAllGiftShops = async (req, res) => {
   } catch (error) {
     console.error("Error fetching gift shops:", error);
     res.status(500).json({ error: "Failed to fetch gift shops" });
+  }
+};
+
+// ============================================
+// EXHIBIT ACTIVITIES MANAGEMENT
+// ============================================
+
+export const getExhibitActivities = async (req, res) => {
+  try {
+    const { exhibitId } = req.params;
+    const [activities] = await db.query(
+      `
+      SELECT 
+        Activity_ID,
+        Exhibit_ID,
+        Activity_Name,
+        Activity_Description,
+        Activity_Order,
+        Duration
+      FROM Exhibit_Activity
+      WHERE Exhibit_ID = ?
+      ORDER BY Activity_Order
+    `,
+      [exhibitId]
+    );
+    res.json(activities);
+  } catch (error) {
+    console.error("Error fetching exhibit activities:", error);
+    res.status(500).json({ error: "Failed to fetch exhibit activities" });
+  }
+};
+
+export const addExhibitActivity = async (req, res) => {
+  try {
+    const { exhibitId } = req.params;
+    const { activityName, activityDescription, activityOrder, duration } =
+      req.body;
+
+    // Validate activity order (must be 1 or 2)
+    if (![1, 2].includes(activityOrder)) {
+      return res.status(400).json({
+        error: "Activity order must be 1 (even days) or 2 (odd days)",
+      });
+    }
+
+    // Validate duration if provided
+    if (duration !== undefined && (duration <= 0 || duration > 90)) {
+      return res.status(400).json({
+        error:
+          "Duration must be greater than 0 and less than or equal to 90 minutes",
+      });
+    }
+
+    // Check if activity with this order already exists for this exhibit
+    const [existing] = await db.query(
+      `SELECT Activity_ID FROM Exhibit_Activity 
+       WHERE Exhibit_ID = ? AND Activity_Order = ?`,
+      [exhibitId, activityOrder]
+    );
+
+    if (existing.length > 0) {
+      return res.status(400).json({
+        error: `Activity for ${
+          activityOrder === 1 ? "even" : "odd"
+        } days already exists`,
+      });
+    }
+
+    const [result] = await db.query(
+      `
+      INSERT INTO Exhibit_Activity 
+      (Exhibit_ID, Activity_Name, Activity_Description, Activity_Order, Duration)
+      VALUES (?, ?, ?, ?, ?)
+    `,
+      [
+        exhibitId,
+        activityName,
+        activityDescription,
+        activityOrder,
+        duration || 30,
+      ]
+    );
+
+    const [newActivity] = await db.query(
+      `SELECT * FROM Exhibit_Activity WHERE Activity_ID = ?`,
+      [result.insertId]
+    );
+
+    res.status(201).json(newActivity[0]);
+  } catch (error) {
+    console.error("Error adding exhibit activity:", error);
+    res.status(500).json({ error: "Failed to add exhibit activity" });
+  }
+};
+
+export const updateExhibitActivity = async (req, res) => {
+  try {
+    const { activityId } = req.params;
+    const { activityName, activityDescription, activityOrder, duration } =
+      req.body;
+
+    // Validate activity order if provided
+    if (activityOrder !== undefined && ![1, 2].includes(activityOrder)) {
+      return res.status(400).json({
+        error: "Activity order must be 1 (even days) or 2 (odd days)",
+      });
+    }
+
+    // Validate duration if provided
+    if (duration !== undefined && (duration <= 0 || duration > 90)) {
+      return res.status(400).json({
+        error:
+          "Duration must be greater than 0 and less than or equal to 90 minutes",
+      });
+    }
+
+    // If changing order, check if new order already exists for this exhibit
+    if (activityOrder !== undefined) {
+      const [current] = await db.query(
+        `SELECT Exhibit_ID FROM Exhibit_Activity WHERE Activity_ID = ?`,
+        [activityId]
+      );
+
+      if (current.length > 0) {
+        const [existing] = await db.query(
+          `SELECT Activity_ID FROM Exhibit_Activity 
+           WHERE Exhibit_ID = ? AND Activity_Order = ? AND Activity_ID != ?`,
+          [current[0].Exhibit_ID, activityOrder, activityId]
+        );
+
+        if (existing.length > 0) {
+          return res.status(400).json({
+            error: `Activity for ${
+              activityOrder === 1 ? "even" : "odd"
+            } days already exists`,
+          });
+        }
+      }
+    }
+
+    const updates = [];
+    const values = [];
+
+    if (activityName) {
+      updates.push("Activity_Name = ?");
+      values.push(activityName);
+    }
+    if (activityDescription !== undefined) {
+      updates.push("Activity_Description = ?");
+      values.push(activityDescription);
+    }
+    if (activityOrder !== undefined) {
+      updates.push("Activity_Order = ?");
+      values.push(activityOrder);
+    }
+    if (duration !== undefined) {
+      updates.push("Duration = ?");
+      values.push(duration);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: "No fields to update" });
+    }
+
+    values.push(activityId);
+
+    await db.query(
+      `UPDATE Exhibit_Activity SET ${updates.join(", ")} WHERE Activity_ID = ?`,
+      values
+    );
+
+    const [updated] = await db.query(
+      `SELECT * FROM Exhibit_Activity WHERE Activity_ID = ?`,
+      [activityId]
+    );
+
+    res.json(updated[0]);
+  } catch (error) {
+    console.error("Error updating exhibit activity:", error);
+    res.status(500).json({ error: "Failed to update exhibit activity" });
+  }
+};
+
+export const deleteExhibitActivity = async (req, res) => {
+  try {
+    const { activityId } = req.params;
+
+    const [result] = await db.query(
+      `DELETE FROM Exhibit_Activity WHERE Activity_ID = ?`,
+      [activityId]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: "Activity not found" });
+    }
+
+    res.json({ message: "Activity deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting exhibit activity:", error);
+    res.status(500).json({ error: "Failed to delete exhibit activity" });
+  }
+};
+
+// ============================================
+// MEMBERSHIP PRICING PREVIEW
+// ============================================
+
+export const getItemPriceWithMembership = async (req, res) => {
+  try {
+    const { customerId, itemType, itemId } = req.query;
+
+    if (!customerId || !itemType || !itemId) {
+      return res.status(400).json({
+        error: "Missing required parameters: customerId, itemType, itemId",
+      });
+    }
+
+    // Check if customer has active membership
+    const [membership] = await db.query(
+      `SELECT Membership_Status 
+       FROM Membership 
+       WHERE Customer_ID = ? AND Membership_Status = 'Active'`,
+      [customerId]
+    );
+
+    const hasMembership = membership.length > 0;
+
+    // Get original price based on item type
+    let originalPrice = 0;
+    if (itemType === "item") {
+      const [item] = await db.query(
+        `SELECT Price FROM Item WHERE Item_ID = ? AND is_active = TRUE`,
+        [itemId]
+      );
+      if (item.length > 0) originalPrice = parseFloat(item[0].Price);
+    } else if (itemType === "food") {
+      const [food] = await db.query(
+        `SELECT Price FROM Concession_Item WHERE Concession_Item_ID = ? AND is_active = TRUE`,
+        [itemId]
+      );
+      if (food.length > 0) originalPrice = parseFloat(food[0].Price);
+    }
+
+    const discountedPrice = hasMembership ? originalPrice * 0.9 : originalPrice;
+
+    res.json({
+      originalPrice,
+      discountedPrice,
+      hasMembership,
+      discount: hasMembership ? 0.1 : 0,
+    });
+  } catch (error) {
+    console.error("Error calculating price with membership:", error);
+    res.status(500).json({ error: "Failed to calculate price" });
   }
 };

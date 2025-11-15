@@ -92,23 +92,23 @@ export function CartPage({
     ) ||
       (backendMembership && backendMembership.Membership_Status));
 
+  // Check if any item in cart has membership discount applied
+  const hasDiscountedItems = cart.some(
+    (item) =>
+      item.hasMembership &&
+      item.originalPrice &&
+      item.originalPrice > item.price &&
+      item.type !== "ticket" &&
+      item.type !== "membership"
+  );
+
   const subtotal = cart.reduce(
     (sum, item) => sum + parseFloat(item.price || 0) * item.quantity,
     0
   );
 
-  // Apply 10% member discount to items and food (not tickets or memberships)
-  const memberDiscount = hasMembership
-    ? cart
-        .filter((item) => item.type !== "ticket" && item.type !== "membership")
-        .reduce(
-          (sum, item) =>
-            sum + parseFloat(item.price || 0) * item.quantity * 0.1,
-          0
-        )
-    : 0;
-
-  const discountedSubtotal = subtotal - memberDiscount;
+  // No need to apply additional discount - prices are already discounted from backend
+  const discountedSubtotal = subtotal;
   const tax = discountedSubtotal * 0.08;
   const total = discountedSubtotal + tax;
 
@@ -116,6 +116,11 @@ export function CartPage({
     // Prevent increasing membership quantity beyond 1
     if (item.type === "membership") {
       toast.error("You can only have one membership in the cart!");
+      return;
+    }
+    // Prevent increasing quantity beyond 50
+    if (item.quantity >= 50) {
+      toast.error("Cannot add more than 50 of the same item to cart.");
       return;
     }
     updateCartQuantity(item.id, item.type, item.quantity + 1);
@@ -495,11 +500,12 @@ export function CartPage({
                     <CardTitle>Cart Items ({cart.length})</CardTitle>
                     {cart.length > 0 && (
                       <Button
-                        variant="outline"
+                        variant="destructive"
                         size="sm"
                         onClick={() => setShowClearDialog(true)}
-                        className="text-red-600 border-red-600 hover:bg-red-50 cursor-pointer"
+                        className="bg-red-600 hover:bg-red-700 text-white cursor-pointer"
                       >
+                        <Trash2 className="h-4 w-4 mr-2" />
                         Clear Cart
                       </Button>
                     )}
@@ -554,9 +560,37 @@ export function CartPage({
                                 <h3 className="font-medium text-gray-800">
                                   {item.name}
                                 </h3>
-                                <p className="text-sm text-gray-600">
-                                  ${parseFloat(item.price || 0).toFixed(2)} each
-                                </p>
+                                <div className="flex items-center gap-2">
+                                  {item.hasMembership &&
+                                  item.originalPrice &&
+                                  item.originalPrice > item.price ? (
+                                    <>
+                                      <p
+                                        style={{
+                                          fontSize: "0.875rem",
+                                          color: "#9CA3AF",
+                                          textDecoration: "line-through",
+                                          fontStyle: "italic",
+                                        }}
+                                      >
+                                        $
+                                        {parseFloat(
+                                          item.originalPrice || 0
+                                        ).toFixed(2)}
+                                      </p>
+                                      <p className="text-sm text-orange-600 font-semibold italic">
+                                        $
+                                        {parseFloat(item.price || 0).toFixed(2)}{" "}
+                                        each
+                                      </p>
+                                    </>
+                                  ) : (
+                                    <p className="text-sm text-gray-600">
+                                      ${parseFloat(item.price || 0).toFixed(2)}{" "}
+                                      each
+                                    </p>
+                                  )}
+                                </div>
                                 <p className="text-xs text-gray-500 mt-1">
                                   {item.type === "membership"
                                     ? "Membership"
@@ -640,16 +674,6 @@ export function CartPage({
                       <span>${subtotal.toFixed(2)}</span>
                     </div>
 
-                    {hasMembership && memberDiscount > 0 && (
-                      <div className="flex justify-between text-green-600">
-                        <div className="flex items-center gap-2">
-                          <Crown className="h-4 w-4" />
-                          <span>Member Discount (10%):</span>
-                        </div>
-                        <span>-${memberDiscount.toFixed(2)}</span>
-                      </div>
-                    )}
-
                     <div className="flex justify-between text-gray-700">
                       <span>Tax (8%):</span>
                       <span>${tax.toFixed(2)}</span>
@@ -661,7 +685,7 @@ export function CartPage({
                       </span>
                     </div>
 
-                    {hasMembership && (
+                    {(hasMembership || hasDiscountedItems) && (
                       <div className="bg-green-50 border border-green-200 rounded-lg p-3 mt-2">
                         <div className="flex items-center gap-2 text-green-700 text-sm">
                           <Crown className="h-4 w-4" />
@@ -753,12 +777,6 @@ export function CartPage({
                 <span>Subtotal:</span>
                 <span>${subtotal.toFixed(2)}</span>
               </div>
-              {hasMembership && memberDiscount > 0 && (
-                <div className="flex justify-between text-green-600">
-                  <span>Member Discount (10%):</span>
-                  <span>-${memberDiscount.toFixed(2)}</span>
-                </div>
-              )}
               <div className="flex justify-between">
                 <span>Tax (8%):</span>
                 <span>${tax.toFixed(2)}</span>
@@ -768,6 +786,17 @@ export function CartPage({
                 <span className="text-green-600">${total.toFixed(2)}</span>
               </div>
             </div>
+
+            {(hasMembership || hasDiscountedItems) && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                <div className="flex items-center gap-2 text-green-700 text-sm">
+                  <Crown className="h-4 w-4" />
+                  <span>
+                    Member discounts have been applied to eligible items!
+                  </span>
+                </div>
+              </div>
+            )}
 
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
               <span className="text-sm text-blue-700">

@@ -41,7 +41,7 @@ export const zookeeperAPI = {
   // Mark habitat as cleaned
   markHabitatCleaned: async (enclosureId, employeeId, notes = "") => {
     const response = await fetch(
-      `${API_BASE_URL}/zookeeper/enclosures/${enclosureId}/clean`,
+      `${API_BASE_URL}/zookeeper/exhibits/${enclosureId}/clean`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -55,7 +55,7 @@ export const zookeeperAPI = {
   // Cancel/postpone cleaning
   cancelCleaning: async (enclosureId, skipDays = 1) => {
     const response = await fetch(
-      `${API_BASE_URL}/zookeeper/enclosures/${enclosureId}/skip-cleaning`,
+      `${API_BASE_URL}/zookeeper/exhibits/${enclosureId}/skip-cleaning`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -67,30 +67,35 @@ export const zookeeperAPI = {
   },
 
   // Notifications
-  getNotifications: async () => {
-    const response = await fetch(`${API_BASE_URL}/zookeeper/notifications`);
+  // Accepts an optional options object: { range: 'daily'|'weekly' }
+  getNotifications: async (options = {}) => {
+    const params = new URLSearchParams();
+    if (options.range) params.append("range", options.range);
+    const qs = params.toString();
+    const url = `${API_BASE_URL}/zookeeper/notifications${qs ? `?${qs}` : ""}`;
+    const response = await fetch(url);
     if (!response.ok) throw new Error("Failed to fetch notifications");
     return response.json();
   },
 
-  // Enclosures
+  // Exhibits
   getAllEnclosures: async () => {
-    const response = await fetch(`${API_BASE_URL}/zookeeper/enclosures`);
-    if (!response.ok) throw new Error("Failed to fetch enclosures");
+    const response = await fetch(`${API_BASE_URL}/zookeeper/exhibits`);
+    if (!response.ok) throw new Error("Failed to fetch exhibits");
     return response.json();
   },
 
   getEnclosureStatus: async (enclosureId) => {
     const response = await fetch(
-      `${API_BASE_URL}/zookeeper/enclosures/${enclosureId}/status`
+      `${API_BASE_URL}/zookeeper/exhibits/${enclosureId}/status`
     );
-    if (!response.ok) throw new Error("Failed to fetch enclosure status");
+    if (!response.ok) throw new Error("Failed to fetch exhibit status");
     return response.json();
   },
 
   getAnimalsByEnclosure: async (enclosureId) => {
     const response = await fetch(
-      `${API_BASE_URL}/zookeeper/enclosures/${enclosureId}/animals`
+      `${API_BASE_URL}/zookeeper/exhibits/${enclosureId}/animals`
     );
     if (!response.ok) throw new Error("Failed to fetch animals");
     return response.json();

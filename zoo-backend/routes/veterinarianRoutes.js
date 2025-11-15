@@ -11,7 +11,7 @@ import {
   getVaccinationLogs,
   createMedicalLog,
   createVaccinationLog,
-  getAllEnclosures,
+  getAllExhibits,
 } from "../controllers/veterinarianController.js";
 
 const router = express.Router();
@@ -22,9 +22,9 @@ router.get("/stats", getVeterinarianStats);
 // Animals
 router.get("/animals", getAllAnimals);
 
-// Enclosure routes
-router.get("/enclosures", getAllEnclosures);
-router.get("/enclosures/:enclosureId/animals", getAnimalsByEnclosure);
+// Exhibit routes
+router.get("/exhibits", getAllExhibits);
+router.get("/exhibits/:enclosureId/animals", getAnimalsByEnclosure);
 
 // Vet visit routes
 router.get("/vet-visits", getAllVetVisits);

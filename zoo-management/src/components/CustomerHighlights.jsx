@@ -35,25 +35,35 @@ export function CustomerHighlights() {
 
   const itemsPerPage = 3;
 
-  // Fetch data without caching
+  // Fetch exhibits data
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchExhibits = async () => {
       try {
-        setLoading(true);
-        const [exhibitsData, activitiesData] = await Promise.all([
-          exhibitsAPI.getAll(),
-          activitiesAPI.getAll(),
-        ]);
+        const exhibitsData = await exhibitsAPI.getAll();
         setExhibits(exhibitsData || []);
-        setActivities(activitiesData || []);
-        setError(null);
       } catch (err) {
+        console.error("Error fetching exhibits:", err);
         setError(err.message);
-      } finally {
+      }
+    };
+    fetchExhibits();
+  }, []);
+
+  // Fetch activities - no longer needed for upcoming events
+  // but kept for compatibility if needed elsewhere
+  useEffect(() => {
+    const fetchActivities = async () => {
+      try {
+        const activitiesData = await activitiesAPI.getAll();
+        setActivities(activitiesData || []);
+        setLoading(false);
+      } catch (err) {
+        console.error("Error fetching activities:", err);
+        setError(err.message);
         setLoading(false);
       }
     };
-    fetchData();
+    fetchActivities();
   }, []);
 
   // Preload exhibit images for better performance
@@ -91,42 +101,35 @@ export function CustomerHighlights() {
     return items;
   };
 
-  // Generate next 7 days of events - one random activity per exhibit per day
+  // Generate next 7 days of events - fetch from database based on even/odd days
   const generateNext7DaysEvents = () => {
-    if (!exhibits.length || !activities.length) return [];
-
     const next7Days = [];
     const today = new Date();
 
-    // Group activities by exhibit
-    const activitiesByExhibit = exhibits.reduce((acc, exhibit) => {
-      const exhibitActivities = activities.filter(
-        (activity) => activity.Exhibit_ID === exhibit.Exhibit_ID
-      );
-      if (exhibitActivities.length > 0) {
-        acc[exhibit.Exhibit_ID] = exhibitActivities;
-      }
-      return acc;
-    }, {});
-
-    // Generate one event for each of the next 7 days
     for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
       const eventDate = new Date(today);
       eventDate.setDate(today.getDate() + dayOffset);
 
-      // Get exhibits that have activities
-      const exhibitsWithActivities = Object.keys(activitiesByExhibit);
+      // Calculate day of year to determine even/odd
+      const startOfYear = new Date(eventDate.getFullYear(), 0, 0);
+      const diff = eventDate - startOfYear;
+      const oneDay = 1000 * 60 * 60 * 24;
+      const dayOfYear = Math.floor(diff / oneDay);
 
-      if (exhibitsWithActivities.length > 0) {
-        // Pick a random exhibit for this day using date as seed for consistency
-        const exhibitIndex =
-          (eventDate.getDate() + dayOffset) % exhibitsWithActivities.length;
-        const selectedExhibitId = exhibitsWithActivities[exhibitIndex];
-        const exhibitActivities = activitiesByExhibit[selectedExhibitId];
+      // Even days of year: Activity_Order 1, Odd days: Activity_Order 2
+      const activityOrder = dayOfYear % 2 === 0 ? 1 : 2;
 
-        // Pick a random activity from this exhibit
-        const activityIndex = eventDate.getDate() % exhibitActivities.length;
-        const selectedActivity = exhibitActivities[activityIndex];
+      // Filter activities by the activity order for this specific day
+      const dayActivities = activities.filter(
+        (activity) => activity.Activity_Order === activityOrder
+      );
+
+      // Randomize selection for this day
+      if (dayActivities.length > 0) {
+        // Use date as seed for consistent randomization per day
+        const seed = eventDate.getDate() + eventDate.getMonth() * 31;
+        const randomIndex = seed % dayActivities.length;
+        const selectedActivity = dayActivities[randomIndex];
 
         // Check if this event is today
         const isToday =
@@ -271,8 +274,9 @@ export function CustomerHighlights() {
   // Format time from 24-hour to 12-hour
   const formatTime = (time) => {
     if (!time) return "";
+    // Handle both "HH:MM:SS" and "HH:MM" formats from backend
     const [hours, minutes] = time.split(":");
-    const hour = parseInt(hours);
+    const hour = parseInt(hours, 10);
     const period = hour >= 12 ? "PM" : "AM";
     const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
     return `${displayHour}:${minutes} ${period}`;
@@ -308,7 +312,7 @@ export function CustomerHighlights() {
   }
 
   // Don't render if no data is available
-  if (!loading && (!exhibits.length || !activities.length)) {
+  if (!loading && !exhibits.length) {
     return (
       <section className="py-16 bg-white">
         <div className="container mx-auto px-6">

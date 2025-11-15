@@ -37,13 +37,14 @@ export const getConcessionStats = async (req, res) => {
     const todayRevenue = parseFloat(todayStats[0]?.todayRevenue || 0);
     const itemsSoldToday = parseInt(todayStats[0]?.itemsSoldToday || 0);
     const allTimeRevenue = parseFloat(allTimeStats[0]?.allTimeRevenue || 0);
-    
-    const topItemToday = topItemStats.length > 0
-      ? {
-          Item_Name: topItemStats[0].Item_Name,
-          Quantity: parseInt(topItemStats[0].Quantity || 0),
-        }
-      : null;
+
+    const topItemToday =
+      topItemStats.length > 0
+        ? {
+            Item_Name: topItemStats[0].Item_Name,
+            Quantity: parseInt(topItemStats[0].Quantity || 0),
+          }
+        : null;
 
     res.json({
       todayRevenue,
@@ -73,6 +74,7 @@ export const getAllFood = async (req, res) => {
         cs.Stand_Name
       FROM concession_item ci
       JOIN concession_stand cs ON ci.Stand_ID = cs.Stand_ID
+      WHERE ci.is_active = TRUE
       ORDER BY cs.Stand_Name, ci.Item_Name ASC
     `);
     res.json(rows);
@@ -125,11 +127,13 @@ export const addFood = async (req, res) => {
       [result.insertId]
     );
 
-    res.status(201).json(newItemRows[0] || {
-      message: "Item added successfully",
-      Concession_Item_ID: result.insertId,
-      Image_URL: imageUrl,
-    });
+    res.status(201).json(
+      newItemRows[0] || {
+        message: "Item added successfully",
+        Concession_Item_ID: result.insertId,
+        Image_URL: imageUrl,
+      }
+    );
   } catch (error) {
     console.error("❌ Error adding food:", error);
     res.status(500).json({ error: "Failed to add food item" });
@@ -142,7 +146,7 @@ export const updateFood = async (req, res) => {
     const { Item_Name, Price } = req.body;
 
     const [rows] = await pool.query(
-      `SELECT Image_URL FROM concession_item WHERE Concession_Item_ID = ?`,
+      `SELECT Image_URL FROM concession_item WHERE Concession_Item_ID = ? AND is_active = TRUE`,
       [id]
     );
     if (rows.length === 0) {
@@ -176,7 +180,12 @@ export const updateFood = async (req, res) => {
       [id]
     );
 
-    res.json(updatedRows[0] || { message: "Item updated successfully", Image_URL: newImageUrl });
+    res.json(
+      updatedRows[0] || {
+        message: "Item updated successfully",
+        Image_URL: newImageUrl,
+      }
+    );
   } catch (error) {
     console.error("❌ Error updating food:", error);
     res.status(500).json({ error: "Failed to update food item" });
@@ -188,20 +197,17 @@ export const deleteFood = async (req, res) => {
     const { id } = req.params;
 
     const [rows] = await pool.query(
-      `SELECT Image_URL FROM concession_item WHERE Concession_Item_ID = ?`,
+      `SELECT Image_URL FROM concession_item WHERE Concession_Item_ID = ? AND is_active = TRUE`,
       [id]
     );
     if (rows.length === 0) {
       return res.status(404).json({ error: "Item not found" });
     }
 
-    const imageUrl = rows[0].Image_URL;
-    if (imageUrl) {
-      await deleteFromAzure(imageUrl);
-    }
-
+    // Soft delete: mark as inactive instead of hard delete
+    // Image is kept in Azure for historical purchase records
     await pool.query(
-      `DELETE FROM concession_item WHERE Concession_Item_ID = ?`,
+      `UPDATE concession_item SET is_active = FALSE WHERE Concession_Item_ID = ?`,
       [id]
     );
 

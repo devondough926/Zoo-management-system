@@ -148,18 +148,26 @@ export function LoginPage({ onLogin }) {
                 </CardDescription>
                 <div className="flex gap-2 mt-4">
                   <Button
-                    variant={loginType === "customer" ? "default" : "outline"}
+                    variant="ghost"
                     size="sm"
                     onClick={() => setLoginType("customer")}
-                    className={loginType === "customer" ? "bg-green-600" : ""}
+                    className={
+                      loginType === "customer"
+                        ? "bg-transparent rounded-none px-3 pb-1 border-b-2 border-green-600 text-green-700 shadow-none hover:bg-transparent"
+                        : "bg-transparent rounded-none px-3 pb-1 text-gray-700 hover:bg-transparent"
+                    }
                   >
                     Customer
                   </Button>
                   <Button
-                    variant={loginType === "employee" ? "default" : "outline"}
+                    variant="ghost"
                     size="sm"
                     onClick={() => setLoginType("employee")}
-                    className={loginType === "employee" ? "bg-green-600" : ""}
+                    className={
+                      loginType === "employee"
+                        ? "bg-transparent rounded-none px-3 pb-1 border-b-2 border-green-600 text-green-700 shadow-none hover:bg-transparent"
+                        : "bg-transparent rounded-none px-3 pb-1 text-gray-700 hover:bg-transparent"
+                    }
                   >
                     Staff
                   </Button>

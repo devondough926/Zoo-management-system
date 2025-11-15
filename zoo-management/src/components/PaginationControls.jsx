@@ -71,10 +71,8 @@ export function PaginationControls({
     );
   };
 
-  // compute pages once and allow debugging output
+  // compute pages once
   const pages = buildPagination();
-  // eslint-disable-next-line no-console
-  console.log && console.log("Pagination pages:", pages);
 
   return (
     <div className={`flex justify-center items-center gap-2 ${className}`}>

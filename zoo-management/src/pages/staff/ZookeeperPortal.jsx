@@ -56,6 +56,7 @@ import { toast } from "sonner";
 import { ZooLogo } from "../../components/ZooLogo";
 import { CleaningCard } from "../../components/CleaningCard";
 import { zookeeperAPI, employeeAPI } from "../../services/zookeeperAPI";
+import { useWeather } from "../../contexts/WeatherContext";
 
 export function ZookeeperPortal({ user, onLogout }) {
   // Helper: format a Date to MySQL DATETIME string 'YYYY-MM-DD HH:MM:SS'
@@ -79,11 +80,53 @@ export function ZookeeperPortal({ user, onLogout }) {
   const [taskType, setTaskType] = useState("feeding");
   const [notificationOpen, setNotificationOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
+  // State to force periodic re-renders so relative timestamps update
+  const [now, setNow] = useState(Date.now());
   const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
   const [topAlertDismissed, setTopAlertDismissed] = useState(false);
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [cleaningActionLoading, setCleaningActionLoading] = useState(false);
+
+  const { selectedWeather } = useWeather();
+
+  const weatherAlert = (() => {
+    if (!selectedWeather) return null;
+    const t = selectedWeather.type;
+    if (["Rain", "Storm", "High Wind"].includes(t)) {
+      return {
+        title: "Weather Impact Information",
+        detail: "Outdoor and Hybrid exhibits are closed for visitor safety.",
+      };
+    }
+    if (t === "Snow") {
+      return {
+        title: "Weather Impact Information",
+        detail: "Outdoor exhibits are closed for visitor safety.",
+      };
+    }
+    if (["Extreme Heat", "Extreme Cold"].includes(t)) {
+      return {
+        title: "Weather Impact Information",
+        detail: "All exhibits are closed for visitor safety.",
+      };
+    }
+    return null;
+  })();
+  // Compute a dynamic height for the notifications list: grow with items
+  // but cap at a reasonable max so the list becomes scrollable when long.
+  const notificationListHeight = useMemo(() => {
+    const count = (notifications || []).length;
+    if (count === 0) return "auto";
+    // For up to 4 items, allow the list to expand (no scroll).
+    if (count <= 4) return "auto";
+    const itemApproxPx = 88; // approximate height per notification item
+    const paddingPx = 24; // extra padding in the list
+    const maxPx = 520; // maximum height before scrolling
+    // Cap the visible height to roughly 4 items (so scrolling begins after 4)
+    const calc = 4 * itemApproxPx + paddingPx;
+    return Math.min(calc, maxPx);
+  }, [notifications]);
   const [feedingSearchTerm, setFeedingSearchTerm] = useState("");
   const ALL_ENCLOSURES = "__ALL__";
   const [enclosureFilter, setEnclosureFilter] = useState(ALL_ENCLOSURES);
@@ -92,6 +135,12 @@ export function ZookeeperPortal({ user, onLogout }) {
 
   useEffect(() => {
     loadAllData();
+  }, []);
+
+  // Update `now` every 10 seconds so `formatTimeAgo` refreshes on screen
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 10000);
+    return () => clearInterval(id);
   }, []);
 
   const loadAllData = async () => {
@@ -145,10 +194,23 @@ export function ZookeeperPortal({ user, onLogout }) {
 
   const loadNotifications = async () => {
     try {
-      const notifs = await zookeeperAPI.getNotifications();
-      setNotifications(notifs || []);
+      const notifs = await zookeeperAPI.getNotifications({ range: "24hours" });
+
+      const now = new Date();
+      const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+      const filtered = (notifs || []).filter((n) => {
+        if (!n || !n.timestamp) return false;
+        try {
+          const notifDate = new Date(n.timestamp);
+          return notifDate >= twentyFourHoursAgo && notifDate <= now;
+        } catch (e) {
+          return false;
+        }
+      });
+
+      setNotifications(filtered);
     } catch (error) {
-      console.error("Error loading notifications:", error);
       toast.error("Failed to load notifications");
     }
   };
@@ -372,6 +434,22 @@ export function ZookeeperPortal({ user, onLogout }) {
       (a, b) => (statusOrder[a.Status] ?? 99) - (statusOrder[b.Status] ?? 99)
     );
   }, [filteredByLevel]);
+  // Compute a dynamic height for the feeding list so the ScrollArea gets
+  // an explicit height when there are many items (enables internal scrolling),
+  // but the container will shrink when there are few items.
+  const feedingListHeight = useMemo(() => {
+    const count = (sortedFeedingTasks || []).length || 0;
+    const cols =
+      typeof window !== "undefined" && window.innerWidth >= 768 ? 2 : 1;
+    const rows = Math.max(1, Math.ceil(count / cols));
+    const approxItemHeight = 112; // estimate per item in px
+    const rowGap = 12; // grid gap in px
+    const padding = 24; // padding allowance
+    const computed = rows * approxItemHeight + (rows - 1) * rowGap + padding;
+    const minH = 120;
+    const maxH = 720;
+    return Math.min(maxH, Math.max(minH, computed));
+  }, [sortedFeedingTasks.length]);
   const [activeTab, setActiveTab] = useState("feeding");
   const activityListRef = useRef(null);
 
@@ -393,15 +471,37 @@ export function ZookeeperPortal({ user, onLogout }) {
   // Pagination for Activity Log
   const [activityPage, setActivityPage] = useState(1);
   const ACTIVITY_PAGE_SIZE = 5;
+  // Show only today's activity in the "Daily Log" tab
+  const dailyActivityLog = useMemo(() => {
+    const today = new Date();
+    const isSameLocalDay = (a, b) => {
+      try {
+        const da = new Date(a);
+        const db = new Date(b);
+        return (
+          da.getFullYear() === db.getFullYear() &&
+          da.getMonth() === db.getMonth() &&
+          da.getDate() === db.getDate()
+        );
+      } catch (e) {
+        return false;
+      }
+    };
+
+    return (activityLog || []).filter(
+      (l) => l && l.timestamp && isSameLocalDay(l.timestamp, today)
+    );
+  }, [activityLog]);
+
   const activityTotalPages = Math.max(
     1,
-    Math.ceil((activityLog || []).length / ACTIVITY_PAGE_SIZE)
+    Math.ceil((dailyActivityLog || []).length / ACTIVITY_PAGE_SIZE)
   );
 
-  // Reset to first page when activity data changes
+  // Reset to first page when today's activity data changes
   useEffect(() => {
     setActivityPage(1);
-  }, [activityLog.length]);
+  }, [dailyActivityLog.length]);
   const handleFastForwardCleaning = async (enclosureId) => {
     try {
       // This would advance the countdown - for now just show message
@@ -565,22 +665,52 @@ export function ZookeeperPortal({ user, onLogout }) {
   };
 
   const formatTime = (dateString) => {
-    const date = new Date(dateString);
+    const date = parseServerDate(dateString);
+    if (!date) return "";
     return date.toLocaleTimeString("en-US", {
-      hour: "2-digit",
+      hour: "numeric",
       minute: "2-digit",
     });
   };
 
   const formatDateTime = (dateString) => {
-    const date = new Date(dateString);
+    const date = parseServerDate(dateString);
+    if (!date) return "";
     return date.toLocaleString("en-US", {
       month: "short",
       day: "numeric",
-      hour: "2-digit",
+      hour: "numeric",
       minute: "2-digit",
     });
   };
+
+  // Parse server-side DATETIME/ISO strings. If the string is a MySQL DATETIME
+  // like "YYYY-MM-DD HH:MM:SS" (no timezone), treat it as UTC by converting
+  // to an ISO string with a trailing Z so JS Date parses it as UTC. If it's
+  // already ISO with timezone, parse normally. Accept Date objects as-is.
+  function parseServerDate(input) {
+    if (!input) return null;
+    if (input instanceof Date) return input;
+    if (typeof input !== "string") return new Date(input);
+
+    // If string ends with Z or has an explicit offset, parse directly
+    if (/Z$/.test(input) || /[+-]\d{2}:?\d{2}$/.test(input)) {
+      const d = new Date(input);
+      return isNaN(d.getTime()) ? null : d;
+    }
+
+    // Detect MySQL DATETIME like '2025-11-15 12:35:46' and convert to UTC
+    const m = input.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2})?)$/);
+    if (m) {
+      const iso = `${m[1]}T${m[2]}Z`;
+      const d = new Date(iso);
+      return isNaN(d.getTime()) ? null : d;
+    }
+
+    // Fallback to default parsing
+    const d = new Date(input);
+    return isNaN(d.getTime()) ? null : d;
+  }
 
   const formatMonthDay = (dateString) => {
     if (!dateString) return "";
@@ -604,7 +734,24 @@ export function ZookeeperPortal({ user, onLogout }) {
   };
 
   const formatTimeAgo = (dateString) => {
-    const date = new Date(dateString);
+    if (!dateString) return "Unknown";
+
+    // Parse the date - handle both ISO strings and MySQL datetime strings
+    let date;
+    try {
+      // If it's already a Date object, use it; otherwise parse the string
+      date = dateString instanceof Date ? dateString : new Date(dateString);
+
+      // Check if the date is valid
+      if (isNaN(date.getTime())) {
+        console.error("Invalid date:", dateString);
+        return "Invalid date";
+      }
+    } catch (e) {
+      console.error("Error parsing date:", dateString, e);
+      return "Invalid date";
+    }
+
     const now = new Date();
     let diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
     if (diffInSeconds < 0) diffInSeconds = 0;
@@ -659,6 +806,58 @@ export function ZookeeperPortal({ user, onLogout }) {
 
   return (
     <div className="min-h-screen bg-gray-100">
+      {/* Progress bar animation CSS (uses --p-color and --p-rgb on the fill element)
+          Note: removed repeating stripe gradients; animation is a same-color
+          translucent band that moves across the solid fill. The right half
+          of the fill fades to a lighter version starting at 50% of the fill. */}
+      <style>{`
+        .progress-animated-fill{
+          position: relative;
+          /* fade starts at 90% so fade region == 10% from the end */
+          background: linear-gradient(90deg, var(--p-color) 0%, var(--p-color) 90%, rgba(var(--p-rgb),0.12) 100%);
+          overflow: hidden;
+        }
+
+        /* moving same-color band to imply motion (no extra colors) */
+        .progress-animated-fill::before{
+          content: "";
+          position: absolute;
+          top: 0;
+          left: -40%;
+          width: 40%;
+          height: 100%;
+          background: linear-gradient(90deg, rgba(var(--p-rgb),0.06) 0%, rgba(var(--p-rgb),0.12) 50%, rgba(var(--p-rgb),0.06) 100%);
+          transform: skewX(-12deg);
+          animation: prog-move 1.6s linear infinite;
+          pointer-events: none;
+        }
+
+        /* When a fill should have no fade (e.g. fully red/overdue), make it a solid color */
+        .progress-animated-fill.no-fade{
+          background: var(--p-color) !important;
+        }
+
+        .progress-animated-fill.no-fade::before{
+          display: none !important;
+        }
+
+        @keyframes prog-move{
+          from { transform: translateX(0) skewX(-12deg); }
+          to { transform: translateX(140%) skewX(-12deg); }
+        }
+
+        /* Small padded track frame to create pill/border look */
+        .progress-track-frame{
+          padding: 2px; /* outer frame thickness */
+          border-radius: 9999px;
+          /* unfilled track is gray */
+          background-color: #e5e7eb; /* tailwind gray-200 */
+          /* stronger black border for visibility */
+          border: 1px solid rgba(0,0,0,0.6);
+          box-sizing: border-box;
+          overflow: hidden;
+        }
+      `}</style>
       {/* Header - match other staff portals */}
       <header
         className="sticky top-0 z-50 shadow-sm border-b transition-colors duration-150 text-white"
@@ -708,25 +907,25 @@ export function ZookeeperPortal({ user, onLogout }) {
 
                 <PopoverContent className="w-96 p-0" align="end">
                   <div className="p-4 border-b bg-gradient-to-r from-blue-50 to-teal-50">
-                    <div className="flex items-center justify-between">
-                      <h3 className="font-semibold">Recent Notifications</h3>
-                      <Badge className="bg-blue-600">
-                        {notifications.length}
-                      </Badge>
+                    <div className="relative">
+                      {notifications.length > 0 && (
+                        <div className="absolute right-4 top-3">
+                          <Badge className="bg-blue-600 text-white">
+                            {notifications.length}
+                          </Badge>
+                        </div>
+                      )}
+                      <div className="text-left pl-2 pr-10">
+                        <h3 className="font-semibold">Notifications</h3>
+                        <p className="text-xs text-gray-600 mt-1">
+                          Last 24 Hours
+                        </p>
+                      </div>
                     </div>
-                    <p className="text-xs text-gray-600 mt-1">Past Week</p>
                   </div>
                   <ScrollArea
                     className="w-full"
-                    height={
-                      notifications.length === 0
-                        ? "auto"
-                        : notifications.length <= 2
-                        ? 300
-                        : notifications.length <= 4
-                        ? 400
-                        : 500
-                    }
+                    height={notificationListHeight}
                   >
                     {notifications.length === 0 ? (
                       <div className="p-8 text-center text-gray-500">
@@ -739,28 +938,28 @@ export function ZookeeperPortal({ user, onLogout }) {
                         {notifications.map((notif) => (
                           <div
                             key={notif.id}
-                            className={`p-3 mb-2 rounded-lg border ${
+                            className={`p-4 pr-8 mb-3 rounded-lg border ${
                               notif.type === "new_animal"
                                 ? "bg-green-50 border-green-200"
                                 : "bg-orange-50 border-orange-200"
                             }`}
                           >
-                            <div className="flex items-start space-x-3">
+                            <div className="flex items-start space-x-4">
                               <div
-                                className={`mt-0.5 ${
+                                className={`mt-1.5 rounded-full p-2 ${
                                   notif.type === "new_animal"
-                                    ? "text-green-600"
-                                    : "text-orange-600"
+                                    ? "bg-green-100 text-green-700"
+                                    : "bg-orange-100 text-orange-700"
                                 }`}
                               >
                                 {notif.type === "new_animal" ? (
-                                  <PawPrint className="h-5 w-5" />
+                                  <PawPrint className="h-6 w-6" />
                                 ) : (
-                                  <Sparkles className="h-5 w-5" />
+                                  <Sparkles className="h-6 w-6" />
                                 )}
                               </div>
                               <div className="flex-1 min-w-0">
-                                <div className="flex items-center justify-between mb-1">
+                                <div className="flex items-center justify-between mb-2">
                                   <Badge variant="outline" className="text-xs">
                                     {notif.type === "new_animal"
                                       ? "New Animal"
@@ -771,7 +970,7 @@ export function ZookeeperPortal({ user, onLogout }) {
                                   </span>
                                 </div>
                                 <p
-                                  className={`text-sm font-medium mb-1 ${
+                                  className={`text-base font-semibold mb-1 ${
                                     notif.type === "new_animal"
                                       ? "text-green-900"
                                       : "text-orange-900"
@@ -780,7 +979,7 @@ export function ZookeeperPortal({ user, onLogout }) {
                                   {notif.message}
                                 </p>
                                 {notif.details && (
-                                  <p className="text-xs text-gray-600">
+                                  <p className="text-sm text-gray-600">
                                     {notif.details}
                                   </p>
                                 )}
@@ -817,6 +1016,27 @@ export function ZookeeperPortal({ user, onLogout }) {
 
       {/* Main Content */}
       <div className="container mx-auto px-6 py-8">
+        {/* Top Weather Alert (centered) */}
+        {weatherAlert && (
+          <div className="mb-6 flex justify-center">
+            <div className="w-full max-w-3xl">
+              <Card className="rounded-lg shadow-sm border border-red-200 bg-red-100">
+                <CardContent className="py-6 text-center">
+                  <div className="flex flex-col items-center">
+                    <AlertTriangle className="h-6 w-6 text-red-800 mb-2" />
+                    <h3 className="font-semibold text-lg text-red-900">
+                      {weatherAlert.title}
+                    </h3>
+                    <p className="text-sm text-red-800 mt-2 max-w-xl">
+                      {weatherAlert.detail}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        )}
+
         {/* Latest Notification */}
         {notifications.length > 0 && !topAlertDismissed && (
           <Card
@@ -826,11 +1046,11 @@ export function ZookeeperPortal({ user, onLogout }) {
                 : "border-l-orange-600 bg-gradient-to-r from-orange-50 via-yellow-50 to-amber-50"
             }`}
           >
-            <CardContent className="pt-6">
+            <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div className="flex items-start space-x-4 flex-1">
                   <div
-                    className={`rounded-full p-3 ${
+                    className={`rounded-full p-3 mt-1 ${
                       notifications[0].type === "new_animal"
                         ? "bg-green-600"
                         : "bg-orange-600"
@@ -914,21 +1134,7 @@ export function ZookeeperPortal({ user, onLogout }) {
                   >
                     {stats.fullyFed}/{stats.totalAnimals}
                   </p>
-                  <div
-                    className="mt-3 h-2 w-full overflow-hidden rounded-full"
-                    style={{ backgroundColor: "#e5e7eb" }}
-                  >
-                    <div
-                      style={{
-                        height: "100%",
-                        width: `${stats.feedingProgress}%`,
-                        borderRadius: "9999px",
-                        transition: "width 0.3s ease",
-                        background:
-                          "linear-gradient(90deg, #16a34a 0%, rgba(187,247,208,0.75) 60%, #ecfdf5 100%)",
-                      }}
-                    />
-                  </div>
+                  {/* Progress bar removed from stats card per request */}
                 </div>
                 <PawPrint
                   className="h-10 w-10"
@@ -978,7 +1184,7 @@ export function ZookeeperPortal({ user, onLogout }) {
               <div className="flex items-center justify-between">
                 <div className="flex-1">
                   <p className="text-sm font-medium text-gray-600">
-                    Clean Habitats
+                    Cleaned Habitats
                   </p>
                   <p
                     className="text-3xl font-semibold"
@@ -986,21 +1192,7 @@ export function ZookeeperPortal({ user, onLogout }) {
                   >
                     {stats.cleanHabitats}/{stats.totalHabitats}
                   </p>
-                  <div
-                    className="mt-3 h-2 w-full overflow-hidden rounded-full"
-                    style={{ backgroundColor: "#e5e7eb" }}
-                  >
-                    <div
-                      style={{
-                        height: "100%",
-                        width: `${stats.cleaningProgress}%`,
-                        borderRadius: "9999px",
-                        transition: "width 0.3s ease",
-                        background:
-                          "linear-gradient(90deg, #0d9488 0%, rgba(153,246,228,0.75) 60%, #f0fdfa 100%)",
-                      }}
-                    />
-                  </div>
+                  {/* Progress bar removed from stats card per request */}
                 </div>
                 <Sparkles
                   className="h-10 w-10"
@@ -1021,13 +1213,13 @@ export function ZookeeperPortal({ user, onLogout }) {
               <div className="flex items-center justify-between">
                 <div className="flex-1">
                   <p className="text-sm font-medium text-gray-600">
-                    Activity Past Week
+                    Activity Today
                   </p>
                   <p
                     className="text-3xl font-semibold"
                     style={{ color: "#1e40af" }}
                   >
-                    {activityLog.length}
+                    {dailyActivityLog.length}
                   </p>
                   <p className="mt-1 text-xs text-gray-500">Tasks completed</p>
                 </div>
@@ -1075,7 +1267,7 @@ export function ZookeeperPortal({ user, onLogout }) {
 
             <TabsTrigger value="activity" style={getTriggerStyle("activity")}>
               <ClipboardCheck className="h-4 w-4" />
-              <span className="ml-2">Weekly Log</span>
+              <span className="ml-2">Daily Log</span>
             </TabsTrigger>
           </TabsList>
 
@@ -1152,11 +1344,11 @@ export function ZookeeperPortal({ user, onLogout }) {
                 {/* Search removed for Feeding Schedule - enclosure filter remains */}
               </CardHeader>
               <CardContent>
-                {/* fixed feeding list height and internal scrolling */}
-                <ScrollArea className="pr-2" height={720}>
-                  <div className="space-y-3 pr-2">
+                {/* feeding list: allow the ScrollArea to size-to-content up to a cap */}
+                <ScrollArea className="pr-2" height={feedingListHeight}>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pr-2">
                     {sortedFeedingTasks.length === 0 ? (
-                      <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-8 text-center text-sm text-gray-500">
+                      <div className="col-span-full rounded-lg border border-dashed border-gray-200 bg-gray-50 p-8 text-center text-sm text-gray-500">
                         No animals to display.
                       </div>
                     ) : (
@@ -1208,7 +1400,6 @@ export function ZookeeperPortal({ user, onLogout }) {
                                   </Badge>
                                 </div>
                                 <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm text-gray-600">
-                                  <p>ID # {task.Animal_ID}</p>
                                   <p>{task.Enclosure_Name}</p>
                                   <p>{task.Species}</p>
                                   <p>Zone: {task.Zone}</p>
@@ -1283,300 +1474,16 @@ export function ZookeeperPortal({ user, onLogout }) {
                       gap: 16,
                     }}
                   >
-                    {cleaningCardData.map((data) => {
-                      const progressPercent = Math.min(
-                        100,
-                        data.progress_percent ?? 0
-                      );
-                      const daysRemaining =
-                        data.days_remaining ?? data.daysRemaining ?? 0;
-                      const status = data.status || "";
-                      const cycleDays = data.cycle_days ?? data.cycleDays ?? 7;
-                      const daysPassed =
-                        data.days_passed ??
-                        data.daysPassed ??
-                        Math.max(0, cycleDays - daysRemaining);
-
-                      const progressColor =
-                        daysRemaining === 0 || status === "Overdue"
-                          ? "#dc2626"
-                          : daysRemaining <= 2 || status === "Due Soon"
-                          ? "#f97316"
-                          : daysRemaining === 3
-                          ? "#fbbf24"
-                          : "#16a34a";
-
-                      const daysColor =
-                        daysRemaining === 0
-                          ? "#b91c1c"
-                          : daysRemaining <= 2
-                          ? "#b45309"
-                          : daysRemaining === 3
-                          ? "#92400e"
-                          : "#0f766e";
-
-                      // Clean Now becomes available after at least 4 days have passed
-                      const cleanDisabled =
-                        cleaningActionLoading || !(daysPassed >= 4);
-
-                      return (
-                        <div
-                          key={data.Enclosure_ID}
-                          style={{
-                            boxShadow: "0 8px 24px rgba(2,6,23,0.08)",
-                            border: "1px solid rgba(0,0,0,0.06)",
-                            borderRadius: 8,
-                            // light subtle teal background to make the card stand out from the page
-                            background:
-                              "linear-gradient(180deg,#ecfdf5 0%, #ffffff 100%)",
-                            overflow: "hidden",
-                          }}
-                        >
-                          <div
-                            style={{
-                              padding: 16,
-                              borderBottom: "1px solid rgba(0,0,0,0.04)",
-                            }}
-                          >
-                            <div
-                              style={{
-                                display: "flex",
-                                flexDirection: "column",
-                                gap: 6,
-                              }}
-                            >
-                              <h3
-                                style={{
-                                  margin: 0,
-                                  fontSize: 16,
-                                  fontWeight: 600,
-                                }}
-                              >
-                                {data.Enclosure_Name}
-                              </h3>
-                              <div
-                                style={{
-                                  display: "flex",
-                                  justifyContent: "space-between",
-                                  fontSize: 13,
-                                  color: "#4b5563",
-                                }}
-                              >
-                                <span>Zone: {data.Zone}</span>
-                                <span>
-                                  Size: {data.Size?.toLocaleString()} sq ft
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div
-                            style={{
-                              padding: 16,
-                              display: "flex",
-                              flexDirection: "column",
-                              gap: 12,
-                            }}
-                          >
-                            <div
-                              style={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                                color: "#4b5563",
-                                fontSize: 13,
-                              }}
-                            >
-                              <div>
-                                <div
-                                  style={{
-                                    fontSize: 12,
-                                    color: "#6b7280",
-                                    fontStyle: "italic",
-                                  }}
-                                >
-                                  Last cleaned:
-                                </div>
-                                <div
-                                  style={{ fontWeight: 600, color: "#111827" }}
-                                >
-                                  {formatDate(data.last_cleaned)}
-                                </div>
-                              </div>
-                              <div style={{ textAlign: "right" }}>
-                                <div
-                                  style={{
-                                    fontSize: 12,
-                                    color: "#6b7280",
-                                    fontStyle: "italic",
-                                  }}
-                                >
-                                  Next due:
-                                </div>
-                                <div
-                                  style={{ fontWeight: 600, color: "#111827" }}
-                                >
-                                  {formatDate(data.next_due)}
-                                </div>
-                              </div>
-                            </div>
-
-                            <div>
-                              <div
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "space-between",
-                                  marginBottom: 8,
-                                }}
-                              >
-                                <span
-                                  style={{
-                                    fontSize: 13,
-                                    color: "#374151",
-                                    fontWeight: 600,
-                                  }}
-                                >
-                                  Cleaning Cycle Progress
-                                </span>
-                                {/* Unbolded days-remaining text */}
-                                <span
-                                  style={{ fontWeight: 400, color: daysColor }}
-                                >
-                                  {daysRemaining} day
-                                  {daysRemaining !== 1 ? "s" : ""} remaining
-                                </span>
-                              </div>
-
-                              <div
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: 8,
-                                }}
-                              >
-                                <div
-                                  style={{
-                                    flex: 1,
-                                    height: 10,
-                                    borderRadius: 9999,
-                                    backgroundColor: "#e5e7eb",
-                                    overflow: "hidden",
-                                  }}
-                                >
-                                  <div
-                                    style={{
-                                      height: "100%",
-                                      width: `${progressPercent}%`,
-                                      backgroundColor: progressColor,
-                                      borderRadius: 9999,
-                                      transition: "width 0.3s ease",
-                                    }}
-                                  />
-                                </div>
-
-                                {data.last_cleaned &&
-                                  data.days_remaining > 0 && (
-                                    <button
-                                      onClick={() => handleSkipCleaning(data)}
-                                      disabled={cleaningActionLoading}
-                                      aria-label="Skip one day"
-                                      style={{
-                                        padding: 6,
-                                        borderRadius: 6,
-                                        background: "transparent",
-                                        border: "none",
-                                        cursor: cleaningActionLoading
-                                          ? "not-allowed"
-                                          : "pointer",
-                                      }}
-                                    >
-                                      <FastForward
-                                        style={{
-                                          height: 14,
-                                          width: 14,
-                                          color: "#2563eb",
-                                        }}
-                                      />
-                                    </button>
-                                  )}
-                              </div>
-                            </div>
-
-                            <div
-                              style={{ display: "flex", gap: 8, paddingTop: 6 }}
-                            >
-                              <button
-                                onClick={() => handleCleanHabitat(data)}
-                                disabled={cleanDisabled}
-                                title={
-                                  cleanDisabled
-                                    ? daysPassed < 4
-                                      ? `Available after ${
-                                          4 - daysPassed
-                                        } more day${
-                                          4 - daysPassed !== 1 ? "s" : ""
-                                        }`
-                                      : "Action in progress"
-                                    : "Clean"
-                                }
-                                style={{
-                                  flex: 1,
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  gap: 8,
-                                  padding: "8px 10px",
-                                  borderRadius: 8,
-                                  backgroundColor: cleanDisabled
-                                    ? "#9ae6b4"
-                                    : "#059669",
-                                  color: cleanDisabled ? "#065f46" : "#ffffff",
-                                  border: "none",
-                                  boxShadow: cleanDisabled
-                                    ? "none"
-                                    : "0 4px 12px rgba(5,150,105,0.12)",
-                                  cursor: cleanDisabled
-                                    ? "not-allowed"
-                                    : "pointer",
-                                  fontWeight: 600,
-                                  fontSize: 14,
-                                }}
-                              >
-                                <CheckCircle2
-                                  style={{
-                                    height: 14,
-                                    width: 14,
-                                    color: cleanDisabled
-                                      ? "#065f46"
-                                      : "#ffffff",
-                                  }}
-                                />
-                                {cleanDisabled ? "Cleaned" : "Clean Now"}
-                              </button>
-
-                              <button
-                                onClick={() => handleCancelCleaning(data)}
-                                disabled={cleaningActionLoading}
-                                style={{
-                                  padding: "8px 10px",
-                                  borderRadius: 8,
-                                  backgroundColor: "transparent",
-                                  border: "1px solid #e5e7eb",
-                                  color: "#374151",
-                                  cursor: cleaningActionLoading
-                                    ? "not-allowed"
-                                    : "pointer",
-                                  fontWeight: 500,
-                                  fontSize: 14,
-                                }}
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
+                    {cleaningCardData.map((data) => (
+                      <CleaningCard
+                        key={data.Enclosure_ID}
+                        data={data}
+                        onClean={handleCleanHabitat}
+                        onCancel={handleCancelCleaning}
+                        onSkip={handleSkipCleaning}
+                        loading={cleaningActionLoading}
+                      />
+                    ))}
                   </div>
                 )}
               </CardContent>
@@ -1589,18 +1496,18 @@ export function ZookeeperPortal({ user, onLogout }) {
               <CardHeader>
                 <CardTitle className="flex items-center">
                   <ClipboardCheck className="h-5 w-5 mr-2 text-blue-600" />
-                  Weekly Log
+                  Daily Log
                 </CardTitle>
                 <CardDescription>
-                  All activities, including feeding, cleaning tasks, and new
+                  Today's activities, including feeding, cleaning tasks, and new
                   animal arrivals.
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                {activityLog.length === 0 ? (
+                {dailyActivityLog.length === 0 ? (
                   <div className="text-center py-12 text-gray-500">
                     <ClipboardCheck className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                    <p>No activities logged in the past week</p>
+                    <p>No activities logged today</p>
                     <p className="text-sm">
                       Complete feeding or cleaning tasks to see them here
                     </p>
@@ -1615,7 +1522,7 @@ export function ZookeeperPortal({ user, onLogout }) {
                         paddingRight: 8,
                       }}
                     >
-                      {activityLog
+                      {dailyActivityLog
                         .slice(
                           (activityPage - 1) * ACTIVITY_PAGE_SIZE,
                           activityPage * ACTIVITY_PAGE_SIZE
@@ -1674,13 +1581,18 @@ export function ZookeeperPortal({ user, onLogout }) {
                                       ? "Animal Fed"
                                       : "Habitat Cleaned"}
                                   </p>
-                                  {log.animal_name && (
-                                    <p
-                                      style={{ fontSize: 14, color: "#4b5563" }}
-                                    >
-                                      Animal: {log.animal_name}
-                                    </p>
-                                  )}
+                                  {log.animal_name &&
+                                    (log.type === "feeding" ||
+                                      log.type === "new_animal") && (
+                                      <p
+                                        style={{
+                                          fontSize: 14,
+                                          color: "#4b5563",
+                                        }}
+                                      >
+                                        Animal: {log.animal_name}
+                                      </p>
+                                    )}
                                   <p style={{ fontSize: 14, color: "#4b5563" }}>
                                     Location: {log.enclosure_name}
                                   </p>

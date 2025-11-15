@@ -210,7 +210,6 @@ export function Navigation({ onLogout, cartCount = 0 }) {
                   aria-label="Login"
                   className="bg-green-600 text-white rounded-full px-3 py-1.5 shadow-sm hover:bg-green-700 active:scale-95 focus:outline-none focus:ring-2 focus:ring-green-300 transition-colors duration-150 font-semibold"
                 >
-                  <Shield className="h-4 w-4 mr-2" />
                   Login
                 </Button>
               </Link>

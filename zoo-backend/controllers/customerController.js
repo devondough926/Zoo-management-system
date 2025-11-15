@@ -33,6 +33,7 @@ export const getAllExhibits = async (req, res) => {
         e.Location_ID,
         e.Display_Time,
         e.Image_URL,
+        e.Enclosure_Type,
         l.Location_Description,
         l.Zone as Zone_Name
       FROM Exhibit e
@@ -59,6 +60,7 @@ export const getExhibitById = async (req, res) => {
         e.Location_ID,
         e.Display_Time,
         e.Image_URL,
+        e.Enclosure_Type,
         l.Location_Description,
         l.Zone as Zone_Name
       FROM Exhibit e
@@ -173,15 +175,164 @@ export const getTodaysSchedule = async (req, res) => {
   }
 };
 
+// Get activities by activity order (for even/odd day filtering)
+export const getActivitiesByOrder = async (req, res) => {
+  try {
+    const { order } = req.params;
+
+    // Validate order parameter
+    if (order !== "1" && order !== "2") {
+      return res.status(400).json({ error: "Activity order must be 1 or 2" });
+    }
+
+    const [activities] = await db.query(
+      `
+      SELECT 
+        ea.Activity_ID,
+        ea.Exhibit_ID,
+        ea.Activity_Name,
+        ea.Activity_Description,
+        ea.Activity_Order,
+        ea.Duration,
+        e.exhibit_Name,
+        e.Display_Time,
+        l.Zone as Zone_Name
+      FROM Exhibit_Activity ea
+      LEFT JOIN Exhibit e ON ea.Exhibit_ID = e.Exhibit_ID
+      LEFT JOIN Location l ON e.Location_ID = l.Location_ID
+      WHERE ea.Activity_Order = ?
+      ORDER BY ea.Activity_ID
+    `,
+      [order]
+    );
+
+    res.json(activities);
+  } catch (error) {
+    console.error("Error fetching activities by order:", error);
+    res.status(500).json({ error: "Failed to fetch activities" });
+  }
+};
+
+// Get currently active activities from Config table
+export const getActiveActivities = async (req, res) => {
+  try {
+    // Compute today's activity order (even/odd by day of year)
+    const today = new Date();
+    const startOfYear = new Date(today.getFullYear(), 0, 0);
+    const diff = today - startOfYear;
+    const oneDay = 1000 * 60 * 60 * 24;
+    const dayOfYear = Math.floor(diff / oneDay);
+    const activityOrder = dayOfYear % 2 === 0 ? 1 : 2;
+
+    // Compute activity order for today (even/odd days)
+
+    const [rows] = await db.query(
+      `
+      SELECT
+        ea.Activity_Name AS activity_name,
+        ea.Activity_Description AS activity_description,
+        e.exhibit_Name AS exhibit_name,
+        COALESCE(l.Zone, '') AS location,
+        TIME_FORMAT(e.Display_Time, '%h:%i %p') AS start_time,
+        TIME_FORMAT(ADDTIME(e.Display_Time, SEC_TO_TIME(ea.Duration * 60)), '%h:%i %p') AS end_time,
+        ea.Duration AS duration_minutes,
+        COALESCE(e.Enclosure_Type, 'Unknown') AS enclosure_type,
+        COALESCE(e.Is_Closed, 0) AS is_closed
+      FROM exhibit_activity ea
+      JOIN exhibit e ON ea.Exhibit_ID = e.Exhibit_ID
+      LEFT JOIN location l ON e.Location_ID = l.Location_ID
+      WHERE ea.Activity_Order = ?
+        AND CURTIME() >= e.Display_Time
+        AND CURTIME() < ADDTIME(e.Display_Time, SEC_TO_TIME(ea.Duration * 60))
+    `,
+      [activityOrder]
+    );
+
+    if (rows && rows.length > 0) {
+      return res.json(rows);
+    }
+
+    // Fallback: compute active activities in JS (handles timezone mismatches)
+    const [allActivities] = await db.query(
+      `
+      SELECT
+        ea.Activity_Name AS activity_name,
+        ea.Activity_Description AS activity_description,
+        e.exhibit_Name AS exhibit_name,
+        COALESCE(l.Zone, '') AS location,
+        TIME_FORMAT(e.Display_Time, '%H:%i:%s') AS Display_Time,
+        ea.Duration AS duration_minutes,
+        COALESCE(e.Enclosure_Type, 'Unknown') AS enclosure_type,
+        COALESCE(e.Is_Closed, 0) AS is_closed
+      FROM exhibit_activity ea
+      JOIN exhibit e ON ea.Exhibit_ID = e.Exhibit_ID
+      LEFT JOIN location l ON e.Location_ID = l.Location_ID
+      WHERE ea.Activity_Order = ?
+    `,
+      [activityOrder]
+    );
+
+    // Fallback: compute active activities in JS (handles timezone mismatches)
+    // Build Date instances from the stored Display_Time (HH:MM:SS) and
+    // compare against server time. This avoids timezone-related issues.
+    const now = new Date();
+    const active = (allActivities || [])
+      .filter((a) => {
+        if (!a.Display_Time) return false;
+        // Display_Time is now formatted as HH:MM:SS string
+        const [hh, mm, ss] = a.Display_Time.split(":");
+        const start = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          parseInt(hh || 0, 10),
+          parseInt(mm || 0, 10),
+          parseInt(ss || 0, 10)
+        );
+        const end = new Date(
+          start.getTime() + parseInt(a.duration_minutes || 0, 10) * 60 * 1000
+        );
+        return now >= start && now < end;
+      })
+      .map((a) => {
+        // Format time for display
+        const [hh, mm] = a.Display_Time.split(":");
+        const hour = parseInt(hh || 0, 10);
+        const minute = mm || "00";
+        const isPM = hour >= 12;
+        const hour12 = hour % 12 === 0 ? 12 : hour % 12;
+        const formattedTime = `${hour12}:${minute} ${isPM ? "PM" : "AM"}`;
+
+        return {
+          activity_name: a.activity_name,
+          activity_description: a.activity_description,
+          exhibit_name: a.exhibit_name,
+          location: a.location,
+          start_time: formattedTime,
+          end_time: null,
+          duration_minutes: a.duration_minutes,
+          enclosure_type: a.enclosure_type,
+          is_closed: a.is_closed,
+        };
+      });
+
+    // Removed noisy debug logging to avoid repeated console output during polling
+    return res.json(active);
+  } catch (error) {
+    console.error("Error fetching active activities:", error);
+    res.status(500).json({ error: "Failed to fetch active activities" });
+  }
+};
+
 export const getAllAnimals = async (req, res) => {
   try {
     const [animals] = await db.query(`
       SELECT 
         a.*,
-        e.Enclosure_Name,
+        e.exhibit_Name as Enclosure_Name,
         e.Enclosure_Type
       FROM Animal a
-      LEFT JOIN Enclosure e ON a.Enclosure_ID = e.Enclosure_ID
+      LEFT JOIN exhibit e ON a.Enclosure_ID = e.Exhibit_ID
       ORDER BY a.Animal_Name
     `);
     res.json(animals);
@@ -191,20 +342,20 @@ export const getAllAnimals = async (req, res) => {
   }
 };
 
-export const getAllEnclosures = async (req, res) => {
+export const getAllExhibitsForAnimals = async (req, res) => {
   try {
-    const [enclosures] = await db.query(`
+    const [exhibits] = await db.query(`
       SELECT 
-        Enclosure_ID,
-        Enclosure_Name,
+        Exhibit_ID as Enclosure_ID,
+        exhibit_Name as Enclosure_Name,
         Enclosure_Type
-      FROM Enclosure
-      ORDER BY Enclosure_Name
+      FROM exhibit
+      ORDER BY exhibit_Name
     `);
-    res.json(enclosures);
+    res.json(exhibits);
   } catch (error) {
-    console.error("Error fetching enclosures:", error);
-    res.status(500).json({ error: "Failed to fetch enclosures" });
+    console.error("Error fetching exhibits for animals:", error);
+    res.status(500).json({ error: "Failed to fetch exhibits for animals" });
   }
 };
 
