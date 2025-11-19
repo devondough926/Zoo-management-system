@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import {
   Card,
   CardContent,
@@ -54,20 +55,22 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { ZooLogo } from "../../components/ZooLogo";
+import LoadingWithIcon from "../../components/ui/LoadingWithIcon";
 import { CleaningCard } from "../../components/CleaningCard";
 import { zookeeperAPI, employeeAPI } from "../../services/zookeeperAPI";
 import { useWeather } from "../../contexts/WeatherContext";
+import { usePageTitle } from "../../hooks/usePageTitle";
 
 export function ZookeeperPortal({ user, onLogout }) {
-  // Helper: format a Date to MySQL DATETIME string 'YYYY-MM-DD HH:MM:SS'
   const toMySQLDatetime = (date) => {
     const pad = (n) => String(n).padStart(2, "0");
-    const y = date.getFullYear();
-    const m = pad(date.getMonth() + 1);
-    const d = pad(date.getDate());
-    const hh = pad(date.getHours());
-    const mm = pad(date.getMinutes());
-    const ss = pad(date.getSeconds());
+    // Use UTC to match server timezone expectations
+    const y = date.getUTCFullYear();
+    const m = pad(date.getUTCMonth() + 1);
+    const d = pad(date.getUTCDate());
+    const hh = pad(date.getUTCHours());
+    const mm = pad(date.getUTCMinutes());
+    const ss = pad(date.getUTCSeconds());
     return `${y}-${m}-${d} ${hh}:${mm}:${ss}`;
   };
   const [feedingTasks, setFeedingTasks] = useState([]);
@@ -113,12 +116,10 @@ export function ZookeeperPortal({ user, onLogout }) {
     }
     return null;
   })();
-  // Compute a dynamic height for the notifications list: grow with items
-  // but cap at a reasonable max so the list becomes scrollable when long.
+
   const notificationListHeight = useMemo(() => {
     const count = (notifications || []).length;
     if (count === 0) return "auto";
-    // For up to 4 items, allow the list to expand (no scroll).
     if (count <= 4) return "auto";
     const itemApproxPx = 88; // approximate height per notification item
     const paddingPx = 24; // extra padding in the list
@@ -194,22 +195,50 @@ export function ZookeeperPortal({ user, onLogout }) {
 
   const loadNotifications = async () => {
     try {
+      // Get cleaning card data to check for habitats at 100% progress
+      const cleaningData = await zookeeperAPI.getCleaningCardData();
       const notifs = await zookeeperAPI.getNotifications({ range: "24hours" });
 
       const now = new Date();
       const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
-      const filtered = (notifs || []).filter((n) => {
-        if (!n || !n.timestamp) return false;
-        try {
-          const notifDate = new Date(n.timestamp);
-          return notifDate >= twentyFourHoursAgo && notifDate <= now;
-        } catch (e) {
-          return false;
-        }
+      // Filter for only new animals within 24 hours
+      const newAnimalNotifs = (notifs || []).filter((n) => {
+        if (n.type !== "new_animal") return false;
+        const nDate = parseServerDate(n.timestamp);
+        if (!nDate) return false;
+        return nDate >= twentyFourHoursAgo && nDate <= now;
       });
 
-      setNotifications(filtered);
+      // Create cleaning due notifications for habitats at 100% progress
+      const cleaningDueNotifs = (cleaningData || [])
+        .filter((data) => {
+          const cycleDays = data.cycle_days ?? data.cycleDays ?? 7;
+          const daysRemaining = data.days_remaining ?? data.daysRemaining ?? 0;
+          const daysPassed =
+            data.days_passed ??
+            data.daysPassed ??
+            Math.max(0, cycleDays - daysRemaining);
+          return daysPassed >= cycleDays; // 100% progress
+        })
+        .map((data) => ({
+          id: `cleaning_due_${data.Enclosure_ID}`,
+          type: "cleaning_due",
+          message: `${data.Enclosure_Name} Ready for Cleaning`,
+          details: `This habitat has reached its 7-day cleaning cycle and is ready to be cleaned.`,
+          timestamp: new Date().toISOString(),
+          enclosure_id: data.Enclosure_ID,
+        }));
+
+      // Sort notifications: new animals first (by timestamp, most recent first), then cleaning due
+      const sortedNewAnimals = newAnimalNotifs.sort((a, b) => {
+        const dateA = parseServerDate(a.timestamp);
+        const dateB = parseServerDate(b.timestamp);
+        return dateB - dateA; // most recent first
+      });
+
+      const allNotifications = [...sortedNewAnimals, ...cleaningDueNotifs];
+      setNotifications(allNotifications);
     } catch (error) {
       toast.error("Failed to load notifications");
     }
@@ -217,15 +246,14 @@ export function ZookeeperPortal({ user, onLogout }) {
 
   const loadActivityLog = async () => {
     try {
-      // Request only the log types we want from backend, with filtering server-side
-      const logs = await zookeeperAPI.getAllCareLogs({
+      // Get all care logs from Animal_Care_Log table (includes maintenance logs for cleaning)
+      const careLogs = await zookeeperAPI.getAllCareLogs({
         logTypes: "fed,maintenance,new",
         limit: 100,
       });
 
-      // Map backend response to UI format
-      const mapped = (logs || []).map((l) => {
-        // Map Log_Type to normalized type names
+      // Map care logs to UI format
+      const mappedCareLogs = (careLogs || []).map((l) => {
         let normalizedType = "other";
         const rawType = (l.Log_Type || "").toLowerCase();
 
@@ -250,7 +278,12 @@ export function ZookeeperPortal({ user, onLogout }) {
         };
       });
 
-      setActivityLog(mapped);
+      // Sort by timestamp (most recent first)
+      const allLogs = mappedCareLogs.sort(
+        (a, b) => new Date(b.timestamp) - new Date(a.timestamp)
+      );
+
+      setActivityLog(allLogs);
     } catch (error) {
       console.error("Error loading activity log:", error);
       toast.error("Failed to load activity log");
@@ -284,7 +317,11 @@ export function ZookeeperPortal({ user, onLogout }) {
       toast.success(
         `${habitatData.Enclosure_Name} marked as cleaned successfully!`
       );
-      await Promise.all([loadCleaningCardData(), loadActivityLog()]);
+      await Promise.all([
+        loadCleaningCardData(),
+        loadActivityLog(),
+        loadNotifications(),
+      ]);
     } catch (error) {
       console.error("Error marking habitat as cleaned:", error);
       toast.error("Failed to mark habitat as cleaned");
@@ -330,8 +367,6 @@ export function ZookeeperPortal({ user, onLogout }) {
       (t) => t.Status === "partial"
     ).length;
 
-    // Use cleaningCardData (the same data used to compute "Clean Now" items)
-    // so the stats align with the tab's cleanable count.
     const totalHabitats = (cleaningCardData || []).length || 0;
     const cleanHabitats = (cleaningCardData || []).reduce((acc, data) => {
       const cycleDays = data.cycle_days ?? data.cycleDays ?? 7;
@@ -379,7 +414,6 @@ export function ZookeeperPortal({ user, onLogout }) {
     return Array.from(set).sort();
   }, [feedingTasks]);
 
-  // Count how many habitats are eligible for "Clean Now"
   const cleanableCount = useMemo(() => {
     if (!cleaningCardData || cleaningCardData.length === 0) return 0;
     return cleaningCardData.reduce((acc, data) => {
@@ -406,7 +440,6 @@ export function ZookeeperPortal({ user, onLogout }) {
     if (feedingLevelFilter === "" || feedingLevelFilter === ALL_LEVELS)
       return filteredThenEnclosure;
 
-    // Prefer numeric checks (Fed_Today vs Meals_Per_Day) to be robust.
     return filteredThenEnclosure.filter((t) => {
       const fed = Number(t.Fed_Today) || 0;
       const meals = Number(t.Meals_Per_Day) || 0;
@@ -434,9 +467,7 @@ export function ZookeeperPortal({ user, onLogout }) {
       (a, b) => (statusOrder[a.Status] ?? 99) - (statusOrder[b.Status] ?? 99)
     );
   }, [filteredByLevel]);
-  // Compute a dynamic height for the feeding list so the ScrollArea gets
-  // an explicit height when there are many items (enables internal scrolling),
-  // but the container will shrink when there are few items.
+
   const feedingListHeight = useMemo(() => {
     const count = (sortedFeedingTasks || []).length || 0;
     const cols =
@@ -450,10 +481,60 @@ export function ZookeeperPortal({ user, onLogout }) {
     const maxH = 720;
     return Math.min(maxH, Math.max(minH, computed));
   }, [sortedFeedingTasks.length]);
-  const [activeTab, setActiveTab] = useState("feeding");
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const allowedZookeeperTabs = ["feeding", "cleaning", "activity"];
+  const [activeTab, setActiveTab] = useState(() => {
+    try {
+      if (typeof window !== "undefined") {
+        const params = new URLSearchParams(location.search);
+        const tab = params.get("tab");
+        if (tab && allowedZookeeperTabs.includes(tab)) return tab;
+        return localStorage.getItem("zookeeper.activeTab") || "feeding";
+      }
+    } catch (e) {
+      // ignore
+    }
+    return "feeding";
+  });
+  // Persist active tab and reflect it in the document title
+  const zookeeperTabLabels = {
+    feeding: "Feeding",
+    cleaning: "Cleaning",
+    activity: "Activity",
+  };
+  const zookeeperBaseTitle = "Zookeeper Portal";
+  const zookeeperPageTitle = zookeeperTabLabels[activeTab]
+    ? `${zookeeperBaseTitle} - ${zookeeperTabLabels[activeTab]}`
+    : zookeeperBaseTitle;
+  usePageTitle(zookeeperPageTitle);
+  useEffect(() => {
+    try {
+      if (typeof window !== "undefined") {
+        localStorage.setItem("zookeeper.activeTab", activeTab);
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, [activeTab]);
+
+  // Keep the URL in sync with the active tab (query param: ?tab=...)
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(location.search);
+      if (params.get("tab") !== activeTab) {
+        params.set("tab", activeTab);
+        navigate(`${location.pathname}?${params.toString()}`, {
+          replace: true,
+        });
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, [activeTab, navigate, location]);
   const activityListRef = useRef(null);
 
-  // Scroll into view when user switches to the Activity tab
   useEffect(() => {
     if (activeTab === "activity" && activityListRef.current) {
       try {
@@ -471,7 +552,7 @@ export function ZookeeperPortal({ user, onLogout }) {
   // Pagination for Activity Log
   const [activityPage, setActivityPage] = useState(1);
   const ACTIVITY_PAGE_SIZE = 5;
-  // Show only today's activity in the "Daily Log" tab
+
   const dailyActivityLog = useMemo(() => {
     const today = new Date();
     const isSameLocalDay = (a, b) => {
@@ -498,7 +579,6 @@ export function ZookeeperPortal({ user, onLogout }) {
     Math.ceil((dailyActivityLog || []).length / ACTIVITY_PAGE_SIZE)
   );
 
-  // Reset to first page when today's activity data changes
   useEffect(() => {
     setActivityPage(1);
   }, [dailyActivityLog.length]);
@@ -515,8 +595,6 @@ export function ZookeeperPortal({ user, onLogout }) {
     }
   };
 
-  // Helper to compute inline styles for tab triggers based on active state
-  // Produces a compact pill-style tab. Active tab is filled teal with white text.
   const getTriggerStyle = (val) => {
     const isActive = activeTab === val;
     const base = {
@@ -563,8 +641,6 @@ export function ZookeeperPortal({ user, onLogout }) {
       };
     }
 
-    // Inactive: transparent with muted text so active pill stands out
-    // Use shorthand padding to avoid mixing with paddingLeft/paddingRight
     return {
       ...base,
       backgroundColor: "transparent",
@@ -595,23 +671,25 @@ export function ZookeeperPortal({ user, onLogout }) {
           return;
         }
 
-        // Create feeding log (include client timestamp formatted for MySQL)
+        // Create feeding log - let server timestamp with NOW() for accurate UTC time
         await zookeeperAPI.createCareLog({
           animalId: feedingTask.Animal_ID,
           employeeId: parseInt(selectedEmployeeId),
           activity: `Fed ${feedingTask.Animal_Name}`,
           logType: "fed",
           notes: taskNotes || null,
-          logDate: toMySQLDatetime(new Date()),
         });
 
         toast.success(`Feeding logged for ${feedingTask.Animal_Name}`, {
           description: `Fed by ${selectedEmployee.First_Name} ${selectedEmployee.Last_Name}`,
         });
 
-        // Reload data to get updated counts from backend
-        await loadFeedingTasks();
-        await loadActivityLog();
+        // Reload all data to update stats, feeding tasks, and activity log
+        await Promise.all([
+          loadFeedingTasks(),
+          loadActivityLog(),
+          loadNotifications(),
+        ]);
       } else {
         // Create cleaning log
         const cleaningSchedule = selectedTask;
@@ -632,7 +710,6 @@ export function ZookeeperPortal({ user, onLogout }) {
           activity: `Cleaned ${cleaningSchedule.Enclosure_Name}`,
           logType: "maintenance",
           notes: taskNotes || null,
-          logDate: toMySQLDatetime(new Date()),
         });
 
         toast.success(`${cleaningSchedule.Enclosure_Name} marked as cleaned`, {
@@ -654,7 +731,6 @@ export function ZookeeperPortal({ user, onLogout }) {
     }
   };
 
-  // Reset dialog fields when it closes (clears selection and typed input)
   const handleDialogOpenChange = (open) => {
     setTaskDialogOpen(open);
     if (!open) {
@@ -684,10 +760,6 @@ export function ZookeeperPortal({ user, onLogout }) {
     });
   };
 
-  // Parse server-side DATETIME/ISO strings. If the string is a MySQL DATETIME
-  // like "YYYY-MM-DD HH:MM:SS" (no timezone), treat it as UTC by converting
-  // to an ISO string with a trailing Z so JS Date parses it as UTC. If it's
-  // already ISO with timezone, parse normally. Accept Date objects as-is.
   function parseServerDate(input) {
     if (!input) return null;
     if (input instanceof Date) return input;
@@ -790,15 +862,13 @@ export function ZookeeperPortal({ user, onLogout }) {
     return "bg-green-600";
   };
 
-  // Whether the primary save button in the task dialog should be disabled
   const saveDisabled = taskType === "feeding" && !selectedEmployeeId;
 
   if (loading) {
     return (
       <div className="min-h-screen bg-[#F5F5DC] flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#4CAF50] mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading dashboard...</p>
+          <LoadingWithIcon text="Loading dashboard..." size={56} />
         </div>
       </div>
     );
@@ -806,19 +876,13 @@ export function ZookeeperPortal({ user, onLogout }) {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      {/* Progress bar animation CSS (uses --p-color and --p-rgb on the fill element)
-          Note: removed repeating stripe gradients; animation is a same-color
-          translucent band that moves across the solid fill. The right half
-          of the fill fades to a lighter version starting at 50% of the fill. */}
       <style>{`
         .progress-animated-fill{
           position: relative;
-          /* fade starts at 90% so fade region == 10% from the end */
           background: linear-gradient(90deg, var(--p-color) 0%, var(--p-color) 90%, rgba(var(--p-rgb),0.12) 100%);
           overflow: hidden;
         }
 
-        /* moving same-color band to imply motion (no extra colors) */
         .progress-animated-fill::before{
           content: "";
           position: absolute;
@@ -832,7 +896,6 @@ export function ZookeeperPortal({ user, onLogout }) {
           pointer-events: none;
         }
 
-        /* When a fill should have no fade (e.g. fully red/overdue), make it a solid color */
         .progress-animated-fill.no-fade{
           background: var(--p-color) !important;
         }
@@ -846,13 +909,10 @@ export function ZookeeperPortal({ user, onLogout }) {
           to { transform: translateX(140%) skewX(-12deg); }
         }
 
-        /* Small padded track frame to create pill/border look */
         .progress-track-frame{
-          padding: 2px; /* outer frame thickness */
+          padding: 2px;
           border-radius: 9999px;
-          /* unfilled track is gray */
-          background-color: #e5e7eb; /* tailwind gray-200 */
-          /* stronger black border for visibility */
+          background-color: #e5e7eb;
           border: 1px solid rgba(0,0,0,0.6);
           box-sizing: border-box;
           overflow: hidden;
@@ -879,7 +939,6 @@ export function ZookeeperPortal({ user, onLogout }) {
             </div>
 
             <div className="flex items-center space-x-4">
-              {/* Notifications Bell - bell clickable only, badge outside (non-interactive) */}
               <Popover
                 open={notificationOpen}
                 onOpenChange={setNotificationOpen}
@@ -905,20 +964,52 @@ export function ZookeeperPortal({ user, onLogout }) {
                   </button>
                 </PopoverTrigger>
 
-                <PopoverContent className="w-96 p-0" align="end">
-                  <div className="p-4 border-b bg-gradient-to-r from-blue-50 to-teal-50">
-                    <div className="relative">
+                <PopoverContent
+                  align="end"
+                  style={{ maxWidth: "24rem", width: "100%", padding: 0 }}
+                >
+                  <div
+                    style={{
+                      padding: "1rem",
+                      borderBottom: "1px solid #e5e7eb",
+                      background: "linear-gradient(to right, #dbeafe, #ccfbf1)",
+                    }}
+                  >
+                    <div style={{ position: "relative" }}>
                       {notifications.length > 0 && (
-                        <div className="absolute right-4 top-3">
-                          <Badge className="bg-blue-600 text-white">
+                        <div
+                          style={{
+                            position: "absolute",
+                            right: "1rem",
+                            top: "0.75rem",
+                          }}
+                        >
+                          <Badge
+                            style={{
+                              backgroundColor: "#2563eb",
+                              color: "#ffffff",
+                            }}
+                          >
                             {notifications.length}
                           </Badge>
                         </div>
                       )}
-                      <div className="text-left pl-2 pr-10">
-                        <h3 className="font-semibold">Notifications</h3>
-                        <p className="text-xs text-gray-600 mt-1">
-                          Last 24 Hours
+                      <div
+                        style={{
+                          textAlign: "left",
+                          paddingLeft: "0.5rem",
+                          paddingRight: "2.5rem",
+                        }}
+                      >
+                        <h3 style={{ fontWeight: 600 }}>Notifications</h3>
+                        <p
+                          style={{
+                            fontSize: "0.75rem",
+                            color: "#4b5563",
+                            marginTop: "0.25rem",
+                          }}
+                        >
+                          Active Alerts
                         </p>
                       </div>
                     </div>
@@ -928,29 +1019,66 @@ export function ZookeeperPortal({ user, onLogout }) {
                     height={notificationListHeight}
                   >
                     {notifications.length === 0 ? (
-                      <div className="p-8 text-center text-gray-500">
-                        <Bell className="h-12 w-12 mx-auto mb-3 text-gray-400 opacity-50" />
-                        <p className="font-medium">No notifications</p>
-                        <p className="text-sm">You're all caught up!</p>
+                      <div
+                        style={{
+                          padding: "2rem",
+                          textAlign: "center",
+                          color: "#6b7280",
+                        }}
+                      >
+                        <Bell
+                          className="h-12 w-12 mx-auto mb-3"
+                          style={{
+                            color: "#9ca3af",
+                            opacity: 0.5,
+                          }}
+                        />
+                        <p style={{ fontWeight: 500 }}>No notifications</p>
+                        <p style={{ fontSize: "0.875rem" }}>
+                          You're all caught up!
+                        </p>
                       </div>
                     ) : (
-                      <div className="p-2">
+                      <div style={{ padding: "0.5rem" }}>
                         {notifications.map((notif) => (
                           <div
                             key={notif.id}
-                            className={`p-4 pr-8 mb-3 rounded-lg border ${
-                              notif.type === "new_animal"
-                                ? "bg-green-50 border-green-200"
-                                : "bg-orange-50 border-orange-200"
-                            }`}
+                            style={{
+                              padding: "1rem",
+                              paddingRight: "2rem",
+                              marginBottom: "0.75rem",
+                              borderRadius: "0.5rem",
+                              border:
+                                notif.type === "new_animal"
+                                  ? "1px solid #bbf7d0"
+                                  : "1px solid #a5f3fc",
+                              backgroundColor:
+                                notif.type === "new_animal"
+                                  ? "#f0fdf4"
+                                  : "#ecfeff",
+                            }}
                           >
-                            <div className="flex items-start space-x-4">
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "flex-start",
+                                gap: "1rem",
+                              }}
+                            >
                               <div
-                                className={`mt-1.5 rounded-full p-2 ${
-                                  notif.type === "new_animal"
-                                    ? "bg-green-100 text-green-700"
-                                    : "bg-orange-100 text-orange-700"
-                                }`}
+                                style={{
+                                  marginTop: "0.375rem",
+                                  borderRadius: "9999px",
+                                  padding: "0.5rem",
+                                  backgroundColor:
+                                    notif.type === "new_animal"
+                                      ? "#dcfce7"
+                                      : "#cffafe",
+                                  color:
+                                    notif.type === "new_animal"
+                                      ? "#15803d"
+                                      : "#0e7490",
+                                }}
                               >
                                 {notif.type === "new_animal" ? (
                                   <PawPrint className="h-6 w-6" />
@@ -958,28 +1086,72 @@ export function ZookeeperPortal({ user, onLogout }) {
                                   <Sparkles className="h-6 w-6" />
                                 )}
                               </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center justify-between mb-2">
-                                  <Badge variant="outline" className="text-xs">
-                                    {notif.type === "new_animal"
-                                      ? "New Animal"
-                                      : "Cleaning Due"}
-                                  </Badge>
-                                  <span className="text-xs text-gray-500">
-                                    {formatTimeAgo(notif.timestamp)}
-                                  </span>
+                              <div
+                                style={{
+                                  flex: 1,
+                                  minWidth: 0,
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "space-between",
+                                    marginBottom: "0.5rem",
+                                  }}
+                                >
+                                  <div
+                                    style={{
+                                      display: "flex",
+                                      gap: 8,
+                                      alignItems: "center",
+                                    }}
+                                  >
+                                    <Badge
+                                      variant="outline"
+                                      style={{
+                                        fontSize: "0.75rem",
+                                      }}
+                                    >
+                                      {notif.type === "new_animal"
+                                        ? "New Animal"
+                                        : "Cleaning Due"}
+                                    </Badge>
+                                  </div>
+
+                                  {/* Show timestamp only for new animal notifications */}
+                                  {notif.type === "new_animal" && (
+                                    <div
+                                      style={{
+                                        fontSize: "0.75rem",
+                                        color: "#6b7280",
+                                        marginLeft: 12,
+                                      }}
+                                    >
+                                      {formatTimeAgo(notif.timestamp)}
+                                    </div>
+                                  )}
                                 </div>
                                 <p
-                                  className={`text-base font-semibold mb-1 ${
-                                    notif.type === "new_animal"
-                                      ? "text-green-900"
-                                      : "text-orange-900"
-                                  }`}
+                                  style={{
+                                    fontSize: "1rem",
+                                    fontWeight: 600,
+                                    marginBottom: "0.25rem",
+                                    color:
+                                      notif.type === "new_animal"
+                                        ? "#14532d"
+                                        : "#164e63",
+                                  }}
                                 >
                                   {notif.message}
                                 </p>
                                 {notif.details && (
-                                  <p className="text-sm text-gray-600">
+                                  <p
+                                    style={{
+                                      fontSize: "0.875rem",
+                                      color: "#4b5563",
+                                    }}
+                                  >
                                     {notif.details}
                                   </p>
                                 )}
@@ -1037,77 +1209,222 @@ export function ZookeeperPortal({ user, onLogout }) {
           </div>
         )}
 
-        {/* Latest Notification */}
-        {notifications.length > 0 && !topAlertDismissed && (
-          <Card
-            className={`mb-6 border-l-4 ${
-              notifications[0].type === "new_animal"
-                ? "border-l-green-600 bg-gradient-to-r from-green-50 via-teal-50 to-emerald-50"
-                : "border-l-orange-600 bg-gradient-to-r from-orange-50 via-yellow-50 to-amber-50"
-            }`}
-          >
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div className="flex items-start space-x-4 flex-1">
+        {/* New Animal Banner */}
+        {notifications.some((n) => n.type === "new_animal") &&
+          !topAlertDismissed && (
+            <Card
+              style={{
+                marginBottom: "1.5rem",
+                borderLeft: "4px solid #16a34a",
+                background:
+                  "linear-gradient(to right, #f0fdf4, #ccfbf1, #d1fae5)",
+              }}
+            >
+              <CardContent style={{ padding: "1.5rem" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                  }}
+                >
                   <div
-                    className={`rounded-full p-3 mt-1 ${
-                      notifications[0].type === "new_animal"
-                        ? "bg-green-600"
-                        : "bg-orange-600"
-                    }`}
+                    style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: "1rem",
+                      flex: 1,
+                    }}
                   >
-                    {notifications[0].type === "new_animal" ? (
-                      <PawPrint className="h-6 w-6 text-white" />
-                    ) : (
-                      <Sparkles className="h-6 w-6 text-white" />
-                    )}
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-2 mb-2">
-                      <h3
-                        className={`font-semibold text-lg ${
-                          notifications[0].type === "new_animal"
-                            ? "text-green-900"
-                            : "text-orange-900"
-                        }`}
+                    <div
+                      style={{
+                        borderRadius: "9999px",
+                        padding: "0.75rem",
+                        marginTop: "0.25rem",
+                        backgroundColor: "#16a34a",
+                      }}
+                    >
+                      <PawPrint
+                        className="h-6 w-6"
+                        style={{ color: "#ffffff" }}
+                      />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "0.5rem",
+                          marginBottom: "0.5rem",
+                        }}
                       >
-                        {notifications[0].message}
+                        <h3
+                          style={{
+                            fontWeight: 600,
+                            fontSize: "1.125rem",
+                            color: "#14532d",
+                          }}
+                        >
+                          {
+                            notifications.find((n) => n.type === "new_animal")
+                              ?.message
+                          }
+                        </h3>
+                        <Badge
+                          style={{
+                            backgroundColor: "#16a34a",
+                            color: "#ffffff",
+                          }}
+                        >
+                          New
+                        </Badge>
+                      </div>
+                      {notifications.find((n) => n.type === "new_animal")
+                        ?.details && (
+                        <p
+                          style={{
+                            fontSize: "0.875rem",
+                            marginBottom: "0.5rem",
+                            color: "#15803d",
+                          }}
+                        >
+                          {
+                            notifications.find((n) => n.type === "new_animal")
+                              ?.details
+                          }
+                        </p>
+                      )}
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "0.5rem",
+                          fontSize: "0.75rem",
+                          color: "#4b5563",
+                        }}
+                      >
+                        <Clock className="h-3 w-3" />
+                        <span>
+                          {formatTimeAgo(
+                            notifications.find((n) => n.type === "new_animal")
+                              ?.timestamp
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setTopAlertDismissed(true)}
+                    style={{
+                      cursor: "pointer",
+                      flexShrink: 0,
+                    }}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.backgroundColor =
+                        "rgba(0,0,0,0.05)")
+                    }
+                    onMouseLeave={(e) =>
+                      (e.currentTarget.style.backgroundColor = "transparent")
+                    }
+                  >
+                    <X className="h-5 w-5" style={{ color: "#6b7280" }} />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+        {/* Cleaning Due Banner */}
+        {notifications.some((n) => n.type === "cleaning_due") && (
+          <Card
+            style={{
+              marginBottom: "1.5rem",
+              borderLeft: "4px solid #0891b2",
+              background:
+                "linear-gradient(to right, #ecfeff, #cffafe, #a5f3fc)",
+            }}
+          >
+            <CardContent style={{ padding: "1.5rem" }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: "1rem",
+                    flex: 1,
+                  }}
+                >
+                  <div
+                    style={{
+                      borderRadius: "9999px",
+                      padding: "0.75rem",
+                      marginTop: "0.25rem",
+                      backgroundColor: "#0891b2",
+                    }}
+                  >
+                    <Sparkles
+                      className="h-6 w-6"
+                      style={{ color: "#ffffff" }}
+                    />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.5rem",
+                        marginBottom: "0.5rem",
+                      }}
+                    >
+                      <h3
+                        style={{
+                          fontWeight: 600,
+                          fontSize: "1.125rem",
+                          color: "#164e63",
+                        }}
+                      >
+                        {notifications.filter((n) => n.type === "cleaning_due")
+                          .length > 1
+                          ? `${
+                              notifications.filter(
+                                (n) => n.type === "cleaning_due"
+                              ).length
+                            } Habitats Ready for Cleaning`
+                          : notifications.find((n) => n.type === "cleaning_due")
+                              ?.message}
                       </h3>
                       <Badge
-                        className={
-                          notifications[0].type === "new_animal"
-                            ? "bg-green-600 text-white"
-                            : "bg-orange-600 text-white"
-                        }
+                        style={{
+                          backgroundColor: "#dc2626",
+                          color: "#ffffff",
+                        }}
                       >
-                        New
+                        Overdue
                       </Badge>
                     </div>
-                    {notifications[0].details && (
-                      <p
-                        className={`text-sm mb-2 ${
-                          notifications[0].type === "new_animal"
-                            ? "text-green-700"
-                            : "text-orange-700"
-                        }`}
-                      >
-                        {notifications[0].details}
-                      </p>
-                    )}
-                    <div className="flex items-center space-x-2 text-xs text-gray-600">
-                      <Clock className="h-3 w-3" />
-                      <span>{formatTimeAgo(notifications[0].timestamp)}</span>
-                    </div>
+                    <p
+                      style={{
+                        fontSize: "0.875rem",
+                        marginBottom: "0.5rem",
+                        color: "#0e7490",
+                      }}
+                    >
+                      {notifications.filter((n) => n.type === "cleaning_due")
+                        .length > 1
+                        ? `Multiple habitats have reached their 7-day cleaning cycle and need attention.`
+                        : notifications.find((n) => n.type === "cleaning_due")
+                            ?.details}
+                    </p>
                   </div>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setTopAlertDismissed(true)}
-                  className="cursor-pointer hover:bg-black/5 shrink-0"
-                >
-                  <X className="h-5 w-5 text-gray-500 hover:text-gray-700" />
-                </Button>
               </div>
             </CardContent>
           </Card>
@@ -1355,60 +1672,117 @@ export function ZookeeperPortal({ user, onLogout }) {
                       sortedFeedingTasks.map((task) => (
                         <div
                           key={task.Animal_ID}
-                          className={`p-4 rounded-lg border transition-all ${
-                            task.Status === "unfed"
-                              ? "border-red-300 bg-red-50"
+                          style={{
+                            padding: "1rem",
+                            borderRadius: "0.5rem",
+                            border: "1px solid #e6e6e6",
+                            backgroundColor: "#ffffff",
+                            boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+                            transition: "all 0.15s ease",
+                            ...(task.Status === "unfed"
+                              ? { borderLeft: "4px solid #ef4444" }
+                              : task.Status === "partial"
+                              ? { borderLeft: "4px solid #f59e0b" }
                               : task.Status === "complete"
-                              ? "border-green-300 bg-green-50 opacity-60"
-                              : ""
-                          }`}
-                          style={
-                            task.Status === "partial"
                               ? {
-                                  border: "1px solid #fdba74",
-                                  backgroundColor: "#fff7ed",
+                                  borderLeft: "4px solid #10b981",
+                                  opacity: 0.95,
                                 }
-                              : undefined
-                          }
+                              : { borderLeft: "4px solid transparent" }),
+                          }}
                         >
-                          <div className="flex items-start justify-between">
-                            <div className="flex items-start space-x-4 flex-1">
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "flex-start",
+                              justifyContent: "space-between",
+                            }}
+                          >
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "flex-start",
+                                gap: "1rem",
+                                flex: 1,
+                              }}
+                            >
                               {task.Image_URL && (
                                 <img
                                   src={task.Image_URL}
                                   alt={task.Animal_Name}
-                                  className="w-16 h-16 rounded-lg object-cover"
+                                  style={{
+                                    width: 64,
+                                    height: 64,
+                                    borderRadius: 8,
+                                    objectFit: "cover",
+                                  }}
                                 />
                               )}
-                              <div className="flex-1">
-                                <div className="flex items-center space-x-3 mb-2">
-                                  <h3 className="font-medium">
+                              <div style={{ flex: 1 }}>
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 12,
+                                    marginBottom: 8,
+                                  }}
+                                >
+                                  <h3 style={{ fontWeight: 600, margin: 0 }}>
                                     {task.Animal_Name}
                                   </h3>
                                   {/* Unified fed badge: always show fed count as Fed(x/y).
                                       Color the badge by status but keep the text consistent. */}
                                   <Badge
-                                    className={
+                                    style={
                                       task.Status === "complete"
-                                        ? "bg-green-100 text-green-800 border-green-200"
+                                        ? {
+                                            backgroundColor: "#ecfdf5",
+                                            color: "#065f46",
+                                            border: "1px solid #d1fae5",
+                                          }
                                         : task.Status === "partial"
-                                        ? "bg-orange-100 text-orange-800 border-orange-200"
-                                        : "bg-red-100 text-red-800 border-red-200"
+                                        ? {
+                                            backgroundColor: "#fffbeb",
+                                            color: "#92400e",
+                                            border: "1px solid #fef3c7",
+                                          }
+                                        : {
+                                            backgroundColor: "#fff1f2",
+                                            color: "#881337",
+                                            border: "1px solid #fecdd3",
+                                          }
                                     }
                                   >
                                     Fed ({task.Fed_Today}/{task.Meals_Per_Day})
                                   </Badge>
                                 </div>
-                                <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm text-gray-600">
-                                  <p>{task.Enclosure_Name}</p>
-                                  <p>{task.Species}</p>
-                                  <p>Zone: {task.Zone}</p>
-                                  <p className="col-span-2 text-green-700">
+                                <div
+                                  style={{
+                                    display: "grid",
+                                    gridTemplateColumns: "repeat(2,1fr)",
+                                    columnGap: 24,
+                                    rowGap: 4,
+                                    fontSize: "0.875rem",
+                                    color: "#4b5563",
+                                  }}
+                                >
+                                  <p style={{ margin: 0 }}>
+                                    {task.Enclosure_Name}
+                                  </p>
+                                  <p style={{ margin: 0 }}>{task.Species}</p>
+                                  <p style={{ margin: 0 }}>Zone: {task.Zone}</p>
+                                  <p
+                                    style={{
+                                      margin: 0,
+                                      textAlign: "left",
+                                      color: "#047857",
+                                    }}
+                                  >
                                     Last fed:{" "}
                                     {task.Last_Fed_Time ? (
                                       formatDateTime(task.Last_Fed_Time)
                                     ) : (
-                                      <span className="text-gray-500">
+                                      <span style={{ color: "#6b7280" }}>
                                         Never
                                       </span>
                                     )}
@@ -1416,20 +1790,45 @@ export function ZookeeperPortal({ user, onLogout }) {
                                 </div>
                               </div>
                             </div>
-                            <div className="ml-4">
+                            <div
+                              style={{
+                                marginLeft: 16,
+                                display: "flex",
+                                alignItems: "center",
+                              }}
+                            >
                               {task.Status !== "complete" ? (
                                 <Button
                                   onClick={() => handleFeedAnimal(task)}
-                                  className="bg-green-600 hover:bg-green-700 cursor-pointer"
                                   size="sm"
+                                  style={{
+                                    backgroundColor: "#10b981",
+                                    color: "#ffffff",
+                                    border: "none",
+                                    padding: "0.35rem 0.75rem",
+                                    borderRadius: 6,
+                                    display: "inlineFlex",
+                                    alignItems: "center",
+                                    fontWeight: 600,
+                                    cursor: "pointer",
+                                    boxShadow: "0 1px 2px rgba(0,0,0,0.06)",
+                                  }}
                                 >
                                   <CheckCircle2 className="h-4 w-4 mr-2" />
                                   Feed Now
                                 </Button>
                               ) : (
-                                <div className="flex items-center text-green-700">
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    color: "#059669",
+                                  }}
+                                >
                                   <CheckCircle2 className="h-5 w-5 mr-1" />
-                                  <span className="text-sm">Complete</span>
+                                  <span style={{ fontSize: "0.875rem" }}>
+                                    Complete
+                                  </span>
                                 </div>
                               )}
                             </div>
@@ -1764,7 +2163,6 @@ export function ZookeeperPortal({ user, onLogout }) {
           </div>
 
           <DialogFooter>
-            {/* Cancel button removed per request - dialog can still be closed via overlay or ESC */}
             <Button
               onClick={handleSaveTask}
               disabled={saveDisabled}

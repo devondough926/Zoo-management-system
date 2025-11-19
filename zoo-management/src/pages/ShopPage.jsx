@@ -212,25 +212,7 @@ export function ShopPage({ addToCart, allowCartActions = true }) {
 
   const ITEMS_PER_PAGE = 12; // 4 columns × 3 rows
 
-  // Smooth scroll helper that allows controlling duration (slower than native 'smooth')
-  const smoothScrollToTop = (duration = 900) => {
-    if (typeof window === "undefined") return;
-    const start = window.scrollY || window.pageYOffset || 0;
-    if (start === 0) return;
-    const startTime = performance.now();
-
-    const easeInOutQuad = (t) => (t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t);
-
-    const step = (now) => {
-      const elapsed = now - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      const ease = easeInOutQuad(progress);
-      window.scrollTo(0, Math.round(start * (1 - ease)));
-      if (elapsed < duration) requestAnimationFrame(step);
-    };
-
-    requestAnimationFrame(step);
-  };
+  // (Removed smoothScrollToTop per request)
 
   // Pricing is handled centrally in CartPage (member discount applied at checkout)
 
@@ -264,40 +246,9 @@ export function ShopPage({ addToCart, allowCartActions = true }) {
     setCurrentPage(1);
   }, [selectedCategory]);
 
-  // Scroll to the shop section title when pagination changes
-  useEffect(() => {
-    try {
-      if (typeof window !== "undefined") {
-        const start = window.scrollY || window.pageYOffset || 0;
-        const targetEl = document.getElementById("shop-section");
-        if (targetEl) {
-          const rect = targetEl.getBoundingClientRect();
-          const offset = 20; // small offset to avoid flush-to-top
-          const target = Math.round(
-            (window.scrollY || window.pageYOffset || 0) + rect.top - offset
-          );
+  // (Removed automatic scrolling on pagination changes)
 
-          const duration = 600;
-          const startTime = performance.now();
-          const easeInOutQuad = (t) =>
-            t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
-
-          const step = (now) => {
-            const elapsed = now - startTime;
-            const progress = Math.min(elapsed / duration, 1);
-            const ease = easeInOutQuad(progress);
-            const pos = Math.round(start + (target - start) * ease);
-            window.scrollTo({ top: pos, left: 0 });
-            if (elapsed < duration) requestAnimationFrame(step);
-          };
-
-          requestAnimationFrame(step);
-        }
-      }
-    } catch (e) {
-      // ignore for non-browser environments
-    }
-  }, [currentPage]);
+  // (Removed anchor/hash automatic scrolling per request)
 
   const handleAddToCart = async (product) => {
     if (!user) {
@@ -408,6 +359,8 @@ export function ShopPage({ addToCart, allowCartActions = true }) {
       {/* Products Grid */}
       <section id="shop-section" className="py-16 pb-24">
         <div className="container mx-auto px-6">
+          {/* Anchor for All Products scroll target */}
+          <span id="all-products" />
           <h2 className="text-2xl mb-8 text-center">
             {selectedCategory === "All" ? "All Products" : selectedCategory}
           </h2>
@@ -415,14 +368,14 @@ export function ShopPage({ addToCart, allowCartActions = true }) {
             {paginatedItems.map((product) => (
               <Card
                 key={product.id}
-                className="overflow-hidden hover:shadow-lg transition-shadow"
+                className="group overflow-hidden hover:shadow-lg transition-all will-change-transform hover:-translate-y-1 rounded-lg"
               >
                 <div className="aspect-video w-full overflow-hidden bg-gradient-to-br from-green-50 to-emerald-50 flex items-center justify-center">
                   {product.image ? (
                     <ImageWithFallback
                       src={product.image}
                       alt={product.name}
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-cover transition-transform duration-300 ease-out group-hover:scale-105"
                     />
                   ) : (
                     <ShoppingBag className="h-16 w-16 text-green-200" />

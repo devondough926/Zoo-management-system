@@ -1,16 +1,19 @@
 import { useState, useMemo, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { usePageTitle } from "../hooks/usePageTitle";
+import { useNavigate, useLocation } from "react-router-dom";
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
+  CardDescription,
 } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
+import { Checkbox } from "../components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -80,12 +83,16 @@ import {
   X,
   BarChart3,
   TrendingUp,
+  TrendingDown,
   CreditCard,
   Map,
   Building2,
   Filter,
   AlertCircle,
   Activity,
+  Receipt,
+  CheckCircle2,
+  Settings,
 } from "lucide-react";
 import {
   Popover,
@@ -93,16 +100,19 @@ import {
   PopoverContent,
 } from "../components/ui/popover";
 
-// react-day-picker for calendar UI
 import { DayPicker } from "react-day-picker";
 import "react-day-picker/dist/style.css";
 import { useData } from "../data/DataContext";
 import { toast } from "sonner";
 import { ZooLogo } from "../components/ZooLogo";
+import LoadingWithIcon from "../components/ui/LoadingWithIcon";
 import { EditExhibitDialog } from "../components/ExhibitDialogs";
 import { PaginationControls } from "../components/PaginationControls";
 import { generatePaginationArray } from "../utils/paginationHelper";
 import { usePricing } from "../data/PricingContext";
+import { Reports } from "../components/admin-components/Reports";
+import { Assets } from "../components/admin-components/Assets";
+import { Operations } from "../components/admin-components/Operations";
 import {
   employeeAPI,
   locationAPI,
@@ -119,7 +129,6 @@ const API_BASE_URL =
   import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
 export function AdminPortal({ user, onLogout }) {
-  const navigate = useNavigate();
   const {
     animals,
     addAnimal,
@@ -148,6 +157,7 @@ export function AdminPortal({ user, onLogout }) {
   const [allMemberships, setAllMemberships] = useState([]);
   const [revenueData, setRevenueData] = useState(null);
   const [detailedTransactions, setDetailedTransactions] = useState([]);
+  const [allTimeTransactions, setAllTimeTransactions] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isAddEmployeeOpen, setIsAddEmployeeOpen] = useState(false);
   const [isManageZoneOpen, setIsManageZoneOpen] = useState(false);
@@ -155,7 +165,7 @@ export function AdminPortal({ user, onLogout }) {
   const [deleteConfirmEmployee, setDeleteConfirmEmployee] = useState(null);
   const [pendingSupervisor, setPendingSupervisor] = useState(null);
   const [editingEmployee, setEditingEmployee] = useState(null);
-  const [revenueRange, setRevenueRange] = useState("all");
+  const [revenueRange, setRevenueRange] = useState("today");
   const [customRange, setCustomRange] = useState({ from: null, to: null });
   const [isPopoverOpen, setIsPopoverOpen] = useState(false);
   const [prevCustomRange, setPrevCustomRange] = useState(null);
@@ -183,15 +193,66 @@ export function AdminPortal({ user, onLogout }) {
   const [editingAnimal, setEditingAnimal] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [isSaving, setIsSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState("overview");
+  const navigate = useNavigate();
+  const location = useLocation();
 
-  // Activity management state
+  const allowedAdminTabs = ["overview", "operations", "assets", "reports"];
+  const [activeTab, setActiveTab] = useState(() => {
+    try {
+      if (typeof window !== "undefined") {
+        const params = new URLSearchParams(location.search);
+        const tab = params.get("tab");
+        if (tab && allowedAdminTabs.includes(tab)) return tab;
+        return localStorage.getItem("admin.activeTab") || "overview";
+      }
+    } catch (e) {
+      // ignore
+    }
+    return "overview";
+  });
+
+  // Persist active tab and include tab in the page title
+  const adminTabLabels = {
+    overview: "Overview",
+    operations: "Operations",
+    assets: "Assets",
+    reports: "Reports",
+  };
+  const adminBaseTitle = "Admin Portal";
+  const adminPageTitle = adminTabLabels[activeTab]
+    ? `${adminBaseTitle} - ${adminTabLabels[activeTab]}`
+    : adminBaseTitle;
+  usePageTitle(adminPageTitle);
+  useEffect(() => {
+    try {
+      if (typeof window !== "undefined") {
+        localStorage.setItem("admin.activeTab", activeTab);
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, [activeTab]);
+
+  // Keep URL in sync with tab selection
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(location.search);
+      if (params.get("tab") !== activeTab) {
+        params.set("tab", activeTab);
+        navigate(`${location.pathname}?${params.toString()}`, {
+          replace: true,
+        });
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, [activeTab, navigate, location]);
+
   const [isActivityDialogOpen, setIsActivityDialogOpen] = useState(false);
   const [selectedExhibitForActivities, setSelectedExhibitForActivities] =
     useState(null);
   const [exhibitActivities, setExhibitActivities] = useState([]);
 
-  // set active tab and scroll to top for better navigation
   const handleSetActiveTab = (tab) => {
     setActiveTab(tab);
     if (typeof window !== "undefined" && window.scrollTo) {
@@ -199,15 +260,11 @@ export function AdminPortal({ user, onLogout }) {
     }
   };
 
-  // Health Status Report Filters
-  const [healthZoneFilter, setHealthZoneFilter] = useState("All");
-  const [healthEnclosureFilter, setHealthEnclosureFilter] = useState("All");
-  const [genderFilter, setGenderFilter] = useState("All");
-  const [ageFilter, setAgeFilter] = useState("All");
+  const [healthZoneFilter, setHealthZoneFilter] = useState("None");
+  const [healthEnclosureFilter, setHealthEnclosureFilter] = useState("None");
+  const [genderFilter, setGenderFilter] = useState("None");
+  const [ageFilter, setAgeFilter] = useState("None");
 
-  // Animal Management Filters
-
-  // Map of enclosure id -> enclosure for quick lookup
   const enclosureMap = useMemo(() => {
     const m = {};
     (allEnclosures || []).forEach((e) => {
@@ -215,27 +272,77 @@ export function AdminPortal({ user, onLogout }) {
     });
     return m;
   }, [allEnclosures]);
-  // start with no exhibit selected so the default animal list is empty
   const [animalExhibitFilter, setAnimalExhibitFilter] = useState("");
   const [animalSearch, setAnimalSearch] = useState("");
 
-  // Transaction sort state: clicking a column header toggles asc -> desc -> none
   const [transactionSortState, setTransactionSortState] = useState({
     col: null,
     dir: null,
   });
 
-  // Filter transactions by source/category (e.g., Ticket, Membership, Gift Shop, Food)
-  const [transactionSource, setTransactionSource] = useState("All");
+  const [transactionSource, setTransactionSource] = useState("No Selection");
 
-  // Transaction pagination state
+  const [transactionSearch, setTransactionSearch] = useState("");
+
+  const [visibleColumns, setVisibleColumns] = useState({
+    purchaseId: true,
+    dateTime: true,
+    customer: true,
+    category: true,
+    description: true,
+    quantity: true,
+    unitPrice: true,
+    total: true,
+    payment: true,
+  });
+
+  const [animalVisibleColumns, setAnimalVisibleColumns] = useState({
+    animalId: true,
+    name: true,
+    species: true,
+    age: true,
+    gender: true,
+    enclosure: true,
+    healthStatus: true,
+    weight: true,
+  });
+
+  const [staffJobFilter, setStaffJobFilter] = useState("No Selection");
+
+  const toggleColumn = (columnKey) => {
+    if (columnKey === "all") {
+      const allChecked = Object.values(visibleColumns).every((v) => v);
+      const newState = {};
+      Object.keys(visibleColumns).forEach((key) => {
+        newState[key] = !allChecked;
+      });
+      setVisibleColumns(newState);
+    } else {
+      setVisibleColumns((prev) => ({ ...prev, [columnKey]: !prev[columnKey] }));
+    }
+  };
+
+  const toggleAnimalColumn = (columnKey) => {
+    if (columnKey === "all") {
+      const allChecked = Object.values(animalVisibleColumns).every((v) => v);
+      const newState = {};
+      Object.keys(animalVisibleColumns).forEach((key) => {
+        newState[key] = !allChecked;
+      });
+      setAnimalVisibleColumns(newState);
+    } else {
+      setAnimalVisibleColumns((prev) => ({
+        ...prev,
+        [columnKey]: !prev[columnKey],
+      }));
+    }
+  };
+
   const [transactionCurrentPage, setTransactionCurrentPage] = useState(1);
   const [transactionItemsPerPage, setTransactionItemsPerPage] = useState(15);
 
-  // Handle transaction pagination with scroll to top
   const handleTransactionPageChange = (page) => {
     setTransactionCurrentPage(page);
-    // Scroll to the transactions section
     const transactionsSection = document.getElementById("transactions");
     if (transactionsSection) {
       transactionsSection.scrollIntoView({
@@ -245,16 +352,11 @@ export function AdminPortal({ user, onLogout }) {
     }
   };
 
-  // Animal pagination state
   const [animalCurrentPage, setAnimalCurrentPage] = useState(1);
   const [animalItemsPerPage, setAnimalItemsPerPage] = useState(15);
 
-  // Handle animal pagination with scroll to top
   const handleAnimalPageChange = (page) => {
     setAnimalCurrentPage(page);
-    // Scroll up to the Animals Details section header so users see the title and table.
-    // Use window.scrollTo with an extra offset so the header appears lower in the
-    // viewport (leaving some breathing room above it).
     const animalsSection = document.getElementById("animals-section");
     if (animalsSection && typeof window !== "undefined") {
       try {
@@ -263,12 +365,9 @@ export function AdminPortal({ user, onLogout }) {
         const targetY = window.scrollY + rect.top - extraGap;
         window.scrollTo({ top: targetY, behavior: "smooth" });
         return;
-      } catch (e) {
-        // fall through to fallback
-      }
+      } catch (e) {}
     }
 
-    // Fallback: scroll to the table element using scrollIntoView
     const animalTable = document.getElementById("animal-table");
     if (animalTable && typeof animalTable.scrollIntoView === "function") {
       animalTable.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -285,11 +384,26 @@ export function AdminPortal({ user, onLogout }) {
     }
   };
 
-  // Animal sort state: clicking a column header toggles asc -> desc -> none
   const [animalSortState, setAnimalSortState] = useState({
     col: null,
     dir: null,
   });
+
+  const [healthReportConfig, setHealthReportConfig] = useState({
+    showHealthDistribution: true,
+    showCriticalAlerts: true,
+    showVaccinationStatus: false,
+    showWeightTrends: false,
+    showAgeDistribution: true,
+    showSpeciesBreakdown: true,
+  });
+  const [healthReportGenerated, setHealthReportGenerated] = useState(false);
+  const [isGeneratingHealth, setIsGeneratingHealth] = useState(false);
+  const [showHealthTable, setShowHealthTable] = useState(true);
+  const [healthChartType, setHealthChartType] = useState("both");
+
+  const [comparisonData, setComparisonData] = useState(null);
+  const [isLoadingComparison, setIsLoadingComparison] = useState(false);
 
   const toggleAnimalSort = (col) => {
     if (animalSortState.col !== col) {
@@ -317,7 +431,6 @@ export function AdminPortal({ user, onLogout }) {
   const [isTicketContentVisible, setIsTicketContentVisible] = useState(false);
   const [tempMembershipPrice, setTempMembershipPrice] =
     useState(membershipPrice);
-  // Per-job salary edit dialog (replaces the combined Edit Salaries dialog)
   const [isJobSalaryOpen, setIsJobSalaryOpen] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState(null);
   const [tempJobSalary, setTempJobSalary] = useState(0);
@@ -344,6 +457,7 @@ export function AdminPortal({ user, onLogout }) {
         employeesData,
         exhibitsData,
         animalsData,
+        allTransactions,
       ] = await Promise.all([
         locationAPI.getAll(),
         referenceAPI.getJobTitles(),
@@ -352,6 +466,7 @@ export function AdminPortal({ user, onLogout }) {
         employeeAPI.getAll(),
         exhibitAPI.getAll(),
         animalAPI.getAll(),
+        analyticsAPI.getDetailedTransactions(null, null),
       ]);
 
       setAllLocations(locationsData);
@@ -361,6 +476,7 @@ export function AdminPortal({ user, onLogout }) {
       setAllEmployees(employeesData);
       setAllExhibitsDB(exhibitsData);
       setAllAnimalsDB(animalsData);
+      setAllTimeTransactions(allTransactions);
 
       await loadRevenueData();
 
@@ -368,7 +484,7 @@ export function AdminPortal({ user, onLogout }) {
       toast.success("Dashboard loaded successfully!");
     } catch (error) {
       console.error("Error loading data:", error);
-      toast.error("Failed to load data from database");
+      toast.error("Failed to load data from server");
     } finally {
       setIsLoading(false);
     }
@@ -440,7 +556,7 @@ export function AdminPortal({ user, onLogout }) {
       toast.success("Data loaded successfully!");
     } catch (error) {
       console.error("Error loading data:", error);
-      toast.error("Failed to load data from database");
+      toast.error("Failed to load data from server");
     } finally {
       setIsLoading(false);
     }
@@ -468,9 +584,128 @@ export function AdminPortal({ user, onLogout }) {
       ]);
       setRevenueData(revenue);
       setDetailedTransactions(transactions);
+
+      // Load comparison data for percentage indicators (all ranges except custom)
+      if (revenueRange !== "custom") {
+        loadComparisonData(revenueRange);
+      } else {
+        setComparisonData(null);
+      }
     } catch (error) {
       console.error("Error loading revenue data:", error);
       toast.error("Failed to load revenue data");
+    }
+  };
+
+  const loadComparisonData = async (currentRange) => {
+    try {
+      setIsLoadingComparison(true);
+      const now = new Date();
+      let comparisonStartDate, comparisonEndDate;
+      const msPerDay = 1000 * 60 * 60 * 24;
+      switch (currentRange) {
+        case "today": {
+          const yesterday = new Date(now);
+          yesterday.setHours(0, 0, 0, 0);
+          yesterday.setDate(yesterday.getDate() - 1);
+          comparisonStartDate = yesterday.toISOString().split("T")[0];
+          comparisonEndDate = yesterday.toISOString().split("T")[0];
+          try {
+            const compTransactions = await analyticsAPI.getDetailedTransactions(
+              comparisonStartDate,
+              comparisonEndDate
+            );
+
+            const compTotals = {
+              totalRevenue: 0,
+              ticketRevenue: 0,
+              membershipRevenue: 0,
+              giftShopRevenue: 0,
+              foodRevenue: 0,
+            };
+
+            (compTransactions || []).forEach((t) => {
+              const amt = parseFloat(t.Total_Amount || t.total || 0) || 0;
+              compTotals.totalRevenue += amt;
+              const cat = (t.Category || "").toLowerCase();
+              if (cat.includes("ticket")) compTotals.ticketRevenue += amt;
+              else if (cat.includes("membership"))
+                compTotals.membershipRevenue += amt;
+              else if (cat.includes("gift")) compTotals.giftShopRevenue += amt;
+              else if (cat.includes("food") || cat.includes("beverage"))
+                compTotals.foodRevenue += amt;
+            });
+
+            setComparisonData(compTotals);
+          } catch (e) {
+            const compRevenue = await analyticsAPI.getRevenue(
+              comparisonStartDate,
+              comparisonEndDate
+            );
+            setComparisonData(compRevenue);
+          }
+
+          break;
+        }
+        case "week": {
+          const startOfWeek = new Date(now);
+          const day = startOfWeek.getDay();
+          const diffToMon = (day + 6) % 7; // 0 for Monday, 6 for Sunday
+          startOfWeek.setDate(startOfWeek.getDate() - diffToMon);
+          startOfWeek.setHours(0, 0, 0, 0);
+
+          const daysElapsed = Math.floor((now - startOfWeek) / msPerDay) + 1;
+
+          const prevStart = new Date(startOfWeek);
+          prevStart.setDate(prevStart.getDate() - 7);
+          const prevEnd = new Date(prevStart);
+          prevEnd.setDate(prevStart.getDate() + daysElapsed - 1);
+
+          comparisonStartDate = prevStart.toISOString().split("T")[0];
+          comparisonEndDate = prevEnd.toISOString().split("T")[0];
+          break;
+        }
+        case "month": {
+          const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+          startOfMonth.setHours(0, 0, 0, 0);
+          const daysElapsed = Math.floor((now - startOfMonth) / msPerDay) + 1;
+
+          const prevStart = new Date(startOfMonth);
+          prevStart.setMonth(prevStart.getMonth() - 1);
+          const prevEnd = new Date(prevStart);
+          prevEnd.setDate(prevStart.getDate() + daysElapsed - 1);
+
+          comparisonStartDate = prevStart.toISOString().split("T")[0];
+          comparisonEndDate = prevEnd.toISOString().split("T")[0];
+          break;
+        }
+        case "all": {
+          // For All Time, compare against the beginning (0 if no data at start)
+          // Get the very first transaction date from the database
+          // If no transactions exist, comparison will be 0
+          comparisonStartDate = "1900-01-01";
+          comparisonEndDate = "1900-01-01";
+          break;
+        }
+        default: {
+          setComparisonData(null);
+          return;
+        }
+      }
+
+      // For non-today cases we use the revenue endpoint
+      if (currentRange !== "today") {
+        const compRevenue = await analyticsAPI.getRevenue(
+          comparisonStartDate,
+          comparisonEndDate
+        );
+        setComparisonData(compRevenue);
+      }
+    } catch (error) {
+      console.error("Error loading comparison data:", error);
+      setComparisonData(null);
+    } finally {
+      setIsLoadingComparison(false);
     }
   };
 
@@ -526,7 +761,6 @@ export function AdminPortal({ user, onLogout }) {
     return d.toLocaleDateString("en-US");
   };
 
-  // Convert backend TIME strings ("HH:MM:SS" or "HH:MM") to 12-hour display
   const formatTime = (time) => {
     if (!time) return "";
     try {
@@ -542,10 +776,6 @@ export function AdminPortal({ user, onLogout }) {
     }
   };
 
-  // Parse server-side DATETIME/ISO strings as UTC when timezone is not provided.
-  // Accepts Date objects or strings like 'YYYY-MM-DD HH:MM:SS' and converts
-  // MySQL-style datetimes to ISO UTC so the JS Date will represent the same
-  // instant across client timezones.
   function parseServerDate(input) {
     if (!input) return null;
     if (input instanceof Date) return input;
@@ -577,6 +807,67 @@ export function AdminPortal({ user, onLogout }) {
     const ampm = hours >= 12 ? "PM" : "AM";
     const displayHours = hours % 12 || 12;
     return `${displayHours}:${minutes} ${ampm}`;
+  };
+
+  const calculatePercentageChange = (current, previous) => {
+    const currentVal = Number.parseFloat(current) || 0;
+    const previousVal = Number.parseFloat(previous) || 0;
+
+    if (previousVal === 0) {
+      return currentVal === 0 ? 0 : Infinity;
+    }
+
+    return ((currentVal - previousVal) / previousVal) * 100;
+  };
+
+  const renderPercentageChange = (current, previous) => {
+    if (revenueRange === "custom") return null;
+
+    if (!comparisonData) {
+      return null;
+    }
+
+    const change = calculatePercentageChange(current, previous);
+
+    const isPositive = change > 0;
+    const isZero = change === 0;
+    const isInfinite = !isFinite(change);
+
+    const bgClass = isInfinite
+      ? "bg-green-100 text-green-800"
+      : isZero
+      ? "bg-gray-100 text-gray-700"
+      : isPositive
+      ? "bg-green-100 text-green-800"
+      : "bg-red-100 text-red-800";
+
+    return (
+      <span
+        className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs ${bgClass}`}
+        aria-hidden
+      >
+        {isInfinite ? (
+          <>
+            <TrendingUp className="h-3 w-3" />
+            <span className="leading-none">New!</span>
+          </>
+        ) : isZero ? (
+          <span className="leading-none">+0.0%</span>
+        ) : (
+          <>
+            {isPositive ? (
+              <TrendingUp className="h-3 w-3" />
+            ) : (
+              <TrendingDown className="h-3 w-3" />
+            )}
+            <span className="leading-none">
+              {isPositive ? "+" : ""}
+              {change.toFixed(1)}%
+            </span>
+          </>
+        )}
+      </span>
+    );
   };
 
   const isSupervisor = (emp) => {
@@ -620,14 +911,24 @@ export function AdminPortal({ user, onLogout }) {
       });
     }
 
-    // Sort by last name
+    if (staffJobFilter === "No Selection") {
+      return [];
+    }
+
+    if (staffJobFilter !== "None") {
+      filtered = filtered.filter((emp) => {
+        if (staffJobFilter === "2") {
+          return isSupervisor(emp);
+        }
+        return !isSupervisor(emp) && emp.Job_ID?.toString() === staffJobFilter;
+      });
+    }
+
     return filtered.sort((a, b) => a.Last_Name.localeCompare(b.Last_Name));
-  }, [allEmployees, staffSearch]);
+  }, [allEmployees, staffSearch, staffJobFilter]);
 
   const displayAnimals = useMemo(() => {
-    // If no exhibit selected, return empty list by default
     if (!animalExhibitFilter) return [];
-    // start with animals for the selected exhibit (or all animals)
     const base =
       animalExhibitFilter === "All"
         ? allAnimalsDB
@@ -635,7 +936,6 @@ export function AdminPortal({ user, onLogout }) {
             (animal) => animal.Enclosure_ID === animalExhibitFilter
           );
 
-    // If there's a search term, filter the base list by ID, name, or species
     if (animalSearch && animalSearch.trim() !== "") {
       const s = animalSearch.trim().toLowerCase();
       return base.filter((animal) => {
@@ -650,7 +950,6 @@ export function AdminPortal({ user, onLogout }) {
     return base;
   }, [allAnimalsDB, animalExhibitFilter, animalSearch]);
 
-  // Group animals by exhibit
   const animalsByExhibit = useMemo(() => {
     const grouped = {};
     displayAnimals.forEach((animal) => {
@@ -666,7 +965,6 @@ export function AdminPortal({ user, onLogout }) {
     return grouped;
   }, [displayAnimals, allEnclosures]);
 
-  // Sort and display transactions
   const sortedTransactions = useMemo(() => {
     const data = Array.isArray(detailedTransactions)
       ? [...detailedTransactions]
@@ -678,13 +976,11 @@ export function AdminPortal({ user, onLogout }) {
       data.sort((a, b) => {
         const A = a[key];
         const B = b[key];
-        // determine numeric or alpha
         const numA = Number(A);
         const numB = Number(B);
         if (!Number.isNaN(numA) && !Number.isNaN(numB)) {
           return dir === "asc" ? numA - numB : numB - numA;
         } else {
-          // alpha sort
           const sa = String(A || "").toUpperCase();
           const sb = String(B || "").toUpperCase();
           if (sa < sb) return dir === "asc" ? -1 : 1;
@@ -696,7 +992,6 @@ export function AdminPortal({ user, onLogout }) {
     return data;
   }, [detailedTransactions, transactionSortState]);
 
-  // Build a list of unique categories from the raw data for the Source filter
   const transactionCategories = useMemo(() => {
     const cats = new Set();
     (Array.isArray(detailedTransactions) ? detailedTransactions : []).forEach(
@@ -705,29 +1000,39 @@ export function AdminPortal({ user, onLogout }) {
     return Array.from(cats);
   }, [detailedTransactions]);
 
-  // Apply the selected Source filter on top of the sorted transactions
   const filteredTransactions = useMemo(() => {
     if (!Array.isArray(sortedTransactions)) return [];
-    if (!transactionSource || transactionSource === "All")
-      return sortedTransactions;
-    return sortedTransactions.filter(
-      (t) => (t?.Category ?? "Uncategorized") === transactionSource
-    );
-  }, [sortedTransactions, transactionSource]);
+    if (transactionSource === "No Selection") return [];
 
-  // Apply pagination to filtered transactions
+    let filtered = sortedTransactions;
+
+    if (transactionSource && transactionSource !== "All") {
+      filtered = filtered.filter(
+        (t) => (t?.Category ?? "Uncategorized") === transactionSource
+      );
+    }
+
+    if (transactionSearch.trim()) {
+      const searchLower = transactionSearch.toLowerCase().trim();
+      filtered = filtered.filter((t) => {
+        const customerName = (t?.Customer_Name || "").toLowerCase();
+        return customerName.includes(searchLower);
+      });
+    }
+
+    return filtered;
+  }, [sortedTransactions, transactionSource, transactionSearch]);
+
   const displayedTransactions = useMemo(() => {
     const startIndex = (transactionCurrentPage - 1) * transactionItemsPerPage;
     const endIndex = startIndex + transactionItemsPerPage;
     return filteredTransactions.slice(startIndex, endIndex);
   }, [filteredTransactions, transactionCurrentPage, transactionItemsPerPage]);
 
-  // Calculate total pages for pagination
   const transactionTotalPages = useMemo(() => {
     return Math.ceil(filteredTransactions.length / transactionItemsPerPage);
   }, [filteredTransactions.length, transactionItemsPerPage]);
 
-  // Generate pagination array
   const transactionPaginationArray = useMemo(() => {
     return generatePaginationArray(
       transactionCurrentPage,
@@ -735,12 +1040,10 @@ export function AdminPortal({ user, onLogout }) {
     );
   }, [transactionCurrentPage, transactionTotalPages]);
 
-  // Reset to page 1 when filter changes
   useEffect(() => {
     setTransactionCurrentPage(1);
-  }, [transactionSource]);
+  }, [transactionSource, transactionSearch]);
 
-  // Helper function to calculate age in years
   const calculateAge = (birthday) => {
     const birthDate = new Date(birthday);
     const today = new Date();
@@ -755,11 +1058,18 @@ export function AdminPortal({ user, onLogout }) {
     return age;
   };
 
-  // Filter animals based on selected filters
   const filteredAnimals = useMemo(() => {
+    if (
+      healthZoneFilter === "None" &&
+      healthEnclosureFilter === "None" &&
+      genderFilter === "None" &&
+      ageFilter === "None"
+    ) {
+      return [];
+    }
+
     return allAnimalsDB.filter((animal) => {
-      // Zone filter
-      if (healthZoneFilter !== "All") {
+      if (healthZoneFilter !== "All" && healthZoneFilter !== "None") {
         const enclosure = allEnclosures.find(
           (e) => e.Enclosure_ID === animal.Enclosure_ID
         );
@@ -769,24 +1079,33 @@ export function AdminPortal({ user, onLogout }) {
         if (location?.Zone !== healthZoneFilter) return false;
       }
 
-      // Enclosure filter
       if (
         healthEnclosureFilter !== "All" &&
+        healthEnclosureFilter !== "None" &&
         animal.Enclosure_ID !== healthEnclosureFilter
       )
         return false;
 
-      // Gender filter
-      if (genderFilter !== "All" && animal.Gender !== genderFilter)
+      if (
+        genderFilter !== "All" &&
+        genderFilter !== "None" &&
+        animal.Gender !== genderFilter
+      )
         return false;
 
-      // Age filter
-      if (ageFilter !== "All") {
+      if (ageFilter !== "All" && ageFilter !== "None") {
         const age = calculateAge(animal.Birthday);
         if (ageFilter === "0-2" && (age < 0 || age > 2)) return false;
         if (ageFilter === "3-5" && (age < 3 || age > 5)) return false;
         if (ageFilter === "6-10" && (age < 6 || age > 10)) return false;
         if (ageFilter === "11+" && age < 11) return false;
+      }
+
+      if (animalSearch && animalSearch.trim()) {
+        const s = animalSearch.toLowerCase().trim();
+        const name = (animal.Animal_Name || "").toLowerCase();
+        const species = (animal.Species || "").toLowerCase();
+        if (!name.includes(s) && !species.includes(s)) return false;
       }
 
       return true;
@@ -801,7 +1120,6 @@ export function AdminPortal({ user, onLogout }) {
     allLocations,
   ]);
 
-  // Sort animals based on selected column
   const sortedAnimals = useMemo(() => {
     const data = [...filteredAnimals];
 
@@ -812,7 +1130,6 @@ export function AdminPortal({ user, onLogout }) {
         let A = a[key];
         let B = b[key];
 
-        // Special handling for certain columns
         if (key === "Age") {
           A = calculateAge(a.Birthday);
           B = calculateAge(b.Birthday);
@@ -821,7 +1138,6 @@ export function AdminPortal({ user, onLogout }) {
           B = enclosureMap[b.Enclosure_ID]?.Enclosure_Name || "";
         }
 
-        // Handle numeric vs string sorting
         const numA = Number(A);
         const numB = Number(B);
         if (!Number.isNaN(numA) && !Number.isNaN(numB)) {
@@ -839,19 +1155,16 @@ export function AdminPortal({ user, onLogout }) {
     return data;
   }, [filteredAnimals, animalSortState]);
 
-  // Apply pagination to sorted animals
   const displayedAnimals = useMemo(() => {
     const startIndex = (animalCurrentPage - 1) * animalItemsPerPage;
     const endIndex = startIndex + animalItemsPerPage;
     return sortedAnimals.slice(startIndex, endIndex);
   }, [sortedAnimals, animalCurrentPage, animalItemsPerPage]);
 
-  // Calculate total pages for animal pagination
   const animalTotalPages = useMemo(() => {
     return Math.ceil(sortedAnimals.length / animalItemsPerPage);
   }, [sortedAnimals.length, animalItemsPerPage]);
 
-  // Generate animal pagination array
   const animalPaginationArray = useMemo(() => {
     return generatePaginationArray(animalCurrentPage, animalTotalPages);
   }, [animalCurrentPage, animalTotalPages]);
@@ -859,7 +1172,13 @@ export function AdminPortal({ user, onLogout }) {
   // Reset to page 1 when animal filters change
   useEffect(() => {
     setAnimalCurrentPage(1);
-  }, [healthZoneFilter, healthEnclosureFilter, genderFilter, ageFilter]);
+  }, [
+    healthZoneFilter,
+    healthEnclosureFilter,
+    genderFilter,
+    ageFilter,
+    animalSearch,
+  ]);
 
   const ticketRevenue = revenueData?.ticketRevenue || 0;
   const membershipRevenue = revenueData?.membershipRevenue || 0;
@@ -1780,9 +2099,7 @@ export function AdminPortal({ user, onLogout }) {
                 >
                   Admin Portal
                 </h1>
-                <p className="text-sm text-gray-600">
-                  WildWood Zoo Management Dashboard
-                </p>
+                <p className="text-sm text-gray-600">Management Dashboard</p>
               </div>
             </div>
             <div className="flex items-center space-x-4">
@@ -1821,8 +2138,7 @@ export function AdminPortal({ user, onLogout }) {
       {isLoading && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white p-6 rounded-lg shadow-lg">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading data from database...</p>
+            <LoadingWithIcon text="Loading from server..." size={56} />
           </div>
         </div>
       )}
@@ -1875,6 +2191,19 @@ export function AdminPortal({ user, onLogout }) {
             >
               Assets
             </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "reports"}
+              onClick={() => handleSetActiveTab("reports")}
+              className={`inline-block px-6 py-3 rounded-t-lg border-b-2 text-sm font-semibold transition-colors cursor-pointer ${
+                activeTab === "reports"
+                  ? "border-green-600 text-green-800 bg-gradient-to-t from-green-100 to-white shadow-inner"
+                  : "border-transparent text-gray-700 hover:bg-gray-50"
+              }`}
+            >
+              Reports
+            </button>
           </div>
         </nav>
         {/* Revenue Range Filter */}
@@ -1900,20 +2229,51 @@ export function AdminPortal({ user, onLogout }) {
                 >
                   <PopoverTrigger asChild>
                     <button
-                      className="inline-flex items-center space-x-2 px-3 py-1 rounded-md border bg-white hover:bg-gray-50 cursor-pointer"
                       aria-label="Open date range picker"
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "0.5rem",
+                        padding: "0.25rem 0.75rem",
+                        borderRadius: "0.375rem",
+                        border: "1px solid #e5e7eb",
+                        background: "#ffffff",
+                        cursor: "pointer",
+                        fontSize: "0.875rem",
+                      }}
                     >
-                      <Calendar className="h-5 w-5 text-gray-600" />
-                      <span className="text-sm text-gray-700">
+                      <Calendar
+                        style={{
+                          height: "1.25rem",
+                          width: "1.25rem",
+                          color: "#6b7280",
+                        }}
+                      />
+                      <span style={{ fontSize: "0.875rem", color: "#374151" }}>
                         {getRangeLabel()}
                       </span>
                     </button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-[380px]">
-                    <div className="flex">
+                  <PopoverContent style={{ width: "380px" }}>
+                    <div style={{ display: "flex" }}>
                       {/* Left: Quick Ranges */}
-                      <div className="w-28 border-r pr-3">
-                        <ul className="space-y-2">
+                      <div
+                        style={{
+                          width: "176px",
+                          borderRight: "1px solid #e5e7eb",
+                          paddingRight: "0.75rem",
+                        }}
+                      >
+                        <ul
+                          style={{
+                            listStyle: "none",
+                            padding: 0,
+                            margin: 0,
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: "0.5rem",
+                          }}
+                        >
                           <li>
                             <button
                               onClick={() => {
@@ -1921,7 +2281,19 @@ export function AdminPortal({ user, onLogout }) {
                                 setRevenueRange("today");
                                 setIsPopoverOpen(false);
                               }}
-                              className="w-full text-left px-2 py-2 rounded hover:bg-gray-100"
+                              style={{
+                                width: "100%",
+                                textAlign: "left",
+                                padding: "0.5rem",
+                                borderRadius: "0.375rem",
+                                border: "none",
+                                background:
+                                  revenueRange === "today"
+                                    ? "#f3f4f6"
+                                    : "transparent",
+                                cursor: "pointer",
+                                fontSize: "0.875rem",
+                              }}
                             >
                               Today
                             </button>
@@ -1933,7 +2305,19 @@ export function AdminPortal({ user, onLogout }) {
                                 setRevenueRange("week");
                                 setIsPopoverOpen(false);
                               }}
-                              className="w-full text-left px-2 py-2 rounded hover:bg-gray-100"
+                              style={{
+                                width: "100%",
+                                textAlign: "left",
+                                padding: "0.5rem",
+                                borderRadius: "0.375rem",
+                                border: "none",
+                                background:
+                                  revenueRange === "week"
+                                    ? "#f3f4f6"
+                                    : "transparent",
+                                cursor: "pointer",
+                                fontSize: "0.875rem",
+                              }}
                             >
                               Past Week
                             </button>
@@ -1945,7 +2329,19 @@ export function AdminPortal({ user, onLogout }) {
                                 setRevenueRange("month");
                                 setIsPopoverOpen(false);
                               }}
-                              className="w-full text-left px-2 py-2 rounded hover:bg-gray-100"
+                              style={{
+                                width: "100%",
+                                textAlign: "left",
+                                padding: "0.5rem",
+                                borderRadius: "0.375rem",
+                                border: "none",
+                                background:
+                                  revenueRange === "month"
+                                    ? "#f3f4f6"
+                                    : "transparent",
+                                cursor: "pointer",
+                                fontSize: "0.875rem",
+                              }}
                             >
                               Past Month
                             </button>
@@ -1957,7 +2353,19 @@ export function AdminPortal({ user, onLogout }) {
                                 setRevenueRange("all");
                                 setIsPopoverOpen(false);
                               }}
-                              className="w-full text-left px-2 py-2 rounded hover:bg-gray-100"
+                              style={{
+                                width: "100%",
+                                textAlign: "left",
+                                padding: "0.5rem",
+                                borderRadius: "0.375rem",
+                                border: "none",
+                                background:
+                                  revenueRange === "all"
+                                    ? "#f3f4f6"
+                                    : "transparent",
+                                cursor: "pointer",
+                                fontSize: "0.875rem",
+                              }}
                             >
                               All Time
                             </button>
@@ -1969,7 +2377,17 @@ export function AdminPortal({ user, onLogout }) {
                                 setRevenueRange("all");
                                 setIsPopoverOpen(false);
                               }}
-                              className="w-full text-left px-2 py-2 text-blue-600 rounded hover:bg-gray-100"
+                              style={{
+                                width: "100%",
+                                textAlign: "left",
+                                padding: "0.5rem",
+                                borderRadius: "0.375rem",
+                                border: "none",
+                                color: "#2563eb",
+                                background: "transparent",
+                                cursor: "pointer",
+                                fontSize: "0.875rem",
+                              }}
                             >
                               Reset
                             </button>
@@ -1978,7 +2396,7 @@ export function AdminPortal({ user, onLogout }) {
                       </div>
 
                       {/* Right: react-day-picker range selector */}
-                      <div className="flex-1 pl-3">
+                      <div style={{ flex: 1, paddingLeft: "0.75rem" }}>
                         <div className="flex items-center justify-between mb-2">
                           <div className="text-sm font-medium">
                             {new Date().toLocaleString("en-US", {
@@ -2059,17 +2477,25 @@ export function AdminPortal({ user, onLogout }) {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <Card className="border-l-4 border-l-green-600">
                 <CardContent className="pt-6">
-                  <div className="flex items-center space-x-3">
-                    <DollarSign className="h-8 w-8 text-green-600" />
-                    <div>
-                      <p className="text-sm">Total Revenue</p>
-                      <p className="text-2xl font-semibold text-green-600">
-                        $
-                        {totalRevenue.toLocaleString("en-US", {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}
-                      </p>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <DollarSign className="h-8 w-8 text-green-600" />
+                      <div>
+                        <p className="text-sm">Total Revenue</p>
+                        <p className="text-2xl font-semibold text-green-600">
+                          $
+                          {totalRevenue.toLocaleString("en-US", {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex-shrink-0 ml-4">
+                      {renderPercentageChange(
+                        totalRevenue,
+                        comparisonData?.totalRevenue
+                      )}
                     </div>
                   </div>
                 </CardContent>
@@ -2079,7 +2505,7 @@ export function AdminPortal({ user, onLogout }) {
                 <CardContent className="pt-6">
                   <div className="flex items-center space-x-3">
                     <PawPrint className="h-8 w-8 text-teal-600" />
-                    <div>
+                    <div className="flex-1">
                       <p className="text-sm">Total Animals</p>
                       <p className="text-2xl font-semibold text-teal-600">
                         {formatNumber(totalAnimals)}
@@ -2093,7 +2519,7 @@ export function AdminPortal({ user, onLogout }) {
                 <CardContent className="pt-6">
                   <div className="flex items-center space-x-3">
                     <Users className="h-8 w-8 text-yellow-600" />
-                    <div>
+                    <div className="flex-1">
                       <p className="text-sm">Total Staff</p>
                       <p className="text-2xl font-semibold text-yellow-600">
                         {formatNumber(totalEmployees)}
@@ -2107,7 +2533,7 @@ export function AdminPortal({ user, onLogout }) {
                 <CardContent className="pt-6">
                   <div className="flex items-center space-x-3">
                     <Crown className="h-8 w-8 text-purple-600" />
-                    <div>
+                    <div className="flex-1">
                       <p className="text-sm">Active Memberships</p>
                       <p className="text-2xl font-semibold text-purple-600">
                         {formatNumber(activeMemb)}
@@ -2131,29 +2557,58 @@ export function AdminPortal({ user, onLogout }) {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                   {revenueBreakdown.map((stat) => {
                     const IconComponent = stat.icon;
+                    let comparisonValue = null;
+                    if (comparisonData) {
+                      switch (stat.category) {
+                        case "Tickets":
+                          comparisonValue = comparisonData.ticketRevenue;
+                          break;
+                        case "Memberships":
+                          comparisonValue = comparisonData.membershipRevenue;
+                          break;
+                        case "Gift Shop":
+                          comparisonValue = comparisonData.giftShopRevenue;
+                          break;
+                        case "Food & Beverages":
+                          comparisonValue = comparisonData.foodRevenue;
+                          break;
+                      }
+                    }
                     return (
                       <div
                         key={stat.category}
                         className="p-4 bg-gray-50 rounded-lg border border-gray-200"
                       >
-                        <div className="flex items-center justify-center mb-3">
-                          <IconComponent
-                            className={`h-10 w-10 ${stat.color.replace(
-                              "bg-",
-                              "text-"
-                            )}`}
-                          />
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-4">
+                            <div className="flex items-center justify-center mb-0">
+                              <IconComponent
+                                className={`h-10 w-10 ${stat.color.replace(
+                                  "bg-",
+                                  "text-"
+                                )}`}
+                              />
+                            </div>
+                            <div>
+                              <h3 className="font-medium mb-1">
+                                {stat.category}
+                              </h3>
+                              <p className="text-lg font-semibold text-green-600">
+                                $
+                                {stat.amount.toLocaleString("en-US", {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex-shrink-0">
+                            {renderPercentageChange(
+                              stat.amount,
+                              comparisonValue
+                            )}
+                          </div>
                         </div>
-                        <h3 className="font-medium text-center mb-2">
-                          {stat.category}
-                        </h3>
-                        <p className="text-2xl font-semibold text-center text-green-600">
-                          $
-                          {stat.amount.toLocaleString("en-US", {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
-                        </p>
                       </div>
                     );
                   })}
@@ -2163,36 +2618,201 @@ export function AdminPortal({ user, onLogout }) {
           </section>
         )}
 
-        {/* Detailed Transactions Table */}
+        {/* Interactive Revenue Report Builder */}
+        {activeTab === "reports" && (
+          <Reports detailedTransactions={allTimeTransactions} />
+        )}
+
+        {/* Detailed Transactions Table (restored) */}
         {activeTab === "overview" && (
           <section id="transactions">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl text-gray-900 flex items-center gap-2">
                 <Activity className="h-6 w-6" /> Transaction Details
               </h2>
-              <div className="flex items-center gap-3">
-                <Label className="text-sm">Source</Label>
-                <Select
-                  value={transactionSource}
-                  onValueChange={(value) => setTransactionSource(value)}
-                >
-                  <SelectTrigger className="w-[220px] cursor-pointer">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="All">All</SelectItem>
-                    {transactionCategories.map((cat) => (
-                      <SelectItem key={cat} value={cat}>
-                        {cat}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="flex items-center gap-4">
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm">
+                      <Settings className="h-4 w-4 mr-2" />
+                      All
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-64" align="end">
+                    <div className="space-y-3">
+                      <h4 className="font-medium text-sm mb-3">
+                        Toggle Columns
+                      </h4>
+                      <div className="space-y-2">
+                        <div className="flex items-center space-x-2 pb-2 border-b">
+                          <Checkbox
+                            id="col-all"
+                            checked={Object.values(visibleColumns).every(
+                              (v) => v
+                            )}
+                            onCheckedChange={() => toggleColumn("all")}
+                          />
+                          <label
+                            htmlFor="col-all"
+                            className="text-sm font-medium cursor-pointer"
+                          >
+                            All
+                          </label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id="col-purchaseId"
+                            checked={visibleColumns.purchaseId}
+                            onCheckedChange={() => toggleColumn("purchaseId")}
+                          />
+                          <label
+                            htmlFor="col-purchaseId"
+                            className="text-sm cursor-pointer"
+                          >
+                            Purchase ID
+                          </label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id="col-dateTime"
+                            checked={visibleColumns.dateTime}
+                            onCheckedChange={() => toggleColumn("dateTime")}
+                          />
+                          <label
+                            htmlFor="col-dateTime"
+                            className="text-sm cursor-pointer"
+                          >
+                            Date & Time
+                          </label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id="col-customer"
+                            checked={visibleColumns.customer}
+                            onCheckedChange={() => toggleColumn("customer")}
+                          />
+                          <label
+                            htmlFor="col-customer"
+                            className="text-sm cursor-pointer"
+                          >
+                            Customer
+                          </label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id="col-category"
+                            checked={visibleColumns.category}
+                            onCheckedChange={() => toggleColumn("category")}
+                          />
+                          <label
+                            htmlFor="col-category"
+                            className="text-sm cursor-pointer"
+                          >
+                            Category
+                          </label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id="col-description"
+                            checked={visibleColumns.description}
+                            onCheckedChange={() => toggleColumn("description")}
+                          />
+                          <label
+                            htmlFor="col-description"
+                            className="text-sm cursor-pointer"
+                          >
+                            Description
+                          </label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id="col-quantity"
+                            checked={visibleColumns.quantity}
+                            onCheckedChange={() => toggleColumn("quantity")}
+                          />
+                          <label
+                            htmlFor="col-quantity"
+                            className="text-sm cursor-pointer"
+                          >
+                            Quantity
+                          </label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id="col-unitPrice"
+                            checked={visibleColumns.unitPrice}
+                            onCheckedChange={() => toggleColumn("unitPrice")}
+                          />
+                          <label
+                            htmlFor="col-unitPrice"
+                            className="text-sm cursor-pointer"
+                          >
+                            Unit Price
+                          </label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id="col-total"
+                            checked={visibleColumns.total}
+                            onCheckedChange={() => toggleColumn("total")}
+                          />
+                          <label
+                            htmlFor="col-total"
+                            className="text-sm cursor-pointer"
+                          >
+                            Total
+                          </label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id="col-payment"
+                            checked={visibleColumns.payment}
+                            onCheckedChange={() => toggleColumn("payment")}
+                          />
+                          <label
+                            htmlFor="col-payment"
+                            className="text-sm cursor-pointer"
+                          >
+                            Payment
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+                <div className="flex items-center gap-3">
+                  <Label className="text-sm">Source</Label>
+                  <Select
+                    value={transactionSource}
+                    onValueChange={(value) => setTransactionSource(value)}
+                  >
+                    <SelectTrigger className="w-[220px] cursor-pointer">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="No Selection">No Selection</SelectItem>
+                      <SelectItem value="All">All</SelectItem>
+                      {transactionCategories.map((cat) => (
+                        <SelectItem key={cat} value={cat}>
+                          {cat}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="relative w-80">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input
+                    placeholder="Search by customer name..."
+                    value={transactionSearch}
+                    onChange={(e) => setTransactionSearch(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
               </div>
             </div>
             <Card>
               <CardContent className="pt-6">
-                {/* Strong scroll wrapper with inline overrides to force horizontal scroll */}
                 <div
                   className="w-full rounded-md border"
                   style={{
@@ -2200,137 +2820,179 @@ export function AdminPortal({ user, onLogout }) {
                     WebkitOverflowScrolling: "touch",
                   }}
                 >
-                  {/* inner container to avoid flex-parent min-width problems */}
                   <div className="min-w-0">
                     <Table
                       className="min-w-[900px] table-auto"
-                      style={{
-                        minWidth: "900px",
-                        whiteSpace: "nowrap",
-                      }}
+                      style={{ minWidth: "900px", whiteSpace: "nowrap" }}
                     >
                       <TableHeader className="bg-gray-100">
                         <TableRow>
-                          <TableHead
-                            className="w-[100px] cursor-pointer select-none hover:bg-gray-50"
-                            onClick={() => toggleTransactionSort("Purchase_ID")}
-                          >
-                            Purchase ID
-                            {transactionSortState.col === "Purchase_ID" && (
-                              <span className="ml-1 text-xs">
-                                {transactionSortState.dir === "asc" ? "▲" : "▼"}
-                              </span>
-                            )}
-                          </TableHead>
-                          <TableHead
-                            className="cursor-pointer select-none hover:bg-gray-50"
-                            onClick={() =>
-                              toggleTransactionSort("Purchase_Date")
-                            }
-                          >
-                            Date & Time
-                            {transactionSortState.col === "Purchase_Date" && (
-                              <span className="ml-1 text-xs">
-                                {transactionSortState.dir === "asc" ? "▲" : "▼"}
-                              </span>
-                            )}
-                          </TableHead>
-                          <TableHead
-                            className="cursor-pointer select-none hover:bg-gray-50"
-                            onClick={() =>
-                              toggleTransactionSort("Customer_Name")
-                            }
-                          >
-                            Customer
-                            {transactionSortState.col === "Customer_Name" && (
-                              <span className="ml-1 text-xs">
-                                {transactionSortState.dir === "asc" ? "▲" : "▼"}
-                              </span>
-                            )}
-                          </TableHead>
-                          <TableHead
-                            className="cursor-pointer select-none hover:bg-gray-50"
-                            onClick={() => toggleTransactionSort("Category")}
-                          >
-                            Category
-                            {transactionSortState.col === "Category" && (
-                              <span className="ml-1 text-xs">
-                                {transactionSortState.dir === "asc" ? "▲" : "▼"}
-                              </span>
-                            )}
-                          </TableHead>
-                          <TableHead
-                            className="cursor-pointer select-none hover:bg-gray-50"
-                            onClick={() =>
-                              toggleTransactionSort("Item_Description")
-                            }
-                          >
-                            Description
-                            {transactionSortState.col ===
-                              "Item_Description" && (
-                              <span className="ml-1 text-xs">
-                                {transactionSortState.dir === "asc" ? "▲" : "▼"}
-                              </span>
-                            )}
-                          </TableHead>
-                          <TableHead
-                            className="text-center cursor-pointer select-none hover:bg-gray-50"
-                            onClick={() => toggleTransactionSort("Quantity")}
-                          >
-                            Quantity
-                            {transactionSortState.col === "Quantity" && (
-                              <span className="ml-1 text-xs">
-                                {transactionSortState.dir === "asc" ? "▲" : "▼"}
-                              </span>
-                            )}
-                          </TableHead>
-                          <TableHead
-                            className="text-right cursor-pointer select-none hover:bg-gray-50"
-                            onClick={() => toggleTransactionSort("Unit_Price")}
-                          >
-                            Unit Price
-                            {transactionSortState.col === "Unit_Price" && (
-                              <span className="ml-1 text-xs">
-                                {transactionSortState.dir === "asc" ? "▲" : "▼"}
-                              </span>
-                            )}
-                          </TableHead>
-                          <TableHead
-                            className="text-right cursor-pointer select-none hover:bg-gray-50"
-                            onClick={() =>
-                              toggleTransactionSort("Total_Amount")
-                            }
-                          >
-                            Total
-                            {transactionSortState.col === "Total_Amount" && (
-                              <span className="ml-1 text-xs">
-                                {transactionSortState.dir === "asc" ? "▲" : "▼"}
-                              </span>
-                            )}
-                          </TableHead>
-                          <TableHead
-                            className="cursor-pointer select-none hover:bg-gray-50"
-                            onClick={() =>
-                              toggleTransactionSort("Payment_Method")
-                            }
-                          >
-                            Payment
-                            {transactionSortState.col === "Payment_Method" && (
-                              <span className="ml-1 text-xs">
-                                {transactionSortState.dir === "asc" ? "▲" : "▼"}
-                              </span>
-                            )}
-                          </TableHead>
+                          {visibleColumns.purchaseId && (
+                            <TableHead
+                              className="w-[100px] cursor-pointer select-none hover:bg-gray-50"
+                              onClick={() =>
+                                toggleTransactionSort("Purchase_ID")
+                              }
+                            >
+                              Purchase ID
+                              {transactionSortState.col === "Purchase_ID" && (
+                                <span className="ml-1 text-xs">
+                                  {transactionSortState.dir === "asc"
+                                    ? "▲"
+                                    : "▼"}
+                                </span>
+                              )}
+                            </TableHead>
+                          )}
+                          {visibleColumns.dateTime && (
+                            <TableHead
+                              className="cursor-pointer select-none hover:bg-gray-50"
+                              onClick={() =>
+                                toggleTransactionSort("Purchase_Date")
+                              }
+                            >
+                              Date & Time
+                              {transactionSortState.col === "Purchase_Date" && (
+                                <span className="ml-1 text-xs">
+                                  {transactionSortState.dir === "asc"
+                                    ? "▲"
+                                    : "▼"}
+                                </span>
+                              )}
+                            </TableHead>
+                          )}
+                          {visibleColumns.customer && (
+                            <TableHead
+                              className="cursor-pointer select-none hover:bg-gray-50"
+                              onClick={() =>
+                                toggleTransactionSort("Customer_Name")
+                              }
+                            >
+                              Customer
+                              {transactionSortState.col === "Customer_Name" && (
+                                <span className="ml-1 text-xs">
+                                  {transactionSortState.dir === "asc"
+                                    ? "▲"
+                                    : "▼"}
+                                </span>
+                              )}
+                            </TableHead>
+                          )}
+                          {visibleColumns.category && (
+                            <TableHead
+                              className="cursor-pointer select-none hover:bg-gray-50"
+                              onClick={() => toggleTransactionSort("Category")}
+                            >
+                              Category
+                              {transactionSortState.col === "Category" && (
+                                <span className="ml-1 text-xs">
+                                  {transactionSortState.dir === "asc"
+                                    ? "▲"
+                                    : "▼"}
+                                </span>
+                              )}
+                            </TableHead>
+                          )}
+                          {visibleColumns.description && (
+                            <TableHead
+                              className="cursor-pointer select-none hover:bg-gray-50"
+                              onClick={() =>
+                                toggleTransactionSort("Item_Description")
+                              }
+                            >
+                              Description
+                              {transactionSortState.col ===
+                                "Item_Description" && (
+                                <span className="ml-1 text-xs">
+                                  {transactionSortState.dir === "asc"
+                                    ? "▲"
+                                    : "▼"}
+                                </span>
+                              )}
+                            </TableHead>
+                          )}
+                          {visibleColumns.quantity && (
+                            <TableHead
+                              className="text-center cursor-pointer select-none hover:bg-gray-50"
+                              onClick={() => toggleTransactionSort("Quantity")}
+                            >
+                              Quantity
+                              {transactionSortState.col === "Quantity" && (
+                                <span className="ml-1 text-xs">
+                                  {transactionSortState.dir === "asc"
+                                    ? "▲"
+                                    : "▼"}
+                                </span>
+                              )}
+                            </TableHead>
+                          )}
+                          {visibleColumns.unitPrice && (
+                            <TableHead
+                              className="text-right cursor-pointer select-none hover:bg-gray-50"
+                              onClick={() =>
+                                toggleTransactionSort("Unit_Price")
+                              }
+                            >
+                              Unit Price
+                              {transactionSortState.col === "Unit_Price" && (
+                                <span className="ml-1 text-xs">
+                                  {transactionSortState.dir === "asc"
+                                    ? "▲"
+                                    : "▼"}
+                                </span>
+                              )}
+                            </TableHead>
+                          )}
+                          {visibleColumns.total && (
+                            <TableHead
+                              className="text-right cursor-pointer select-none hover:bg-gray-50"
+                              onClick={() =>
+                                toggleTransactionSort("Total_Amount")
+                              }
+                            >
+                              Total
+                              {transactionSortState.col === "Total_Amount" && (
+                                <span className="ml-1 text-xs">
+                                  {transactionSortState.dir === "asc"
+                                    ? "▲"
+                                    : "▼"}
+                                </span>
+                              )}
+                            </TableHead>
+                          )}
+                          {visibleColumns.payment && (
+                            <TableHead
+                              className="cursor-pointer select-none hover:bg-gray-50"
+                              onClick={() =>
+                                toggleTransactionSort("Payment_Method")
+                              }
+                            >
+                              Payment
+                              {transactionSortState.col ===
+                                "Payment_Method" && (
+                                <span className="ml-1 text-xs">
+                                  {transactionSortState.dir === "asc"
+                                    ? "▲"
+                                    : "▼"}
+                                </span>
+                              )}
+                            </TableHead>
+                          )}
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {displayedTransactions.length === 0 ? (
                           <TableRow>
                             <TableCell
-                              colSpan={9}
+                              colSpan={
+                                Object.values(visibleColumns).filter(Boolean)
+                                  .length
+                              }
                               className="text-center py-8 text-gray-500"
                             >
-                              No transactions found for the selected date range
+                              {transactionSource === "No Selection"
+                                ? "Please select a source to view transactions"
+                                : "No transactions found for the selected date range"}
                             </TableCell>
                           </TableRow>
                         ) : (
@@ -2338,75 +3000,96 @@ export function AdminPortal({ user, onLogout }) {
                             <TableRow
                               key={`${transaction.Purchase_ID}-${index}`}
                             >
-                              <TableCell className="font-medium">
-                                #{transaction.Purchase_ID}
-                              </TableCell>
-                              <TableCell className="whitespace-nowrap">
-                                {new Date(
-                                  transaction.Purchase_Date
-                                ).toLocaleString("en-US", {
-                                  month: "short",
-                                  day: "numeric",
-                                  year: "numeric",
-                                  hour: "numeric",
-                                  minute: "2-digit",
-                                })}
-                              </TableCell>
-                              <TableCell className="whitespace-nowrap">
-                                {transaction.Customer_Name}
-                              </TableCell>
-                              <TableCell>
-                                <Badge
-                                  variant="outline"
-                                  className={
-                                    transaction.Category === "Ticket"
-                                      ? "bg-green-50 text-green-700 border-green-200"
-                                      : transaction.Category === "Membership"
-                                      ? "bg-purple-50 text-purple-700 border-purple-200"
-                                      : transaction.Category === "Gift Shop"
-                                      ? "bg-blue-50 text-blue-700 border-blue-200"
-                                      : ""
-                                  }
-                                  style={
-                                    transaction.Category !== "Ticket" &&
-                                    transaction.Category !== "Membership" &&
-                                    transaction.Category !== "Gift Shop"
-                                      ? {
-                                          backgroundColor: "#FFF7ED",
-                                          color: "#C2410C",
-                                          border: "1px solid #FED7AA",
-                                        }
-                                      : {}
-                                  }
-                                >
-                                  {transaction.Category}
-                                </Badge>
-                              </TableCell>
-                              <TableCell>
-                                {transaction.Item_Description
-                                  ? transaction.Item_Description.replace(
-                                      /\s*\([^)]*\)\s*$/,
-                                      ""
-                                    )
-                                  : ""}
-                              </TableCell>
-                              <TableCell className="text-center">
-                                {transaction.Quantity}
-                              </TableCell>
-                              <TableCell className="text-right whitespace-nowrap">
-                                ${parseFloat(transaction.Unit_Price).toFixed(2)}
-                              </TableCell>
-                              <TableCell className="text-right font-semibold text-green-600 whitespace-nowrap">
-                                $
-                                {parseFloat(transaction.Total_Amount).toFixed(
-                                  2
-                                )}
-                              </TableCell>
-                              <TableCell>
-                                <Badge variant="secondary">
-                                  {transaction.Payment_Method}
-                                </Badge>
-                              </TableCell>
+                              {visibleColumns.purchaseId && (
+                                <TableCell className="font-medium">
+                                  #{transaction.Purchase_ID}
+                                </TableCell>
+                              )}
+                              {visibleColumns.dateTime && (
+                                <TableCell className="whitespace-nowrap">
+                                  {new Date(
+                                    transaction.Purchase_Date
+                                  ).toLocaleString("en-US", {
+                                    month: "short",
+                                    day: "numeric",
+                                    year: "numeric",
+                                    hour: "numeric",
+                                    minute: "2-digit",
+                                  })}
+                                </TableCell>
+                              )}
+                              {visibleColumns.customer && (
+                                <TableCell className="whitespace-nowrap">
+                                  {transaction.Customer_Name}
+                                </TableCell>
+                              )}
+                              {visibleColumns.category && (
+                                <TableCell>
+                                  <Badge
+                                    variant="outline"
+                                    className={
+                                      transaction.Category === "Ticket"
+                                        ? "bg-green-50 text-green-700 border-green-200"
+                                        : transaction.Category === "Membership"
+                                        ? "bg-purple-50 text-purple-700 border-purple-200"
+                                        : transaction.Category === "Gift Shop"
+                                        ? "bg-blue-50 text-blue-700 border-blue-200"
+                                        : ""
+                                    }
+                                    style={
+                                      transaction.Category !== "Ticket" &&
+                                      transaction.Category !== "Membership" &&
+                                      transaction.Category !== "Gift Shop"
+                                        ? {
+                                            backgroundColor: "#FFF7ED",
+                                            color: "#C2410C",
+                                            border: "1px solid #FED7AA",
+                                          }
+                                        : {}
+                                    }
+                                  >
+                                    {transaction.Category}
+                                  </Badge>
+                                </TableCell>
+                              )}
+                              {visibleColumns.description && (
+                                <TableCell>
+                                  {transaction.Item_Description
+                                    ? transaction.Item_Description.replace(
+                                        /\s*\([^)]*\)\s*$/,
+                                        ""
+                                      )
+                                    : ""}
+                                </TableCell>
+                              )}
+                              {visibleColumns.quantity && (
+                                <TableCell className="text-center">
+                                  {transaction.Quantity}
+                                </TableCell>
+                              )}
+                              {visibleColumns.unitPrice && (
+                                <TableCell className="text-right whitespace-nowrap">
+                                  $
+                                  {parseFloat(transaction.Unit_Price).toFixed(
+                                    2
+                                  )}
+                                </TableCell>
+                              )}
+                              {visibleColumns.total && (
+                                <TableCell className="text-right font-semibold text-green-600 whitespace-nowrap">
+                                  $
+                                  {parseFloat(transaction.Total_Amount).toFixed(
+                                    2
+                                  )}
+                                </TableCell>
+                              )}
+                              {visibleColumns.payment && (
+                                <TableCell>
+                                  <Badge variant="secondary">
+                                    {transaction.Payment_Method}
+                                  </Badge>
+                                </TableCell>
+                              )}
                             </TableRow>
                           ))
                         )}
@@ -2463,31 +3146,78 @@ export function AdminPortal({ user, onLogout }) {
         {activeTab === "overview" && (
           <section id="analytics">
             <h2 className="text-2xl mb-6 text-gray-900 flex items-center gap-2">
-              <TrendingUp className="h-6 w-6" /> Analytics
+              <BarChart3 className="h-6 w-6" /> Visual Analytics
             </h2>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Bar Chart - Ticket Stats */}
               <Card>
-                <CardHeader>
-                  <CardTitle>Ticket Statistics</CardTitle>
+                <CardHeader className="bg-gradient-to-r from-green-50 to-teal-50">
+                  <CardTitle className="flex items-center gap-2">
+                    <Ticket className="h-5 w-5 text-green-600" />
+                    Ticket Sales Analysis
+                  </CardTitle>
+                  <CardDescription>
+                    Breakdown of tickets sold by category
+                  </CardDescription>
                 </CardHeader>
-                <CardContent>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={ticketStats}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="type" />
+                <CardContent className="pt-6">
+                  <ResponsiveContainer width="100%" height={340}>
+                    <BarChart
+                      data={ticketStats}
+                      margin={{ top: 20, right: 30, left: 0, bottom: 5 }}
+                    >
+                      <defs>
+                        <linearGradient
+                          id="ticketGradient"
+                          x1="0"
+                          y1="0"
+                          x2="0"
+                          y2="1"
+                        >
+                          <stop
+                            offset="5%"
+                            stopColor="#10b981"
+                            stopOpacity={0.8}
+                          />
+                          <stop
+                            offset="95%"
+                            stopColor="#10b981"
+                            stopOpacity={0.3}
+                          />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                      <XAxis
+                        dataKey="type"
+                        stroke="#6b7280"
+                        style={{ fontSize: "0.875rem" }}
+                      />
                       <YAxis
                         allowDecimals={false}
                         domain={[0, ticketMax]}
+                        stroke="#6b7280"
+                        style={{ fontSize: "0.875rem" }}
                         label={{
-                          value: "Amount",
+                          value: "Tickets Sold",
                           angle: -90,
                           position: "insideLeft",
+                          style: { fill: "#6b7280", fontSize: "0.875rem" },
                         }}
                       />
-                      <Tooltip />
-                      <Legend />
-                      <Bar dataKey="sold" fill="#4CAF50" name="Tickets Sold" />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: "#ffffff",
+                          border: "1px solid #e5e7eb",
+                          borderRadius: "0.5rem",
+                        }}
+                        formatter={(value) => [`${value} tickets`, "Sold"]}
+                      />
+                      <Bar
+                        dataKey="sold"
+                        fill="url(#ticketGradient)"
+                        name="Tickets Sold"
+                        radius={[8, 8, 0, 0]}
+                      />
                     </BarChart>
                   </ResponsiveContainer>
                 </CardContent>
@@ -2495,35 +3225,79 @@ export function AdminPortal({ user, onLogout }) {
 
               {/* Pie Chart */}
               <Card>
-                <CardHeader>
-                  <CardTitle>Revenue Distribution</CardTitle>
+                <CardHeader className="bg-gradient-to-r from-blue-50 to-purple-50">
+                  <CardTitle className="flex items-center gap-2">
+                    <DollarSign className="h-5 w-5 text-blue-600" />
+                    Revenue Distribution
+                  </CardTitle>
+                  <CardDescription>
+                    Revenue breakdown by source category
+                  </CardDescription>
                 </CardHeader>
-                <CardContent>
-                  <ResponsiveContainer width="100%" height={300}>
+                <CardContent className="pt-6">
+                  <ResponsiveContainer width="100%" height={340}>
                     <PieChart>
                       <Pie
-                        data={revenueBreakdown.map((item) => ({
-                          name: item.category,
-                          value: item.amount,
-                        }))}
+                        data={revenueBreakdown
+                          .filter((item) => item.amount > 0)
+                          .map((item) => ({
+                            name: item.category,
+                            value: item.amount,
+                          }))}
                         cx="50%"
                         cy="50%"
-                        labelLine={false}
-                        // Only render the on-chart label when the slice is non-zero
+                        labelLine={{ stroke: "#6b7280", strokeWidth: 1 }}
                         label={({ name, percent }) => {
                           if (!percent || percent === 0) return null;
-                          return `${name} — ${(percent * 100).toFixed(0)}%`;
+                          return `${name} ${(percent * 100).toFixed(1)}%`;
                         }}
-                        outerRadius={80}
+                        outerRadius={100}
+                        innerRadius={45}
                         fill="#8884d8"
                         dataKey="value"
+                        paddingAngle={2}
                       >
-                        <Cell fill="#4CAF50" />
-                        <Cell fill="#9C27B0" />
-                        <Cell fill="#2196F3" />
-                        <Cell fill="#FF9800" />
+                        {revenueBreakdown
+                          .filter((item) => item.amount > 0)
+                          .map((item, index) => {
+                            const cat = (item.category || "").toLowerCase();
+                            let fill = "#6b7280";
+                            if (cat.includes("ticket"))
+                              fill = "#10b981"; // Tickets - green
+                            else if (cat.includes("gift"))
+                              fill = "#3b82f6"; // Gift Shop - blue
+                            else if (
+                              cat.includes("food") ||
+                              cat.includes("beverage")
+                            )
+                              fill = "#ea580c";
+                            // Food - orange (darker, matches bg-orange-600)
+                            else if (cat.includes("membership"))
+                              fill = "#9333ea"; // Membership - purple
+
+                            return <Cell key={`cell-${index}`} fill={fill} />;
+                          })}
                       </Pie>
-                      <Tooltip formatter={(value) => `$${value.toFixed(2)}`} />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: "#ffffff",
+                          border: "1px solid #e5e7eb",
+                          borderRadius: "0.5rem",
+                        }}
+                        formatter={(value) => [
+                          `$${value.toLocaleString("en-US", {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}`,
+                          "Revenue",
+                        ]}
+                      />
+                      <Legend
+                        verticalAlign="bottom"
+                        height={36}
+                        iconType="circle"
+                        wrapperStyle={{ fontSize: "0.875rem" }}
+                      />
                     </PieChart>
                   </ResponsiveContainer>
                 </CardContent>
@@ -2537,7 +3311,7 @@ export function AdminPortal({ user, onLogout }) {
           <section id="pricing">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl text-gray-900 flex items-center gap-2">
-                <Ticket className="h-6 w-6" /> Tickets & Pricing
+                <Ticket className="h-6 w-6" /> Tickets Sold & Pricing
               </h2>
             </div>
 
@@ -2571,7 +3345,11 @@ export function AdminPortal({ user, onLogout }) {
                       {Object.entries(ticketPrices).map(([type, price]) => (
                         <div
                           key={type}
-                          className="flex items-center justify-between p-4 bg-gradient-to-r from-green-50 to-green-100 rounded-xl border-2 border-green-300"
+                          className="flex items-center justify-between p-4 rounded-xl"
+                          style={{
+                            background:
+                              "linear-gradient(90deg, #d1fae5 0%, #ecfdf5 100%)",
+                          }}
                         >
                           <div className="flex items-center gap-3">
                             <span className="text-gray-800 font-medium capitalize">
@@ -2604,7 +3382,13 @@ export function AdminPortal({ user, onLogout }) {
                         Annual Membership
                       </h3>
                     </div>
-                    <div className="p-6 bg-gradient-to-br from-purple-50 via-purple-100 to-pink-50 rounded-xl border-2 border-purple-300">
+                    <div
+                      className="p-6 rounded-xl"
+                      style={{
+                        background:
+                          "linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 50%, #fbcfe8 100%)",
+                      }}
+                    >
                       <div className="flex items-center justify-between mb-3">
                         <span className="text-gray-800 font-semibold text-lg">
                           Annual Membership
@@ -2632,7 +3416,6 @@ export function AdminPortal({ user, onLogout }) {
               </CardContent>
             </Card>
 
-            {/* Ticket Pricing Dialog (individual passes) */}
             {/* Ticket Pricing Dialog (individual passes) */}
             {isTicketPricingOpen && (
               <Dialog
@@ -2793,1742 +3576,99 @@ export function AdminPortal({ user, onLogout }) {
           </section>
         )}
 
-        {/* Zone Overview */}
         {activeTab === "operations" && (
-          <section id="zones">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl text-gray-900 flex items-center gap-2">
-                <Map className="h-6 w-6" /> Zone Overview
-              </h2>
-            </div>
-            <Card>
-              <CardContent className="pt-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {allLocations.map((location) => {
-                    const supervisor = allEmployees.find(
-                      (e) => e.Employee_ID === location.Supervisor_ID
-                    );
-                    const zoneEmployees = getZoneEmployees(location);
-                    return (
-                      <div
-                        key={location.Zone}
-                        className="relative p-4 bg-teal-50 rounded-lg border border-teal-200 shadow-sm"
-                      >
-                        {/* Zone initial badge top-right */}
-                        <div className="absolute top-4 right-4 h-8 w-8 rounded-full bg-teal-600 text-white flex items-center justify-center font-semibold">
-                          {String(location.Zone).charAt(0) || "?"}
-                        </div>
-
-                        {/* Description as the bold heading with view icon; Employees count below on the left */}
-                        <div className="mb-2">
-                          <div className="flex items-start justify-between">
-                            <div className="flex items-center gap-2">
-                              <h3 className="font-semibold text-lg text-slate-900 max-w-[420px]">
-                                {abbreviateNorth(location.Location_Description)}
-                              </h3>
-                            </div>
-                          </div>
-
-                          <p className="text-sm text-slate-700 mt-2">
-                            <span className="font-medium">Employees:</span>{" "}
-                            <span className="text-slate-600 inline-flex items-center">
-                              {zoneEmployees.length}
-                              <button
-                                type="button"
-                                onClick={() => setViewZoneEmployees(location)}
-                                className="ml-2 p-1 rounded hover:bg-teal-100 text-teal-600 cursor-pointer"
-                                aria-label={`View zone ${location.Zone} employees`}
-                              >
-                                <Eye className="h-4 w-4" />
-                              </button>
-                            </span>
-                          </p>
-                        </div>
-
-                        {/* Centered supervisor label + name (name larger) with edit button next to the name */}
-                        <div className="flex flex-col items-center mb-2 text-center">
-                          <p className="text-sm font-medium text-slate-700">
-                            Supervisor:
-                          </p>
-                          <div className="flex items-center gap-2 mt-1">
-                            <span className="text-base font-semibold text-slate-900">
-                              {supervisor
-                                ? `${supervisor.First_Name} ${supervisor.Last_Name}`
-                                : "Unassigned"}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSelectedZone(location);
-                                setIsManageZoneOpen(true);
-                                setSupervisorSearch("");
-                              }}
-                              className="p-1 rounded text-purple-600 cursor-pointer"
-                              aria-label={`Change supervisor for zone ${location.Zone}`}
-                            >
-                              <Edit className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* View Zone Employees Dialog */}
-            <Dialog
-              open={viewZoneEmployees !== null}
-              onOpenChange={() => setViewZoneEmployees(null)}
-            >
-              <DialogContent className="max-w-2xl">
-                <DialogHeader>
-                  <DialogTitle>
-                    Zone {viewZoneEmployees?.Zone} Employees
-                  </DialogTitle>
-                  <DialogDescription>
-                    {abbreviateNorth(viewZoneEmployees?.Location_Description)}
-                  </DialogDescription>
-                </DialogHeader>
-                <ScrollArea className="max-h-[500px] pr-4">
-                  <div className="space-y-3">
-                    {viewZoneEmployees &&
-                    getZoneEmployees(viewZoneEmployees).length > 0 ? (
-                      getZoneEmployees(viewZoneEmployees).map((emp) => (
-                        <div
-                          key={emp.Employee_ID}
-                          className="p-4 bg-gray-50 rounded-lg border border-gray-200"
-                        >
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="font-medium">
-                                {emp.Last_Name}, {emp.First_Name}
-                              </p>
-                              <p className="text-sm text-gray-600">
-                                {emp.Job_Title?.Title}
-                              </p>
-                              <p className="text-sm text-gray-600">
-                                ID: {emp.Employee_ID}
-                              </p>
-                            </div>
-                            <Badge className="bg-teal-100 text-teal-800">
-                              {viewZoneEmployees.Supervisor_ID ===
-                              emp.Employee_ID
-                                ? "Supervisor"
-                                : "Staff"}
-                            </Badge>
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="text-center py-8 text-gray-500">
-                        No employees assigned to this zone
-                      </div>
-                    )}
-                  </div>
-                </ScrollArea>
-              </DialogContent>
-            </Dialog>
-          </section>
-        )}
-
-        {/* Salary Management */}
-        {activeTab === "operations" && (
-          <section id="salary">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl text-gray-900 flex items-center gap-2">
-                <DollarSign className="h-6 w-6" /> Salary Management
-              </h2>
-            </div>
-            <Card>
-              <CardContent className="pt-6">
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                  {allJobTitles
-                    .filter((j) => j.Job_ID !== 1)
-                    .map((job) => {
-                      const avgSalary = salaries[job.Job_ID] || 0;
-                      const displayTitle =
-                        job.Job_ID === 2 ? "Supervisor" : job.Title;
-                      return (
-                        <div
-                          key={job.Job_ID}
-                          className="p-4 bg-blue-50 rounded-lg border border-blue-200 relative"
-                        >
-                          <div className="flex items-start justify-between">
-                            <div>
-                              <h3 className="font-medium mb-2">
-                                {displayTitle}
-                              </h3>
-                              <p className="text-2xl font-semibold text-blue-600 mb-1">
-                                ${avgSalary.toLocaleString()}
-                              </p>
-                            </div>
-                            <button
-                              onClick={() =>
-                                handleJobSalaryDialogOpen(true, job.Job_ID)
-                              }
-                              className="ml-4 p-1 rounded cursor-pointer"
-                              aria-label={`Edit ${displayTitle} salary`}
-                            >
-                              <Edit className="h-4 w-4 text-blue-600" />
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Per-job Salary Dialog (opened from each job's Edit icon) */}
-            <Dialog
-              open={isJobSalaryOpen}
-              onOpenChange={(open) =>
-                // preserve selectedJobId when opening; clear when closing
-                handleJobSalaryDialogOpen(open, open ? selectedJobId : null)
-              }
-            >
-              <DialogContent className="max-w-md">
-                <DialogHeader>
-                  <DialogTitle>
-                    Edit{" "}
-                    {selectedJobId
-                      ? selectedJobId === 2
-                        ? "Supervisor"
-                        : allJobTitles.find((j) => j.Job_ID === selectedJobId)
-                            ?.Title
-                      : "Salary"}
-                  </DialogTitle>
-                  <DialogDescription>
-                    Set the salary for this role. This will update all employees
-                    in that role.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-2">
-                    <span className="text-gray-600">$</span>
-                    <Input
-                      type="number"
-                      step="1000"
-                      value={tempJobSalary}
-                      onChange={(e) =>
-                        setTempJobSalary(parseFloat(e.target.value) || 0)
-                      }
-                      className="w-40"
-                    />
-                    <span className="text-gray-600">/year</span>
-                  </div>
-                  <Button
-                    onClick={handleJobSalarySave}
-                    className="bg-green-600 hover:bg-green-700 cursor-pointer"
-                    disabled={
-                      isSaving ||
-                      (selectedJobId
-                        ? parseFloat(tempJobSalary || 0) ===
-                          parseFloat(salaries[selectedJobId] || 0)
-                        : true)
-                    }
-                  >
-                    <Save className="h-4 w-4 mr-2" />
-                    {isSaving ? "Saving..." : "Save"}
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
-          </section>
-        )}
-
-        {/* Employee Management */}
-        {activeTab === "operations" && (
-          <section id="employees">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl text-gray-900 flex items-center gap-2">
-                <Users className="h-6 w-6" /> Staff Management
-              </h2>
-              <AddEmployeeDialog
-                isOpen={isAddEmployeeOpen}
-                onOpenChange={setIsAddEmployeeOpen}
-                onAdd={handleAddEmployee}
-                allEmployees={allEmployees}
-                allJobTitles={allJobTitles}
-                salaries={salaries}
-                isSaving={isSaving}
-              />
-            </div>
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between mb-4">
-                  <p className="text-sm text-gray-600">
-                    Total Employees: {allEmployees.length}
-                    {staffSearch.trim() && (
-                      <span className="ml-2 text-blue-600">
-                        (Showing {sortedEmployees.length} matching)
-                      </span>
-                    )}
-                  </p>
-                  <div className="relative w-80">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <Input
-                      placeholder="Search by name or ID..."
-                      value={staffSearch}
-                      onChange={(e) => setStaffSearch(e.target.value)}
-                      className="pl-10"
-                    />
-                  </div>
-                </div>
-                <ScrollArea className="h-[600px] pr-4">
-                  <div className="space-y-3">
-                    {sortedEmployees.length > 0 ? (
-                      sortedEmployees.map((emp) => (
-                        <div
-                          key={emp.Employee_ID}
-                          className="flex items-start justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors border border-gray-200"
-                        >
-                          <div className="flex-1">
-                            <div className="flex items-center space-x-3 mb-2">
-                              <p className="font-medium text-lg">
-                                {emp.Last_Name}, {emp.First_Name}
-                              </p>
-                              <Badge
-                                className={
-                                  isSupervisor(emp)
-                                    ? "bg-purple-100 text-purple-800"
-                                    : "bg-green-100 text-green-800"
-                                }
-                              >
-                                {getEmployeeTitle(emp)}
-                              </Badge>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 text-sm text-gray-600">
-                              <div>
-                                <span className="font-medium">Email:</span>{" "}
-                                {emp.Email}
-                              </div>
-                              <div>
-                                <span className="font-medium">
-                                  Employee ID:
-                                </span>{" "}
-                                {emp.Employee_ID}
-                              </div>
-                              <div>
-                                <span className="font-medium">Zone:</span>{" "}
-                                {getEmployeeZone(emp)}
-                              </div>
-                              <div>
-                                <span className="font-medium">Birthdate:</span>{" "}
-                                {formatDate(emp.Birthdate)}
-                              </div>
-                              <div>
-                                <span className="font-medium">Sex:</span>{" "}
-                                {emp.Sex}
-                              </div>
-                              <div>
-                                <span className="font-medium">Salary:</span> $
-                                {emp.Salary.toLocaleString()}
-                              </div>
-                              <div className="md:col-span-2">
-                                <span className="font-medium">Address:</span>{" "}
-                                {emp.Address}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2 ml-4">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setEditingEmployee(emp)}
-                              className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 cursor-pointer"
-                              disabled={isSaving}
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setDeleteConfirmEmployee(emp)}
-                              className="text-red-600 hover:text-red-700 hover:bg-red-50 cursor-pointer"
-                              disabled={isSaving}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="text-center py-12">
-                        <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                        <p className="text-lg text-gray-600">
-                          No employees found
-                        </p>
-                        <p className="text-sm text-gray-500 mt-2">
-                          {staffSearch.trim()
-                            ? `No employees match "${staffSearch}"`
-                            : "No employees in the system"}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </ScrollArea>
-              </CardContent>
-            </Card>
-          </section>
+          <Operations
+            allLocations={allLocations}
+            allEmployees={allEmployees}
+            getZoneEmployees={getZoneEmployees}
+            abbreviateNorth={abbreviateNorth}
+            formatDate={formatDate}
+            setViewZoneEmployees={setViewZoneEmployees}
+            viewZoneEmployees={viewZoneEmployees}
+            setSelectedZone={setSelectedZone}
+            setIsManageZoneOpen={setIsManageZoneOpen}
+            setSupervisorSearch={setSupervisorSearch}
+            allJobTitles={allJobTitles}
+            salaries={salaries}
+            handleJobSalaryDialogOpen={handleJobSalaryDialogOpen}
+            isJobSalaryOpen={isJobSalaryOpen}
+            selectedJobId={selectedJobId}
+            tempJobSalary={tempJobSalary}
+            setTempJobSalary={setTempJobSalary}
+            handleJobSalarySave={handleJobSalarySave}
+            isSaving={isSaving}
+            staffSearch={staffSearch}
+            setStaffSearch={setStaffSearch}
+            staffJobFilter={staffJobFilter}
+            setStaffJobFilter={setStaffJobFilter}
+            sortedEmployees={sortedEmployees}
+            isSupervisor={isSupervisor}
+            getEmployeeTitle={getEmployeeTitle}
+            getEmployeeZone={getEmployeeZone}
+            setEditingEmployee={setEditingEmployee}
+            setDeleteConfirmEmployee={setDeleteConfirmEmployee}
+            isManageZoneOpen={isManageZoneOpen}
+            selectedZone={selectedZone}
+            supervisorSearch={supervisorSearch}
+            filteredEmployeesForSupervisor={filteredEmployeesForSupervisor}
+            setPendingSupervisor={setPendingSupervisor}
+            handleAssignSupervisor={handleAssignSupervisor}
+            deleteConfirmEmployee={deleteConfirmEmployee}
+            handleDeleteEmployee={handleDeleteEmployee}
+            pendingSupervisor={pendingSupervisor}
+            editingEmployee={editingEmployee}
+            handleUpdateEmployee={handleUpdateEmployee}
+            EditEmployeeDialog={EditEmployeeDialog}
+            isAddEmployeeOpen={isAddEmployeeOpen}
+            setIsAddEmployeeOpen={setIsAddEmployeeOpen}
+            handleAddEmployee={handleAddEmployee}
+            AddEmployeeDialog={AddEmployeeDialog}
+          />
         )}
 
         {activeTab === "assets" && (
-          <section id="exhibits">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl text-gray-900 flex items-center gap-2">
-                <Building2 className="h-6 w-6 text-indigo-600" /> Exhibit
-                Management
-              </h2>
-            </div>
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm mb-4">Manage zoo exhibits and displays</p>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                  {allExhibitsDB.map((exhibit) => (
-                    <Card
-                      key={exhibit.Exhibit_ID}
-                      className="p-4 bg-gray-100 border-2 border-gray-200"
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                            <h3 className="font-semibold text-lg">
-                              {exhibit.exhibit_Name}
-                            </h3>
-                            {exhibit.Location_Description && (
-                              <Badge
-                                variant="outline"
-                                className="text-xs bg-green-50 text-green-700 border-green-200"
-                              >
-                                {exhibit.Zone}
-                              </Badge>
-                            )}
-                          </div>
-                          <p className="text-sm text-gray-600 mb-2">
-                            {exhibit.exhibit_Description || "No description"}
-                          </p>
-                          <div className="flex flex-wrap gap-2 text-xs text-gray-500">
-                            {exhibit.Capacity && (
-                              <span>Capacity: {exhibit.Capacity}</span>
-                            )}
-                            {exhibit.Display_Time && (
-                              <span>
-                                • Activity Scheduled for{" "}
-                                {formatTime(exhibit.Display_Time)}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex gap-1 ml-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleManageActivities(exhibit)}
-                            className="cursor-pointer text-purple-600 hover:text-purple-700 hover:bg-purple-50"
-                            disabled={isSaving}
-                            title="Manage Activities"
-                          >
-                            <Calendar className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setEditingExhibit(exhibit)}
-                            className="cursor-pointer"
-                            disabled={isSaving}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    </Card>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </section>
+          <Assets
+            allExhibitsDB={allExhibitsDB}
+            formatTime={formatTime}
+            handleManageActivities={handleManageActivities}
+            setEditingExhibit={setEditingExhibit}
+            isSaving={isSaving}
+            totalAnimals={totalAnimals}
+            isAddAnimalOpen={isAddAnimalOpen}
+            setIsAddAnimalOpen={setIsAddAnimalOpen}
+            handleAddAnimal={handleAddAnimal}
+            AddAnimalDialog={AddAnimalDialog}
+            allEnclosures={allEnclosures}
+            animalExhibitFilter={animalExhibitFilter}
+            setAnimalExhibitFilter={setAnimalExhibitFilter}
+            animalSearch={animalSearch}
+            setAnimalSearch={setAnimalSearch}
+            animalsByExhibit={animalsByExhibit}
+            formatDate={formatDate}
+            setEditingAnimal={setEditingAnimal}
+            animalVisibleColumns={animalVisibleColumns}
+            toggleAnimalColumn={toggleAnimalColumn}
+            healthZoneFilter={healthZoneFilter}
+            setHealthZoneFilter={setHealthZoneFilter}
+            healthEnclosureFilter={healthEnclosureFilter}
+            setHealthEnclosureFilter={setHealthEnclosureFilter}
+            genderFilter={genderFilter}
+            setGenderFilter={setGenderFilter}
+            ageFilter={ageFilter}
+            setAgeFilter={setAgeFilter}
+            allLocations={allLocations}
+            allAnimalsDB={allAnimalsDB}
+            animalSortState={animalSortState}
+            toggleAnimalSort={toggleAnimalSort}
+            enclosureMap={enclosureMap}
+            displayedAnimals={displayedAnimals}
+            animalCurrentPage={animalCurrentPage}
+            animalItemsPerPage={animalItemsPerPage}
+            animalTotalPages={animalTotalPages}
+            animalPaginationArray={animalPaginationArray}
+            handleAnimalPageChange={handleAnimalPageChange}
+          />
         )}
-
-        {activeTab === "assets" && (
-          <section id="animals">
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h2 className="text-2xl text-gray-900 flex items-center gap-2">
-                  <PawPrint className="h-6 w-6" /> Animal Management
-                </h2>
-                <p className="text-sm text-gray-600 mt-1">
-                  Total animals:{" "}
-                  <span className="font-semibold text-green-700">
-                    {totalAnimals}
-                  </span>
-                </p>
-              </div>
-              <AddAnimalDialog
-                isOpen={isAddAnimalOpen}
-                onOpenChange={setIsAddAnimalOpen}
-                onAdd={handleAddAnimal}
-                enclosures={allEnclosures}
-                isSaving={isSaving}
-              />
-            </div>
-
-            {/* Exhibit Filter */}
-            <Card className="mb-4">
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-4">
-                  <div className="flex-1">
-                    <Label htmlFor="exhibit-filter" className="mb-2">
-                      Filter by Exhibit
-                    </Label>
-                    <Select
-                      value={
-                        animalExhibitFilter === ""
-                          ? ""
-                          : animalExhibitFilter === "All"
-                          ? "All"
-                          : animalExhibitFilter.toString()
-                      }
-                      onValueChange={(value) =>
-                        setAnimalExhibitFilter(
-                          value === "All"
-                            ? "All"
-                            : value === "__NONE__"
-                            ? ""
-                            : value === ""
-                            ? ""
-                            : parseInt(value)
-                        )
-                      }
-                    >
-                      <SelectTrigger
-                        id="exhibit-filter"
-                        className="cursor-pointer"
-                      >
-                        <SelectValue
-                          placeholder="Select an exhibit"
-                          className="text-italic"
-                        />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem
-                          value="__NONE__"
-                          className="text-muted-foreground"
-                        >
-                          No selection . . .
-                        </SelectItem>
-                        <SelectItem value="All">All Exhibits</SelectItem>
-                        {allEnclosures.map((enc) => (
-                          <SelectItem
-                            key={enc.Enclosure_ID}
-                            value={enc.Enclosure_ID.toString()}
-                          >
-                            {enc.Enclosure_Name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  {animalExhibitFilter && animalExhibitFilter !== "All" ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setAnimalExhibitFilter("")}
-                      className="cursor-pointer mt-6"
-                    >
-                      Clear Filter
-                    </Button>
-                  ) : (
-                    <div className="flex items-center gap-2 mt-6">
-                      <Filter className="h-5 w-5 text-gray-600" />
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between mb-4">
-                  <p className="text-sm text-gray-600">
-                    Manage zoo animals organized by their exhibits
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      placeholder="Search by ID, or keywords"
-                      value={animalSearch}
-                      onChange={(e) => setAnimalSearch(e.target.value)}
-                      className="w-64"
-                    />
-                    <Search className="h-4 w-4 text-gray-500" />
-                  </div>
-                </div>
-                <div
-                  className={
-                    Object.keys(animalsByExhibit).length > 2
-                      ? "max-h-[600px] overflow-y-auto pr-4"
-                      : ""
-                  }
-                >
-                  <div className="space-y-4">
-                    {Object.entries(animalsByExhibit).map(
-                      ([exhibitName, animals]) => (
-                        <Card
-                          key={exhibitName}
-                          className="overflow-hidden outline-1 border-teal-100"
-                        >
-                          <CardHeader className="bg-gradient-to-r from-teal-50 to-cyan-50 pb-3">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-3">
-                                <div className="p-2 bg-teal-600 rounded-lg">
-                                  <Building2 className="h-5 w-5 text-white" />
-                                </div>
-                                <div>
-                                  <h3 className="font-bold text-lg text-teal-800">
-                                    {exhibitName}
-                                  </h3>
-                                  <p className="text-sm text-gray-600">
-                                    {animals.length}{" "}
-                                    {animals.length === 1
-                                      ? "animal"
-                                      : "animals"}
-                                  </p>
-                                </div>
-                              </div>
-                              <Badge
-                                variant="secondary"
-                                className="bg-teal-100 text-teal-700 border-teal-300"
-                              >
-                                {animals.length}
-                              </Badge>
-                            </div>
-                          </CardHeader>
-                          <CardContent className="pt-4">
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                              {animals.map((animal) => {
-                                const enclosure = allEnclosures.find(
-                                  (e) => e.Enclosure_ID === animal.Enclosure_ID
-                                );
-                                const dateAddedString = animal.Date_Added
-                                  ? formatDate(animal.Date_Added)
-                                  : "N/A";
-
-                                return (
-                                  <div
-                                    key={animal.Animal_ID}
-                                    style={{
-                                      padding: "1rem",
-                                      background:
-                                        "linear-gradient(to bottom right, #f0fdfa, #ecfeff)", // from-teal-50 to-cyan-50
-                                      borderRadius: "0.5rem", // rounded-lg
-                                      border: "1px solid #5eead4", // border-teal-300
-                                      display: "flex",
-                                      alignItems: "center",
-                                      justifyContent: "space-between",
-                                      transition: "box-shadow 0.2s ease-in-out", // transition-shadow
-                                    }}
-                                    onMouseEnter={(e) => {
-                                      e.currentTarget.style.boxShadow =
-                                        "0 4px 6px rgba(0, 0, 0, 0.1)"; // hover:shadow-md
-                                    }}
-                                    onMouseLeave={(e) => {
-                                      e.currentTarget.style.boxShadow = "none";
-                                    }}
-                                  >
-                                    <div className="flex items-center space-x-4">
-                                      <div className="flex items-center justify-center w-12 h-12 rounded-full bg-teal-600 text-white flex-shrink-0 shadow-md">
-                                        <PawPrint className="h-6 w-6" />
-                                      </div>
-                                      <div>
-                                        <p className="font-semibold text-gray-800">
-                                          {animal.Animal_Name}
-                                        </p>
-                                        <p className="text-sm text-gray-600">
-                                          {animal.Species} •{" "}
-                                          {animal.Gender === "M"
-                                            ? "Male"
-                                            : animal.Gender === "F"
-                                            ? "Female"
-                                            : "Unknown"}{" "}
-                                          • ID: {animal.Animal_ID}
-                                        </p>
-                                        <p className="text-xs text-gray-500">
-                                          Weight:{" "}
-                                          {isFinite(Number(animal.Weight))
-                                            ? Number(animal.Weight).toFixed(2)
-                                            : animal.Weight}{" "}
-                                          lbs • Born:{" "}
-                                          {formatDate(animal.Birthday)}
-                                        </p>
-                                        <p className="text-xs text-gray-500">
-                                          Health: {animal.Health_Status} •
-                                          Added: {dateAddedString}
-                                        </p>
-                                      </div>
-                                    </div>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      className="bg-blue-50 border-blue-300 text-blue-600 hover:bg-blue-100 cursor-pointer flex-shrink-0"
-                                      onClick={() => setEditingAnimal(animal)}
-                                      disabled={isSaving}
-                                    >
-                                      <Edit className="h-4 w-4 mr-2" />
-                                      Edit
-                                    </Button>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </CardContent>
-                        </Card>
-                      )
-                    )}
-
-                    {Object.keys(animalsByExhibit).length === 0 && (
-                      <div className="text-center py-12">
-                        <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                        <p className="text-lg text-gray-600">
-                          No animals found
-                        </p>
-                        <p className="text-sm text-gray-500 mt-2">
-                          {animalExhibitFilter
-                            ? "Try selecting a different exhibit"
-                            : "Add animals to get started"}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </section>
-        )}
-
-        {/* Animals Health Status Distribution Report */}
-        {activeTab === "assets" && (
-          <section id="health-status">
-            <h2 className="text-2xl mb-6 text-gray-900 flex items-center gap-2">
-              <Activity className="h-6 w-6 text-red-500" /> Animals Health
-              Status Distribution
-            </h2>
-
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle>Filter Animals by Health Criteria</CardTitle>
-                  {healthZoneFilter !== "All" ||
-                  healthEnclosureFilter !== "All" ||
-                  genderFilter !== "All" ||
-                  ageFilter !== "All" ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        setHealthZoneFilter("All");
-                        setHealthEnclosureFilter("All");
-                        setGenderFilter("All");
-                        setAgeFilter("All");
-                      }}
-                      className="cursor-pointer"
-                    >
-                      Reset All Filters
-                    </Button>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <Filter className="h-5 w-5 text-gray-600" />
-                      <h3 className="font-semibold text-gray-700"></h3>
-                    </div>
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {/* Zone Filter */}
-                  <div>
-                    <Label htmlFor="health-zone-filter">Zone</Label>
-                    <Select
-                      value={healthZoneFilter}
-                      onValueChange={(value) => {
-                        setHealthZoneFilter(value);
-                        setHealthEnclosureFilter("All");
-                      }}
-                    >
-                      <SelectTrigger
-                        id="health-zone-filter"
-                        className="cursor-pointer"
-                      >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="All">All Zones</SelectItem>
-                        <SelectItem value="A">Zone A</SelectItem>
-                        <SelectItem value="B">Zone B</SelectItem>
-                        <SelectItem value="C">Zone C</SelectItem>
-                        <SelectItem value="D">Zone D</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {/* Enclosure Filter */}
-                  <div>
-                    <Label htmlFor="health-enclosure-filter">Enclosure</Label>
-                    <Select
-                      value={healthEnclosureFilter.toString()}
-                      onValueChange={(value) =>
-                        setHealthEnclosureFilter(
-                          value === "All" ? "All" : parseInt(value)
-                        )
-                      }
-                    >
-                      <SelectTrigger
-                        id="health-enclosure-filter"
-                        className="cursor-pointer"
-                      >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="All">All Enclosures</SelectItem>
-                        {allEnclosures
-                          .filter((enc) => {
-                            if (healthZoneFilter === "All") return true;
-                            const location = allLocations.find(
-                              (loc) => loc.Location_ID === enc.Location_ID
-                            );
-                            return location?.Zone === healthZoneFilter;
-                          })
-                          .map((enc) => (
-                            <SelectItem
-                              key={enc.Enclosure_ID}
-                              value={enc.Enclosure_ID.toString()}
-                            >
-                              {enc.Enclosure_Name}
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {/* Gender Filter */}
-                  <div>
-                    <Label htmlFor="gender-filter">Gender</Label>
-                    <Select
-                      value={genderFilter}
-                      onValueChange={(value) => setGenderFilter(value)}
-                    >
-                      <SelectTrigger
-                        id="gender-filter"
-                        className="cursor-pointer"
-                      >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="All">All Genders</SelectItem>
-                        <SelectItem value="M">Male</SelectItem>
-                        <SelectItem value="F">Female</SelectItem>
-                        <SelectItem value="U">Unknown</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {/* Age Filter */}
-                  <div>
-                    <Label htmlFor="age-filter">Age Range (years)</Label>
-                    <Select
-                      value={ageFilter}
-                      onValueChange={(value) => setAgeFilter(value)}
-                    >
-                      <SelectTrigger id="age-filter" className="cursor-pointer">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="All">All Ages</SelectItem>
-                        <SelectItem value="0-2">0-2 years</SelectItem>
-                        <SelectItem value="3-5">3-5 years</SelectItem>
-                        <SelectItem value="6-10">6-10 years</SelectItem>
-                        <SelectItem value="11+">11+ years</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Filtered Charts - Dynamic based on filters */}
-            {(() => {
-              // Helper function to calculate age in years
-              const calculateAge = (birthday) => {
-                const birthDate = new Date(birthday);
-                const today = new Date();
-                let age = today.getFullYear() - birthDate.getFullYear();
-                const monthDiff = today.getMonth() - birthDate.getMonth();
-                if (
-                  monthDiff < 0 ||
-                  (monthDiff === 0 && today.getDate() < birthDate.getDate())
-                ) {
-                  age--;
-                }
-                return age;
-              };
-
-              // Filter animals based on selected filters
-              const filteredAnimals = allAnimalsDB.filter((animal) => {
-                // Zone filter
-                if (healthZoneFilter !== "All") {
-                  const enclosure = allEnclosures.find(
-                    (e) => e.Enclosure_ID === animal.Enclosure_ID
-                  );
-                  const location = allLocations.find(
-                    (loc) => loc.Location_ID === enclosure?.Location_ID
-                  );
-                  if (location?.Zone !== healthZoneFilter) return false;
-                }
-
-                // Enclosure filter
-                if (
-                  healthEnclosureFilter !== "All" &&
-                  animal.Enclosure_ID !== healthEnclosureFilter
-                )
-                  return false;
-
-                // Gender filter
-                if (genderFilter !== "All" && animal.Gender !== genderFilter)
-                  return false;
-
-                // Age filter
-                if (ageFilter !== "All") {
-                  const age = calculateAge(animal.Birthday);
-                  if (ageFilter === "0-2" && (age < 0 || age > 2)) return false;
-                  if (ageFilter === "3-5" && (age < 3 || age > 5)) return false;
-                  if (ageFilter === "6-10" && (age < 6 || age > 10))
-                    return false;
-                  if (ageFilter === "11+" && age < 11) return false;
-                }
-
-                return true;
-              });
-
-              // Sort animals based on selected column
-              const sortedAnimals = [...filteredAnimals].sort((a, b) => {
-                if (!animalSortState.col) return 0;
-
-                const key = animalSortState.col;
-                const dir = animalSortState.dir;
-                let A = a[key];
-                let B = b[key];
-
-                // Special handling for certain columns
-                if (key === "Age") {
-                  A = calculateAge(a.Birthday);
-                  B = calculateAge(b.Birthday);
-                } else if (key === "Enclosure_Name") {
-                  A = enclosureMap[a.Enclosure_ID]?.Enclosure_Name || "";
-                  B = enclosureMap[b.Enclosure_ID]?.Enclosure_Name || "";
-                }
-
-                // Handle numeric vs string sorting
-                const numA = Number(A);
-                const numB = Number(B);
-                if (!Number.isNaN(numA) && !Number.isNaN(numB)) {
-                  return dir === "asc" ? numA - numB : numB - numA;
-                } else {
-                  const sa = String(A || "").toUpperCase();
-                  const sb = String(B || "").toUpperCase();
-                  if (sa < sb) return dir === "asc" ? -1 : 1;
-                  if (sa > sb) return dir === "asc" ? 1 : -1;
-                  return 0;
-                }
-              });
-
-              // canonical health status color map (used across cards and charts)
-              const healthColors = {
-                Excellent: "#06B6D4",
-                Good: "#059669",
-                Fair: "#F59E0B",
-                "Needs Attention": "#EF4444", // Stored as "Needs Attention" in DB but displayed as "Critical"
-              };
-
-              // Helper to convert backend status to display label
-              const backendToDisplayLabel = (backendStatus) => {
-                if (backendStatus === "Needs Attention") return "Critical";
-                return backendStatus;
-              };
-
-              // Health status distribution for pie chart
-              const healthStatusData = [
-                {
-                  name: "Excellent",
-                  value: sortedAnimals.filter(
-                    (a) => a.Health_Status === "Excellent"
-                  ).length,
-                  fill: healthColors.Excellent,
-                },
-                {
-                  name: "Good",
-                  value: sortedAnimals.filter((a) => a.Health_Status === "Good")
-                    .length,
-                  fill: healthColors.Good,
-                },
-                {
-                  name: "Fair",
-                  value: sortedAnimals.filter((a) => a.Health_Status === "Fair")
-                    .length,
-                  fill: healthColors.Fair,
-                },
-                {
-                  name: "Critical",
-                  value: sortedAnimals.filter(
-                    (a) => a.Health_Status === "Needs Attention"
-                  ).length,
-                  fill: healthColors["Needs Attention"],
-                },
-              ].filter((item) => item.value > 0);
-
-              // Health by Exhibit (stacked bar) - replaces previous Vaccination pie
-              const byExhibit = (() => {
-                // Build a map of enclosureId -> counts per health status
-                // Use globalThis.Map to avoid shadowing by imported `Map` icon
-                const exhibitMap = new globalThis.Map();
-                const statuses = [
-                  "Excellent",
-                  "Good",
-                  "Fair",
-                  "Needs Attention",
-                ];
-
-                // Initialize map entries for enclosures present in filteredAnimals
-                filteredAnimals.forEach((a) => {
-                  const id = a.Enclosure_ID;
-                  if (!exhibitMap.has(id)) {
-                    exhibitMap.set(id, {
-                      enclosureId: id,
-                      enclosureName: null,
-                    });
-                  }
-                });
-
-                // Populate enclosure names from allEnclosures
-                for (const [id, entry] of exhibitMap.entries()) {
-                  const enc = allEnclosures.find((e) => e.Enclosure_ID === id);
-                  entry.enclosureName =
-                    enc?.Enclosure_Name || `Enclosure ${id}`;
-                  // initialize counts
-                  statuses.forEach((s) => (entry[s] = 0));
-                }
-
-                // Count statuses
-                filteredAnimals.forEach((a) => {
-                  const id = a.Enclosure_ID;
-                  const entry = exhibitMap.get(id);
-                  if (!entry) return; // safeguard
-                  const status = a.Health_Status || "Fair";
-                  if (statuses.includes(status))
-                    entry[status] = (entry[status] || 0) + 1;
-                  else entry.Fair = (entry.Fair || 0) + 1;
-                });
-
-                // Convert to array and only keep exhibits with any animals
-                return Array.from(exhibitMap.values()).filter((e) =>
-                  statuses.some((s) => e[s] > 0)
-                );
-              })();
-
-              return (
-                <div className="mt-6 space-y-6">
-                  {/* Summary Card */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Animals Health Summary</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                        <div className="text-center p-4 bg-blue-50 rounded-lg">
-                          <p className="text-sm text-gray-600 mb-1">
-                            Total Animals
-                          </p>
-                          <p className="text-3xl font-semibold text-blue-600">
-                            {sortedAnimals.length}
-                          </p>
-                        </div>
-                        <div className="text-center p-4 bg-teal-50 rounded-lg">
-                          <p className="text-sm text-gray-600 mb-1">
-                            Excellent
-                          </p>
-                          <p
-                            className="text-3xl font-semibold"
-                            style={{ color: healthColors.Excellent }}
-                          >
-                            {
-                              sortedAnimals.filter(
-                                (a) => a.Health_Status === "Excellent"
-                              ).length
-                            }
-                          </p>
-                        </div>
-                        <div className="text-center p-4 bg-green-50 rounded-lg">
-                          <p className="text-sm text-gray-600 mb-1">Good</p>
-                          <p
-                            className="text-3xl font-semibold"
-                            style={{ color: healthColors.Good }}
-                          >
-                            {
-                              sortedAnimals.filter(
-                                (a) => a.Health_Status === "Good"
-                              ).length
-                            }
-                          </p>
-                        </div>
-                        <div
-                          className="text-center p-4 rounded-lg"
-                          style={{ backgroundColor: "#fefce8" }}
-                        >
-                          <p className="text-sm text-gray-600 mb-1">Fair</p>
-                          <p
-                            style={{
-                              fontSize: "1.875rem",
-                              fontWeight: 600,
-                              color: healthColors.Fair,
-                            }}
-                          >
-                            {
-                              sortedAnimals.filter(
-                                (a) => a.Health_Status === "Fair"
-                              ).length
-                            }
-                          </p>
-                        </div>
-                        <div className="text-center p-4 bg-red-50 rounded-lg">
-                          <p className="text-sm text-gray-600 mb-1">Critical</p>
-                          <p
-                            className="text-3xl font-semibold"
-                            style={{ color: healthColors["Needs Attention"] }}
-                          >
-                            {
-                              sortedAnimals.filter(
-                                (a) => a.Health_Status === "Needs Attention"
-                              ).length
-                            }
-                          </p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  {/* Animals Table */}
-                  {/* Animals Details section header (separate from the table container) */}
-                  <div id="animals-section" className="mb-2">
-                    <h3 className="text-lg font-semibold">Animal Details</h3>
-                  </div>
-                  <Card id="animals">
-                    <CardContent className="pt-2">
-                      {/* Strong scroll wrapper for Animals table to force horizontal scroll */}
-                      <div
-                        className="w-full rounded-md border"
-                        style={{
-                          overflowX: "auto",
-                          WebkitOverflowScrolling: "touch",
-                        }}
-                      >
-                        <div className="min-w-0">
-                          <Table
-                            id="animal-table"
-                            className="min-w-[900px] table-auto"
-                            style={{ minWidth: "900px", whiteSpace: "nowrap" }}
-                          >
-                            <TableHeader className="bg-gray-100">
-                              <TableRow>
-                                <TableHead
-                                  className="w-[80px] cursor-pointer select-none hover:bg-gray-50"
-                                  onClick={() => toggleAnimalSort("Animal_ID")}
-                                >
-                                  ID
-                                  {animalSortState.col === "Animal_ID" && (
-                                    <span className="ml-1 text-xs">
-                                      {animalSortState.dir === "asc"
-                                        ? "▲"
-                                        : "▼"}
-                                    </span>
-                                  )}
-                                </TableHead>
-                                <TableHead
-                                  className="cursor-pointer select-none hover:bg-gray-50"
-                                  onClick={() =>
-                                    toggleAnimalSort("Animal_Name")
-                                  }
-                                >
-                                  Name
-                                  {animalSortState.col === "Animal_Name" && (
-                                    <span className="ml-1 text-xs">
-                                      {animalSortState.dir === "asc"
-                                        ? "▲"
-                                        : "▼"}
-                                    </span>
-                                  )}
-                                </TableHead>
-                                <TableHead
-                                  className="cursor-pointer select-none hover:bg-gray-50"
-                                  onClick={() => toggleAnimalSort("Species")}
-                                >
-                                  Species
-                                  {animalSortState.col === "Species" && (
-                                    <span className="ml-1 text-xs">
-                                      {animalSortState.dir === "asc"
-                                        ? "▲"
-                                        : "▼"}
-                                    </span>
-                                  )}
-                                </TableHead>
-                                <TableHead
-                                  className="cursor-pointer select-none hover:bg-gray-50"
-                                  onClick={() => toggleAnimalSort("Gender")}
-                                >
-                                  Gender
-                                  {animalSortState.col === "Gender" && (
-                                    <span className="ml-1 text-xs">
-                                      {animalSortState.dir === "asc"
-                                        ? "▲"
-                                        : "▼"}
-                                    </span>
-                                  )}
-                                </TableHead>
-                                <TableHead
-                                  className="cursor-pointer select-none hover:bg-gray-50"
-                                  onClick={() => toggleAnimalSort("Age")}
-                                >
-                                  Age
-                                  {animalSortState.col === "Age" && (
-                                    <span className="ml-1 text-xs">
-                                      {animalSortState.dir === "asc"
-                                        ? "▲"
-                                        : "▼"}
-                                    </span>
-                                  )}
-                                </TableHead>
-                                <TableHead
-                                  className="cursor-pointer select-none hover:bg-gray-50 text-center"
-                                  onClick={() => toggleAnimalSort("Weight")}
-                                >
-                                  Weight (lbs)
-                                  {animalSortState.col === "Weight" && (
-                                    <span className="ml-1 text-xs">
-                                      {animalSortState.dir === "asc"
-                                        ? "▲"
-                                        : "▼"}
-                                    </span>
-                                  )}
-                                </TableHead>
-                                <TableHead
-                                  className="cursor-pointer select-none hover:bg-gray-50"
-                                  onClick={() =>
-                                    toggleAnimalSort("Health_Status")
-                                  }
-                                >
-                                  Health Status
-                                  {animalSortState.col === "Health_Status" && (
-                                    <span className="ml-1 text-xs">
-                                      {animalSortState.dir === "asc"
-                                        ? "▲"
-                                        : "▼"}
-                                    </span>
-                                  )}
-                                </TableHead>
-                                <TableHead
-                                  className="cursor-pointer select-none hover:bg-gray-50"
-                                  onClick={() =>
-                                    toggleAnimalSort("Enclosure_Name")
-                                  }
-                                >
-                                  Enclosure
-                                  {animalSortState.col === "Enclosure_Name" && (
-                                    <span className="ml-1 text-xs">
-                                      {animalSortState.dir === "asc"
-                                        ? "▲"
-                                        : "▼"}
-                                    </span>
-                                  )}
-                                </TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {displayedAnimals.length === 0 ? (
-                                <TableRow>
-                                  <TableCell
-                                    colSpan={8}
-                                    className="text-center py-8 text-gray-500"
-                                  >
-                                    No animals found for the current page
-                                  </TableCell>
-                                </TableRow>
-                              ) : (
-                                displayedAnimals.map((animal) => (
-                                  <TableRow key={animal.Animal_ID}>
-                                    <TableCell className="font-medium">
-                                      #{animal.Animal_ID}
-                                    </TableCell>
-                                    <TableCell>{animal.Animal_Name}</TableCell>
-                                    <TableCell>{animal.Species}</TableCell>
-                                    <TableCell>{animal.Gender}</TableCell>
-                                    <TableCell>
-                                      {calculateAge(animal.Birthday)}
-                                    </TableCell>
-                                    <TableCell className="whitespace-nowrap text-center">
-                                      {typeof animal.Weight !== "undefined" &&
-                                      animal.Weight !== null &&
-                                      isFinite(Number(animal.Weight))
-                                        ? Number(animal.Weight).toFixed(2)
-                                        : "—"}
-                                    </TableCell>
-                                    <TableCell>
-                                      <Badge
-                                        variant="outline"
-                                        className={
-                                          animal.Health_Status === "Good"
-                                            ? "bg-green-50 text-green-700 border-green-200"
-                                            : ""
-                                        }
-                                        style={
-                                          animal.Health_Status === "Excellent"
-                                            ? {
-                                                backgroundColor: "#ECFEFF",
-                                                color: "#0E7490",
-                                                border: "1px solid #A5F3FC",
-                                              }
-                                            : animal.Health_Status === "Fair"
-                                            ? {
-                                                backgroundColor: "#FEFCE8",
-                                                color: "#ad7f49ff",
-                                                border: "1px solid #FEF08A",
-                                              }
-                                            : animal.Health_Status ===
-                                              "Needs Attention"
-                                            ? {
-                                                backgroundColor: "#FEF2F2",
-                                                color: "#B91C1C",
-                                                border: "1px solid #FECACA",
-                                              }
-                                            : {}
-                                        }
-                                      >
-                                        {backendToDisplayLabel(
-                                          animal.Health_Status
-                                        )}
-                                      </Badge>
-                                    </TableCell>
-                                    <TableCell>
-                                      {enclosureMap[animal.Enclosure_ID]
-                                        ?.Enclosure_Name || "Unknown"}
-                                    </TableCell>
-                                  </TableRow>
-                                ))
-                              )}
-                            </TableBody>
-                          </Table>
-                        </div>
-                      </div>
-                      <div className="mt-4 flex items-center justify-between text-sm text-gray-600">
-                        <span>
-                          Showing{" "}
-                          {sortedAnimals.length > 0
-                            ? (animalCurrentPage - 1) * animalItemsPerPage + 1
-                            : 0}
-                          -
-                          {Math.min(
-                            animalCurrentPage * animalItemsPerPage,
-                            sortedAnimals.length
-                          )}{" "}
-                          of {sortedAnimals.length} animal
-                          {sortedAnimals.length !== 1 ? "s" : ""}
-                        </span>
-                      </div>
-                      <PaginationControls
-                        currentPage={animalCurrentPage}
-                        totalPages={animalTotalPages}
-                        onPageChange={handleAnimalPageChange}
-                        paginationArray={animalPaginationArray}
-                        className="mt-4"
-                      />
-                    </CardContent>
-                  </Card>
-
-                  {sortedAnimals.length === 0 ? (
-                    <Card>
-                      <CardContent className="pt-6">
-                        <div className="text-center py-12">
-                          <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                          <p className="text-lg text-gray-600">
-                            No animals found matching the selected filters
-                          </p>
-                          <p className="text-sm text-gray-500 mt-2">
-                            Try adjusting your filter criteria
-                          </p>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ) : (
-                    <>
-                      {/* Charts Grid */}
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        {/* Health Status Distribution - Pie Chart */}
-                        <Card>
-                          <CardHeader>
-                            <CardTitle>Health Status Distribution</CardTitle>
-                          </CardHeader>
-                          <CardContent>
-                            <ResponsiveContainer width="100%" height={300}>
-                              <PieChart>
-                                <Pie
-                                  data={healthStatusData}
-                                  cx="50%"
-                                  cy="50%"
-                                  labelLine={false}
-                                  label={({ name, percent }) =>
-                                    `${name} — ${(percent * 100).toFixed(0)}%`
-                                  }
-                                  outerRadius={80}
-                                  fill="#8884d8"
-                                  dataKey="value"
-                                >
-                                  {healthStatusData.map((entry, index) => (
-                                    <Cell
-                                      key={`cell-${index}`}
-                                      fill={entry.fill}
-                                    />
-                                  ))}
-                                </Pie>
-                                <Tooltip />
-                                <Legend />
-                              </PieChart>
-                            </ResponsiveContainer>
-                          </CardContent>
-                        </Card>
-
-                        {/* Vaccination Status Distribution */}
-                        {byExhibit.length > 0 && (
-                          <Card>
-                            <CardHeader>
-                              <CardTitle>Health by Exhibit</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                              <ResponsiveContainer width="100%" height={300}>
-                                <BarChart
-                                  data={byExhibit}
-                                  margin={{ left: 0, right: 8 }}
-                                >
-                                  <CartesianGrid strokeDasharray="3 3" />
-                                  {/* show all ticks and render wrapped, rotated labels so long names fit */}
-                                  <XAxis
-                                    dataKey="enclosureName"
-                                    interval={0}
-                                    height={80}
-                                    tick={({ x, y, payload }) => {
-                                      const label = String(
-                                        payload?.value || ""
-                                      );
-                                      // decide whether to rotate based on number of exhibits shown
-                                      const rotate = byExhibit.length > 4; // rotate only when more than 4
-
-                                      if (!rotate) {
-                                        // simple horizontal single-line label centered under the tick
-                                        return (
-                                          <g
-                                            transform={`translate(${x}, ${
-                                              y + 16
-                                            })`}
-                                          >
-                                            <text
-                                              textAnchor="middle"
-                                              fontSize={12}
-                                            >
-                                              {label}
-                                            </text>
-                                          </g>
-                                        );
-                                      }
-
-                                      // rotated/wrapped label for long lists
-                                      const maxChars = 18; // target chars per line
-                                      let line1 = label;
-                                      let line2 = "";
-                                      if (label.length > maxChars) {
-                                        const idx = label.lastIndexOf(
-                                          " ",
-                                          maxChars
-                                        );
-                                        if (idx > 0) {
-                                          line1 = label.slice(0, idx);
-                                          line2 = label.slice(idx + 1);
-                                        } else {
-                                          line1 = label.slice(0, maxChars);
-                                          line2 = label.slice(maxChars);
-                                        }
-                                      }
-
-                                      return (
-                                        <g
-                                          transform={`translate(${x}, ${
-                                            y + 10
-                                          })`}
-                                        >
-                                          <text
-                                            textAnchor="end"
-                                            fontSize={12}
-                                            transform="rotate(-45)"
-                                          >
-                                            <tspan x={0} dy={0}>
-                                              {line1}
-                                            </tspan>
-                                            {line2 && (
-                                              <tspan x={0} dy={12}>
-                                                {line2}
-                                              </tspan>
-                                            )}
-                                          </text>
-                                        </g>
-                                      );
-                                    }}
-                                  />
-                                  <YAxis allowDecimals={false} />
-                                  <Tooltip />
-                                  <Legend />
-                                  <Bar
-                                    dataKey="Excellent"
-                                    stackId="a"
-                                    fill={healthColors.Excellent}
-                                  />
-                                  <Bar
-                                    dataKey="Good"
-                                    stackId="a"
-                                    fill={healthColors.Good}
-                                  />
-                                  <Bar
-                                    dataKey="Fair"
-                                    stackId="a"
-                                    fill={healthColors.Fair}
-                                  />
-                                  <Bar
-                                    dataKey="Needs Attention"
-                                    name="Critical"
-                                    stackId="a"
-                                    fill={healthColors["Needs Attention"]}
-                                  />
-                                </BarChart>
-                              </ResponsiveContainer>
-                            </CardContent>
-                          </Card>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </div>
-              );
-            })()}
-          </section>
-        )}
-
-        {/* Zone Supervisor Assignment Dialog */}
-        <Dialog
-          open={isManageZoneOpen}
-          onOpenChange={(open) => {
-            setIsManageZoneOpen(open);
-            if (!open) setSupervisorSearch("");
-          }}
-        >
-          <DialogContent className="max-w-3xl">
-            <DialogHeader>
-              <DialogTitle>Manage Zone Supervisor</DialogTitle>
-              <DialogDescription>
-                {selectedZone &&
-                  `Select a supervisor for Zone ${
-                    selectedZone.Zone
-                  }: ${abbreviateNorth(selectedZone.Location_Description)}`}
-              </DialogDescription>
-            </DialogHeader>
-
-            {/* Current Supervisor Display */}
-            {selectedZone &&
-              (() => {
-                const currentSupervisor = allEmployees.find(
-                  (e) => e.Employee_ID === selectedZone.Supervisor_ID
-                );
-                return currentSupervisor ? (
-                  <div className="p-4 bg-purple-100 border-2 border-purple-300 rounded-lg">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-gray-600 mb-1">
-                          Current Supervisor
-                        </p>
-                        <p className="font-medium text-lg">
-                          {currentSupervisor.Last_Name},{" "}
-                          {currentSupervisor.First_Name}
-                        </p>
-                        <div className="flex items-center gap-6 text-sm text-gray-600 mt-1">
-                          <span>ID: {currentSupervisor.Employee_ID}</span>
-                          <span>Sex: {currentSupervisor.Sex}</span>
-                          <span>
-                            DOB: {formatDate(currentSupervisor.Birthdate)}
-                          </span>
-                        </div>
-                      </div>
-                      <Button
-                        variant="outline"
-                        className="bg-red-50 border-red-300 text-red-600 hover:bg-red-100 cursor-pointer"
-                        onClick={() =>
-                          handleAssignSupervisor(selectedZone.Location_ID, null)
-                        }
-                        disabled={isSaving}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="p-4 bg-gray-100 border-2 border-gray-300 rounded-lg">
-                    <p className="text-gray-600 text-center">
-                      No supervisor currently assigned
-                    </p>
-                  </div>
-                );
-              })()}
-
-            {/* Search Bar */}
-            <div className="relative mt-4">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input
-                placeholder="Search by name or ID..."
-                value={supervisorSearch}
-                onChange={(e) => setSupervisorSearch(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-
-            <ScrollArea className="max-h-[400px] pr-4">
-              <div className="space-y-2">
-                {/* Employee List */}
-                <p className="text-sm text-gray-600 mb-2 px-1">
-                  Select new supervisor:
-                </p>
-                {filteredEmployeesForSupervisor.map((employee) => (
-                  <button
-                    key={employee.Employee_ID}
-                    className="w-full p-4 border rounded-lg text-left hover:bg-purple-50 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                    onClick={() =>
-                      selectedZone && setPendingSupervisor(employee)
-                    }
-                    disabled={isSaving}
-                  >
-                    <div className="flex items-center justify-between gap-4">
-                      <p className="font-medium flex-shrink-0">
-                        {employee.Last_Name}, {employee.First_Name}
-                      </p>
-                      <div className="flex items-center gap-6 text-sm text-gray-600">
-                        <span>ID: {employee.Employee_ID}</span>
-                        <span>Sex: {employee.Sex}</span>
-                        <span>DOB: {formatDate(employee.Birthdate)}</span>
-                      </div>
-                    </div>
-                  </button>
-                ))}
-
-                {filteredEmployeesForSupervisor.length === 0 &&
-                  supervisorSearch && (
-                    <div className="text-center py-8 text-gray-500">
-                      No employees found matching "{supervisorSearch}"
-                    </div>
-                  )}
-              </div>
-            </ScrollArea>
-          </DialogContent>
-        </Dialog>
-
-        {/* Delete Confirmation Dialog */}
-        <AlertDialog
-          open={deleteConfirmEmployee !== null}
-          onOpenChange={() => setDeleteConfirmEmployee(null)}
-        >
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Delete Employee</AlertDialogTitle>
-              <AlertDialogDescription>
-                Are you sure you want to delete{" "}
-                <strong>
-                  {deleteConfirmEmployee?.First_Name}{" "}
-                  {deleteConfirmEmployee?.Last_Name}
-                </strong>{" "}
-                from the system? This action cannot be undone.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel className="cursor-pointer" disabled={isSaving}>
-                Cancel
-              </AlertDialogCancel>
-              <AlertDialogAction
-                onClick={() =>
-                  deleteConfirmEmployee &&
-                  handleDeleteEmployee(deleteConfirmEmployee)
-                }
-                className="bg-red-600 hover:bg-red-700 cursor-pointer"
-                disabled={isSaving}
-              >
-                <Trash2 className="h-4 w-4 mr-2" />
-                {isSaving ? "Deleting..." : "Delete Employee"}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-
-        {/* Confirm Supervisor Assignment */}
-        <AlertDialog
-          open={pendingSupervisor !== null}
-          onOpenChange={() => setPendingSupervisor(null)}
-        >
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Assign Supervisor</AlertDialogTitle>
-              <AlertDialogDescription>
-                Are you sure you want to assign
-                <strong>
-                  {" "}
-                  {pendingSupervisor?.First_Name} {pendingSupervisor?.Last_Name}
-                </strong>{" "}
-                as the supervisor for Zone {selectedZone?.Zone}?
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel className="cursor-pointer" disabled={isSaving}>
-                Cancel
-              </AlertDialogCancel>
-              <AlertDialogAction
-                onClick={() => {
-                  if (selectedZone && pendingSupervisor) {
-                    handleAssignSupervisor(
-                      selectedZone.Location_ID,
-                      pendingSupervisor.Employee_ID
-                    );
-                  }
-                  setPendingSupervisor(null);
-                }}
-                className="bg-green-600 hover:bg-green-700 cursor-pointer"
-                disabled={isSaving}
-              >
-                Confirm
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-
-        {/* Edit Employee Dialog */}
-        <EditEmployeeDialog
-          employee={editingEmployee}
-          isOpen={editingEmployee !== null}
-          onOpenChange={(open) => !open && setEditingEmployee(null)}
-          onUpdate={handleUpdateEmployee}
-          allJobTitles={allJobTitles}
-          allLocations={allLocations}
-          salaries={salaries}
-          isSaving={isSaving}
-        />
 
         {/* Edit Exhibit Dialog */}
         <EditExhibitDialog
@@ -4926,10 +4066,11 @@ function EditEmployeeDialog({
   // Update form data when employee changes
   useEffect(() => {
     if (employee) {
-      // Find the zone for this employee based on their supervisor
-      const employeeZone =
-        allLocations.find((loc) => loc.Supervisor_ID === employee.Supervisor_ID)
-          ?.Zone || "A";
+      // Determine the employee's zone from their assigned location or explicit Zone
+      const locationMatch = allLocations.find(
+        (loc) => loc.Location_ID === employee.Location_ID
+      );
+      const employeeZone = locationMatch?.Zone || employee.Zone || ""; // default to empty so edits are detected
 
       const initialData = {
         firstName: employee.First_Name,

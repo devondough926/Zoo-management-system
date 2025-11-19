@@ -40,12 +40,14 @@ export const zookeeperAPI = {
 
   // Mark habitat as cleaned
   markHabitatCleaned: async (enclosureId, employeeId, notes = "") => {
+    const body = { employeeId, notes };
+
     const response = await fetch(
       `${API_BASE_URL}/zookeeper/exhibits/${enclosureId}/clean`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ employeeId, notes }),
+        body: JSON.stringify(body),
       }
     );
     if (!response.ok) throw new Error("Failed to mark habitat as cleaned");
@@ -147,9 +149,10 @@ export const zookeeperAPI = {
   },
 
   getFeedingScheduleByEnclosure: async (enclosureId, date = null) => {
+    // Backend route uses 'exhibit' in the path for enclosure-specific feeding schedule
     const url = date
-      ? `${API_BASE_URL}/zookeeper/feeding-schedule/enclosure/${enclosureId}?date=${date}`
-      : `${API_BASE_URL}/zookeeper/feeding-schedule/enclosure/${enclosureId}`;
+      ? `${API_BASE_URL}/zookeeper/feeding-schedule/exhibit/${enclosureId}?date=${date}`
+      : `${API_BASE_URL}/zookeeper/feeding-schedule/exhibit/${enclosureId}`;
     const response = await fetch(url);
     if (!response.ok)
       throw new Error("Failed to fetch feeding schedule for enclosure");

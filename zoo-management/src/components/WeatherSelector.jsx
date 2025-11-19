@@ -1,4 +1,5 @@
 import React from "react";
+import { Link } from "react-router-dom";
 import { useWeather } from "../contexts/WeatherContext";
 import { Card, CardContent } from "./ui/card";
 import { Badge } from "./ui/badge";
@@ -177,7 +178,7 @@ export function WeatherSelector() {
   }
 
   return (
-    <section style={styles.section}>
+    <section id="weather-conditions" style={styles.section}>
       <div style={styles.container}>
         <div style={styles.header}>
           <h2 style={styles.title}>Weather Conditions</h2>
@@ -288,8 +289,8 @@ export function WeatherSelector() {
                 // Clear server-side active weather
                 try {
                   const base =
-                    import.meta.env.VITE_API_URL || "http://localhost:5000";
-                  await fetch(`${base}/api/weather/clear`, { method: "POST" });
+                    import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+                  await fetch(`${base}/weather/clear`, { method: "POST" });
                 } catch (err) {
                   console.error("Failed to clear weather on server:", err);
                 }
@@ -331,8 +332,8 @@ export function WeatherSelector() {
               // First tell the server to activate this weather so DB triggers run
               try {
                 const base =
-                  import.meta.env.VITE_API_URL || "http://localhost:5000";
-                await fetch(`${base}/api/weather/activate`, {
+                  import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+                await fetch(`${base}/weather/activate`, {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({
@@ -381,13 +382,73 @@ function getWeatherImpactText(weatherType) {
     case "Rain":
     case "Storm":
     case "High Wind":
-      return "Outdoor and Hybrid exhibits are closed for visitor safety.";
+      return (
+        <>
+          Outdoor and Hybrid{" "}
+          <Link
+            to="/attractions"
+            style={{
+              textDecoration: "underline",
+              color: "#dc2626",
+              fontWeight: 700,
+            }}
+          >
+            exhibits
+          </Link>{" "}
+          are closed for visitor safety.
+        </>
+      );
     case "Snow":
-      return "Outdoor exhibits are closed for visitor safety.";
+      return (
+        <>
+          Outdoor{" "}
+          <Link
+            to="/attractions"
+            style={{
+              textDecoration: "underline",
+              color: "#dc2626",
+              fontWeight: 700,
+            }}
+          >
+            exhibits
+          </Link>{" "}
+          are closed for visitor safety.
+        </>
+      );
     case "Extreme Heat":
     case "Extreme Cold":
-      return "All exhibits are closed due to extreme weather conditions.";
+      return (
+        <>
+          All{" "}
+          <Link
+            to="/attractions"
+            style={{
+              textDecoration: "underline",
+              color: "#dc2626",
+              fontWeight: 700,
+            }}
+          >
+            exhibits
+          </Link>{" "}
+          are closed due to extreme weather conditions.
+        </>
+      );
     default:
-      return "Some exhibits may be affected by current weather conditions.";
+      return (
+        <>
+          Some{" "}
+          <Link
+            to="/attractions"
+            style={{
+              textDecoration: "underline",
+              color: "#dc2626",
+              fontWeight: 700,
+            }}
+          >
+            exhibits
+          </Link>{" "}
+          may be affected by current weather conditions.
+        </>
+      );
   }
 }

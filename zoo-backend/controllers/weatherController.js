@@ -46,3 +46,21 @@ export const clearWeather = async (req, res) => {
     res.status(500).json({ error: "Failed to clear weather" });
   }
 };
+
+// Get the currently active weather condition (if any)
+export const getActiveWeather = async (req, res) => {
+  try {
+    const [rows] = await db.query(
+      `SELECT Weather_ID, Condition_Type, Is_Active FROM weather_conditions WHERE Is_Active = 1 ORDER BY Weather_ID`
+    );
+
+    if (rows && rows.length > 0) {
+      res.json(rows[0]);
+    } else {
+      res.json(null);
+    }
+  } catch (error) {
+    console.error("Error fetching active weather:", error);
+    res.status(500).json({ error: "Failed to fetch active weather" });
+  }
+};

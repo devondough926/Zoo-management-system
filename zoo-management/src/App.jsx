@@ -38,6 +38,7 @@ import { Toaster } from "./components/ui/sonner";
 import { DataProvider } from "./data/DataContext";
 import { PricingProvider } from "./data/PricingContext";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import LoadingWithIcon from "./components/ui/LoadingWithIcon";
 import { WeatherProvider } from "./contexts/WeatherContext";
 
 // Page titles mapping
@@ -241,8 +242,7 @@ function AppContent() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-emerald-50">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-green-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
+          <LoadingWithIcon text="Loading..." size={64} />
         </div>
       </div>
     );

@@ -15,7 +15,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Card,
@@ -23,6 +23,8 @@ import {
   CardHeader,
   CardTitle,
 } from "../components/ui/card";
+import LoadingWithIcon from "../components/ui/LoadingWithIcon";
+
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Alert, AlertDescription } from "../components/ui/alert";
@@ -162,15 +164,63 @@ export function CustomerDashboard({ user }) {
   const [activitiesLoading, setActivitiesLoading] = useState(false);
   const activeFetchRef = useRef({ isFetching: false, intervalId: null });
 
+  // Keep a sorted copy of active activities ordered by their start time
+  const parseTimeToToday = (timeStr) => {
+    if (!timeStr) return null;
+    const now = new Date();
+    timeStr = String(timeStr).trim();
+    // Match 12-hour with AM/PM
+    const ampm = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i.exec(timeStr);
+    let hours = 0,
+      minutes = 0;
+    if (ampm) {
+      hours = parseInt(ampm[1], 10);
+      minutes = parseInt(ampm[2], 10);
+      const isPM = ampm[3].toUpperCase() === "PM";
+      if (isPM && hours < 12) hours += 12;
+      if (!isPM && hours === 12) hours = 0;
+    } else {
+      // 24-hour format like 15:00 or 15:00:00
+      const parts = timeStr.split(":");
+      hours = parseInt(parts[0] || 0, 10);
+      minutes = parseInt(parts[1] || 0, 10);
+    }
+
+    return new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      hours,
+      minutes,
+      0
+    );
+  };
+
+  const sortedActiveActivities = useMemo(() => {
+    if (!Array.isArray(activeActivities) || activeActivities.length === 0)
+      return [];
+    return [...activeActivities].sort((a, b) => {
+      const aStart = parseTimeToToday(a.start_time || a.Display_Time || "");
+      const bStart = parseTimeToToday(b.start_time || b.Display_Time || "");
+      if (!aStart && !bStart) return 0;
+      if (!aStart) return 1;
+      if (!bStart) return -1;
+      return aStart.getTime() - bStart.getTime();
+    });
+  }, [activeActivities]);
+
   // Check backend connection and fetch membership on mount
   useEffect(() => {
     checkBackendConnection();
     fetchPurchaseHistory();
     fetchMembership();
 
-    // Poll active activities every second. Use a ref to avoid overlapping fetches.
+    // Poll active activities at a reasonable interval (30s) and skip polling
+    // when the tab is hidden to avoid excessive background requests/logging.
     const poll = async () => {
       if (activeFetchRef.current.isFetching) return;
+      // Skip polling when tab is not visible
+      if (typeof document !== "undefined" && document.hidden) return;
       activeFetchRef.current.isFetching = true;
       try {
         const activities = await activitiesAPI.getActive();
@@ -182,9 +232,9 @@ export function CustomerDashboard({ user }) {
       }
     };
 
-    // Run immediately then start interval
+    // Run immediately then start interval (30s)
     poll();
-    const id = setInterval(poll, 1000);
+    const id = setInterval(poll, 60000);
     activeFetchRef.current.intervalId = id;
 
     return () => {
@@ -244,37 +294,6 @@ export function CustomerDashboard({ user }) {
   // Countdown state for each active activity (keyed by index)
   const [countdowns, setCountdowns] = useState({});
 
-  const parseTimeToToday = (timeStr) => {
-    if (!timeStr) return null;
-    const now = new Date();
-    timeStr = String(timeStr).trim();
-    // Match 12-hour with AM/PM
-    const ampm = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i.exec(timeStr);
-    let hours = 0,
-      minutes = 0;
-    if (ampm) {
-      hours = parseInt(ampm[1], 10);
-      minutes = parseInt(ampm[2], 10);
-      const isPM = ampm[3].toUpperCase() === "PM";
-      if (isPM && hours < 12) hours += 12;
-      if (!isPM && hours === 12) hours = 0;
-    } else {
-      // 24-hour format like 15:00 or 15:00:00
-      const parts = timeStr.split(":");
-      hours = parseInt(parts[0] || 0, 10);
-      minutes = parseInt(parts[1] || 0, 10);
-    }
-
-    return new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate(),
-      hours,
-      minutes,
-      0
-    );
-  };
-
   const formatRemaining = (seconds) => {
     if (seconds <= 0) return "00:00";
     const h = Math.floor(seconds / 3600);
@@ -291,7 +310,8 @@ export function CustomerDashboard({ user }) {
     const update = () => {
       const now = new Date();
       const map = {};
-      activeActivities.forEach((a, i) => {
+      // Use sortedActiveActivities so countdown indexes align with rendered order
+      sortedActiveActivities.forEach((a, i) => {
         const startDate = parseTimeToToday(
           a.start_time || a.Display_Time || a.Display_Time
         );
@@ -686,14 +706,24 @@ export function CustomerDashboard({ user }) {
                     activeActivities.length === 1 ? "center" : undefined,
                 }}
               >
-                {activeActivities.map((activity, idx) => {
+                {/* color map for activity cards (based on enclosure type) */}
+                {sortedActiveActivities.map((activity, idx) => {
+                  const cardColors = {
+                    Outdoor: "#60a5fa", // blue
+                    Hybrid: "#f97316", // orange
+                    Indoor: "#34d399", // green
+                    Unknown: "#94a3b8",
+                  };
+
+                  const color =
+                    cardColors[activity.enclosure_type] || cardColors.Unknown;
+
                   // Determine if this activity's exhibit is closed
                   const serverClosed = Boolean(activity.is_closed);
                   const weatherClosed = isExhibitClosed({
                     Enclosure_Type: activity.enclosure_type,
                   });
                   const isClosed = serverClosed || weatherClosed;
-
                   return (
                     <div
                       key={idx}
@@ -705,6 +735,7 @@ export function CustomerDashboard({ user }) {
                         position: "relative",
                         overflow: "hidden",
                         border: "1px solid rgba(15,23,42,0.04)",
+                        borderLeft: `6px solid ${color}`,
                       }}
                     >
                       {/* CLOSED Banner - Diagonal across top right */}
@@ -1496,8 +1527,7 @@ export function CustomerDashboard({ user }) {
           <ScrollArea className="max-h-[65vh] pr-4">
             {detailsLoading ? (
               <div className="text-center py-12">
-                <RefreshCw className="h-8 w-8 text-gray-400 mx-auto mb-2 animate-spin" />
-                <p className="text-gray-600">Loading order details...</p>
+                <LoadingWithIcon text="Loading order details..." size={48} />
               </div>
             ) : (
               selectedPurchase && (

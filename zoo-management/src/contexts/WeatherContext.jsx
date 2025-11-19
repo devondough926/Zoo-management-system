@@ -51,6 +51,28 @@ export function WeatherProvider({ children }) {
     }
   }, [selectedWeather]);
 
+  // Sync initial weather from server on mount so multiple clients share state
+  useEffect(() => {
+    const fetchActiveWeather = async () => {
+      try {
+        const base = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+        const res = await fetch(`${base}/weather/active`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data) {
+          setSelectedWeather({ id: data.Weather_ID, type: data.Condition_Type });
+        } else {
+          // server has no active weather
+          setSelectedWeather(null);
+        }
+      } catch (err) {
+        console.error("Error fetching active weather from server:", err);
+      }
+    };
+
+    fetchActiveWeather();
+  }, []);
+
   /**
    * Determines if an exhibit should be closed based on weather
    * @param {Object} exhibit - The exhibit object with Enclosure_Type property

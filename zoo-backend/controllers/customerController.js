@@ -216,43 +216,42 @@ export const getActivitiesByOrder = async (req, res) => {
 // Get currently active activities from Config table
 export const getActiveActivities = async (req, res) => {
   try {
-    // Compute today's activity order (even/odd by day of year)
-    const today = new Date();
-    const startOfYear = new Date(today.getFullYear(), 0, 0);
-    const diff = today - startOfYear;
-    const oneDay = 1000 * 60 * 60 * 24;
-    const dayOfYear = Math.floor(diff / oneDay);
+    // Always compute using the zoo's local timezone to avoid server/DB TZ drift
+    // Define helper to get "now" in America/Chicago as a Date with local components
+    const getNowInChicago = () => {
+      const now = new Date();
+      const fmt = new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Chicago",
+        hour12: false,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      });
+      const parts = fmt
+        .formatToParts(now)
+        .reduce((acc, p) => ({ ...acc, [p.type]: p.value }), {});
+      const year = parseInt(parts.year, 10);
+      const month = parseInt(parts.month, 10);
+      const day = parseInt(parts.day, 10);
+      const hour = parseInt(parts.hour, 10);
+      const minute = parseInt(parts.minute, 10);
+      const second = parseInt(parts.second, 10);
+      return new Date(year, month - 1, day, hour, minute, second);
+    };
+
+    const nowCT = getNowInChicago();
+    const startOfYearCT = new Date(nowCT.getFullYear(), 0, 0);
+    const dayOfYear = Math.floor(
+      (nowCT - startOfYearCT) / (1000 * 60 * 60 * 24)
+    );
     const activityOrder = dayOfYear % 2 === 0 ? 1 : 2;
 
-    // Compute activity order for today (even/odd days)
+    // debug logs removed
 
-    const [rows] = await db.query(
-      `
-      SELECT
-        ea.Activity_Name AS activity_name,
-        ea.Activity_Description AS activity_description,
-        e.exhibit_Name AS exhibit_name,
-        COALESCE(l.Zone, '') AS location,
-        TIME_FORMAT(e.Display_Time, '%h:%i %p') AS start_time,
-        TIME_FORMAT(ADDTIME(e.Display_Time, SEC_TO_TIME(ea.Duration * 60)), '%h:%i %p') AS end_time,
-        ea.Duration AS duration_minutes,
-        COALESCE(e.Enclosure_Type, 'Unknown') AS enclosure_type,
-        COALESCE(e.Is_Closed, 0) AS is_closed
-      FROM exhibit_activity ea
-      JOIN exhibit e ON ea.Exhibit_ID = e.Exhibit_ID
-      LEFT JOIN location l ON e.Location_ID = l.Location_ID
-      WHERE ea.Activity_Order = ?
-        AND CURTIME() >= e.Display_Time
-        AND CURTIME() < ADDTIME(e.Display_Time, SEC_TO_TIME(ea.Duration * 60))
-    `,
-      [activityOrder]
-    );
-
-    if (rows && rows.length > 0) {
-      return res.json(rows);
-    }
-
-    // Fallback: compute active activities in JS (handles timezone mismatches)
+    // Fetch activities for today's order using consistent table casing
     const [allActivities] = await db.query(
       `
       SELECT
@@ -264,59 +263,78 @@ export const getActiveActivities = async (req, res) => {
         ea.Duration AS duration_minutes,
         COALESCE(e.Enclosure_Type, 'Unknown') AS enclosure_type,
         COALESCE(e.Is_Closed, 0) AS is_closed
-      FROM exhibit_activity ea
-      JOIN exhibit e ON ea.Exhibit_ID = e.Exhibit_ID
-      LEFT JOIN location l ON e.Location_ID = l.Location_ID
+      FROM Exhibit_Activity ea
+      JOIN Exhibit e ON ea.Exhibit_ID = e.Exhibit_ID
+      LEFT JOIN Location l ON e.Location_ID = l.Location_ID
       WHERE ea.Activity_Order = ?
     `,
       [activityOrder]
     );
 
-    // Fallback: compute active activities in JS (handles timezone mismatches)
-    // Build Date instances from the stored Display_Time (HH:MM:SS) and
-    // compare against server time. This avoids timezone-related issues.
-    const now = new Date();
+    // debug logs removed
+
+    const pad2 = (n) => String(n).padStart(2, "0");
+    const to12h = (hh, mm) => {
+      const h = parseInt(hh, 10);
+      const m = pad2(parseInt(mm, 10));
+      const isPM = h >= 12;
+      const h12 = h % 12 === 0 ? 12 : h % 12;
+      return `${h12}:${m} ${isPM ? "PM" : "AM"}`;
+    };
+
+    // Determine currently active based on Chicago local day/time
     const active = (allActivities || [])
       .filter((a) => {
         if (!a.Display_Time) return false;
-        // Display_Time is now formatted as HH:MM:SS string
         const [hh, mm, ss] = a.Display_Time.split(":");
         const start = new Date(
-          now.getFullYear(),
-          now.getMonth(),
-          now.getDate(),
+          nowCT.getFullYear(),
+          nowCT.getMonth(),
+          nowCT.getDate(),
           parseInt(hh || 0, 10),
           parseInt(mm || 0, 10),
           parseInt(ss || 0, 10)
         );
-        const end = new Date(
-          start.getTime() + parseInt(a.duration_minutes || 0, 10) * 60 * 1000
-        );
-        return now >= start && now < end;
+        const durationMin = parseInt(a.duration_minutes || 0, 10);
+        const end = new Date(start.getTime() + durationMin * 60 * 1000);
+        const isActive = nowCT >= start && nowCT < end;
+        if (isActive) {
+          // active item detected (debug logs removed)
+        }
+        return isActive;
       })
       .map((a) => {
-        // Format time for display
         const [hh, mm] = a.Display_Time.split(":");
-        const hour = parseInt(hh || 0, 10);
-        const minute = mm || "00";
-        const isPM = hour >= 12;
-        const hour12 = hour % 12 === 0 ? 12 : hour % 12;
-        const formattedTime = `${hour12}:${minute} ${isPM ? "PM" : "AM"}`;
+        const startLabel = to12h(hh, mm);
+        const durationMin = parseInt(a.duration_minutes || 0, 10);
+        const startDate = new Date(
+          nowCT.getFullYear(),
+          nowCT.getMonth(),
+          nowCT.getDate(),
+          parseInt(hh || 0, 10),
+          parseInt(mm || 0, 10),
+          0
+        );
+        const endDate = new Date(startDate.getTime() + durationMin * 60 * 1000);
+        const endLabel = to12h(
+          pad2(endDate.getHours()),
+          pad2(endDate.getMinutes())
+        );
 
         return {
           activity_name: a.activity_name,
           activity_description: a.activity_description,
           exhibit_name: a.exhibit_name,
           location: a.location,
-          start_time: formattedTime,
-          end_time: null,
-          duration_minutes: a.duration_minutes,
+          start_time: startLabel,
+          end_time: endLabel,
+          duration_minutes: durationMin,
           enclosure_type: a.enclosure_type,
           is_closed: a.is_closed,
         };
       });
 
-    // Removed noisy debug logging to avoid repeated console output during polling
+    // debug logs removed
     return res.json(active);
   } catch (error) {
     console.error("Error fetching active activities:", error);

@@ -9,6 +9,7 @@ import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Download, Receipt } from "lucide-react";
 import { purchasesAPI } from "../services/customerAPI";
+import LoadingWithIcon from "../components/ui/LoadingWithIcon";
 
 // Helper function to format numbers with commas
 const formatNumber = (num) => {
@@ -119,7 +120,10 @@ export function OrderHistoryPage({ user }) {
               <CardContent>
                 {isLoading ? (
                   <div className="text-center py-12">
-                    <p className="text-gray-600">Loading order history...</p>
+                    <LoadingWithIcon
+                      text="Loading order history..."
+                      size={56}
+                    />
                   </div>
                 ) : customerPurchases.length > 0 ? (
                   <div className="space-y-6">

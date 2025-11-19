@@ -43,7 +43,7 @@ export function OperationalDashboard() {
     : null;
 
   return (
-    <section className="py-16 bg-gray-100">
+    <section id="todays-activities" className="py-16 bg-gray-100">
       <div className="container mx-auto px-6">
         <div className="text-center mb-12">
           <h2 className="text-3xl md:text-4xl mb-4">Today's Activities</h2>

@@ -13,6 +13,7 @@ import { exhibitsAPI, activitiesAPI } from "../services/customerAPI";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { getExhibitImage } from "../utils/imageMapping";
 import { preloadImages } from "../utils/imagePreloader";
+import LoadingWithIcon from "./ui/LoadingWithIcon";
 
 const membershipBenefits = [
   "Unlimited zoo admission",
@@ -286,9 +287,7 @@ export function CustomerHighlights() {
     return (
       <section className="py-16 bg-white">
         <div className="container mx-auto px-6">
-          <div className="text-center">
-            <p className="text-gray-500">Loading...</p>
-          </div>
+          <LoadingWithIcon text="Loading..." size={56} />
         </div>
       </section>
     );
@@ -337,7 +336,7 @@ export function CustomerHighlights() {
       <div className="container mx-auto px-6">
         {/* Upcoming Events */}
         <div className="mb-16">
-          <div className="text-center mb-12">
+          <div className="text-center mb-12" id="upcoming-events">
             <h2 className="text-3xl md:text-4xl mb-4">Upcoming Events</h2>
             <p className="text-gray-600 max-w-2xl mx-auto">
               Don't miss these exciting animal activities. All events are
@@ -400,7 +399,7 @@ export function CustomerHighlights() {
 
         {/* Exhibits */}
         <div className="mb-16">
-          <div className="text-center mb-12">
+          <div className="text-center mb-12" id="exhibits">
             <h2 className="text-3xl md:text-4xl mb-4">Exhibits</h2>
             <p className="text-gray-600 max-w-2xl mx-auto">
               Explore our amazing animal habitats from around the world.
@@ -512,7 +511,7 @@ export function CustomerHighlights() {
 
         {/* Membership Benefits */}
         <div className="bg-green-50 rounded-lg p-8">
-          <div className="text-center mb-8">
+          <div className="text-center mb-8" id="membership">
             <h2 className="text-3xl md:text-4xl mb-4 text-green-800">
               Membership Benefits
             </h2>

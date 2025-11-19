@@ -1,5 +1,15 @@
 import db from "../config/database.js";
 
+// Helper function to format Date as MySQL datetime string in local timezone
+const toMySQLDatetime = (date = new Date()) => {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(
+    date.getDate()
+  )} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(
+    date.getSeconds()
+  )}`;
+};
+
 // ============================================
 // ZOOKEEPER DASHBOARD STATS
 // ============================================
@@ -16,19 +26,19 @@ export const getZookeeperStats = async (req, res) => {
       "SELECT COUNT(*) as count FROM exhibit"
     );
 
-    // Get animals fed today (from animal_care_log)
+    // Get animals fed today (from animal_care_log) - use last 24 hours to handle timezone differences
     const [animalsFedToday] = await db.query(
       `SELECT COUNT(DISTINCT Animal_ID) as count 
        FROM Animal_Care_Log 
-       WHERE DATE(Log_Date) = CURDATE() 
-       AND Activity LIKE '%feed%'`
+       WHERE Log_Date >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+       AND Log_Type = 'fed'`
     );
 
-    // Get care logs count for today
+    // Get care logs count for today - use last 24 hours to handle timezone differences
     const [careLogsToday] = await db.query(
       `SELECT COUNT(*) as count 
        FROM Animal_Care_Log 
-       WHERE DATE(Log_Date) = CURDATE()`
+       WHERE Log_Date >= DATE_SUB(NOW(), INTERVAL 24 HOUR)`
     );
 
     res.json({
@@ -93,7 +103,7 @@ export const getAnimalCareLogs = async (req, res) => {
         acl.Log_ID,
         acl.Animal_ID,
         acl.Employee_ID,
-        DATE_FORMAT(acl.Log_Date, '%Y-%m-%d %H:%i:%s') as Log_Date,
+          DATE_FORMAT(COALESCE(CONVERT_TZ(acl.Log_Date, 'America/Chicago', '+00:00'), acl.Log_Date), '%Y-%m-%dT%H:%i:%sZ') as Log_Date,
         acl.Activity,
         acl.Notes,
         e.First_Name,
@@ -124,7 +134,7 @@ export const getAllCareLogs = async (req, res) => {
         acl.Log_ID,
         acl.Animal_ID,
         acl.Employee_ID,
-        DATE_FORMAT(acl.Log_Date, '%Y-%m-%d %H:%i:%s') as Log_Date,
+          DATE_FORMAT(COALESCE(CONVERT_TZ(acl.Log_Date, 'America/Chicago', '+00:00'), acl.Log_Date), '%Y-%m-%dT%H:%i:%sZ') as Log_Date,
         acl.Activity,
         acl.Log_Type,
         acl.Notes,
@@ -132,7 +142,11 @@ export const getAllCareLogs = async (req, res) => {
         e.Last_Name,
         a.Animal_Name,
         a.Species,
-        enc.exhibit_Name as Enclosure_Name
+        CASE 
+          WHEN acl.Log_Type = 'maintenance' AND acl.Activity LIKE 'Habitat cleaned:%' 
+          THEN TRIM(SUBSTRING(acl.Activity, LOCATE(':', acl.Activity) + 1))
+          ELSE enc.exhibit_Name
+        END as Enclosure_Name
       FROM Animal_Care_Log acl
       LEFT JOIN Employee e ON acl.Employee_ID = e.Employee_ID
       LEFT JOIN Animal a ON acl.Animal_ID = a.Animal_ID
@@ -142,12 +156,14 @@ export const getAllCareLogs = async (req, res) => {
 
     const params = [];
 
-    // Default: only include logs from the past 7 days unless a startDate is provided
+    // Default: only include logs from today unless a startDate is provided
     if (startDate) {
       query += ` AND acl.Log_Date >= ?`;
       params.push(startDate);
     } else {
-      query += ` AND acl.Log_Date >= (NOW() - INTERVAL 7 DAY)`;
+      // Get logs from the last 24 hours to handle timezone differences
+      // This ensures logs appear even if server time is ahead/behind local time
+      query += ` AND acl.Log_Date >= DATE_SUB(NOW(), INTERVAL 24 HOUR)`;
     }
 
     if (endDate) {
@@ -184,8 +200,7 @@ export const getAllCareLogs = async (req, res) => {
 
 export const createCareLog = async (req, res) => {
   try {
-    const { animalId, employeeId, activity, notes, logDate, logType } =
-      req.body;
+    const { animalId, employeeId, activity, notes, logType } = req.body;
 
     // Validate required fields
     if (!animalId || !employeeId || !activity) {
@@ -194,20 +209,12 @@ export const createCareLog = async (req, res) => {
         .json({ error: "Animal ID, Employee ID, and Activity are required" });
     }
 
-    const logDateValue = logDate || new Date();
     const logTypeValue = logType || "update";
 
     const [result] = await db.query(
       `INSERT INTO Animal_Care_Log (Animal_ID, Employee_ID, Log_Date, Activity, Log_Type, Notes)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [
-        animalId,
-        employeeId,
-        logDateValue,
-        activity,
-        logTypeValue,
-        notes || null,
-      ]
+       VALUES (?, ?, COALESCE(CONVERT_TZ(NOW(), '+00:00', 'America/Chicago'), NOW()), ?, ?, ?)`,
+      [animalId, employeeId, activity, logTypeValue, notes || null]
     );
 
     // Fetch the newly created log
@@ -216,7 +223,7 @@ export const createCareLog = async (req, res) => {
         acl.Log_ID,
         acl.Animal_ID,
         acl.Employee_ID,
-        DATE_FORMAT(acl.Log_Date, '%Y-%m-%d %H:%i:%s') as Log_Date,
+          DATE_FORMAT(COALESCE(CONVERT_TZ(acl.Log_Date, 'America/Chicago', '+00:00'), acl.Log_Date), '%Y-%m-%dT%H:%i:%sZ') as Log_Date,
         acl.Activity,
         acl.Notes,
         e.First_Name,
@@ -850,7 +857,7 @@ export const markHabitatCleaned = async (req, res) => {
     const { enclosureId } = req.params;
     const { employeeId, notes } = req.body;
 
-    // Update enclosure last_cleaned to full datetime (use NOW()) so time is preserved
+    // Update enclosure last_cleaned with server NOW() (use server date math consistently)
     await db.query(
       `UPDATE exhibit 
        SET last_cleaned = NOW(), Is_Cleaned = 1 
@@ -858,38 +865,33 @@ export const markHabitatCleaned = async (req, res) => {
       [enclosureId]
     );
 
-    // Get animals in this enclosure for logging
-    const [animals] = await db.query(
-      `SELECT Animal_ID FROM Animal WHERE Enclosure_ID = ?`,
-      [enclosureId]
-    );
-
-    // Log the cleaning activity for each animal in the enclosure
-    if (animals.length > 0) {
-      const animalId = animals[0].Animal_ID; // Use first animal for the log
-      // Insert care log using application-side Date to match createCareLog behavior
-      // This ensures the stored Log_Date matches other logs created via API (including timezone handling)
-      const logDateValue = new Date();
-      await db.query(
-        `INSERT INTO Animal_Care_Log (Animal_ID, Employee_ID, Log_Date, Activity, Log_Type, Notes)
-         VALUES (?, ?, ?, 'Habitat cleaned', 'maintenance', ?)`,
-        [
-          animalId,
-          employeeId || null,
-          logDateValue,
-          notes || "7-day habitat cleaning completed",
-        ]
-      );
-    }
-
     // Remove any skip days for this enclosure
     await db.query(`DELETE FROM enclosure_skip_days WHERE Enclosure_ID = ?`, [
       enclosureId,
     ]);
 
+    // Get enclosure name for the log
+    const [exhibit] = await db.query(
+      `SELECT exhibit_Name FROM exhibit WHERE Exhibit_ID = ?`,
+      [enclosureId]
+    );
+    const exhibitName = exhibit[0]?.exhibit_Name || "Unknown Habitat";
+
+    // Insert maintenance log into Animal_Care_Log (Animal_ID must be NULL for maintenance logs per trigger)
+    await db.query(
+      `INSERT INTO Animal_Care_Log (Animal_ID, Employee_ID, Log_Date, Activity, Log_Type, Notes)
+       VALUES (NULL, ?, COALESCE(CONVERT_TZ(NOW(), '+00:00', 'America/Chicago'), NOW()), ?, 'maintenance', ?)`,
+      [
+        employeeId || null,
+        `Habitat cleaned: ${exhibitName}`,
+        notes || "7-day habitat cleaning completed",
+      ]
+    );
+
     res.json({
       message: "Habitat marked as cleaned successfully",
       enclosureId: enclosureId,
+      timestamp: new Date().toISOString(),
     });
   } catch (error) {
     console.error("Error marking habitat as cleaned:", error);

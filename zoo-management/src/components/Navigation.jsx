@@ -1,4 +1,4 @@
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "./ui/button";
 import {
   Shield,
@@ -19,6 +19,37 @@ export function Navigation({ onLogout, cartCount = 0 }) {
   const isActive = (path) => location.pathname === path;
   const [mobileOpen, setMobileOpen] = useState(false);
   const [showHamburger, setShowHamburger] = useState(false);
+  const [homeDropdownOpen, setHomeDropdownOpen] = useState(false);
+  const [homeHoveredIndex, setHomeHoveredIndex] = useState(null);
+  const navigate = useNavigate();
+
+  // Scroll helper: navigate to home then scroll to section (if needed)
+  const scrollToSection = (id) => {
+    if (!id) return;
+    const doScroll = () => {
+      const el = document.getElementById(id);
+      if (!el) return;
+
+      // Try to compute navbar height to offset the sticky nav
+      const navEl = document.querySelector("nav");
+      const navHeight = navEl ? navEl.offsetHeight : 80;
+
+      // Prefer scrolling so the top of the element (title) sits just under the nav
+      const elementTop = el.getBoundingClientRect().top + window.pageYOffset;
+      const offset = 12; // small breathing room
+      const target = Math.max(0, Math.round(elementTop - navHeight - offset));
+
+      window.scrollTo({ top: target, behavior: "smooth" });
+    };
+
+    if (isHome) {
+      doScroll();
+    } else {
+      navigate("/");
+      // Wait a bit for the page to render then scroll
+      setTimeout(doScroll, 200);
+    }
+  };
 
   // Close mobile menu on navigation change
   useEffect(() => {
@@ -51,9 +82,17 @@ export function Navigation({ onLogout, cartCount = 0 }) {
 
           {/* Center navigation - can shrink; hidden on small screens (desktop only) */}
           <div className="flex-1 flex justify-center min-w-0">
-            <div className="hidden md:flex items-center space-x-1 overflow-x-auto">
-              <Link to="/">
+            <div className="hidden md:flex items-center space-x-1 overflow-visible">
+              <div
+                style={{ position: "relative" }}
+                onMouseEnter={() => setHomeDropdownOpen(true)}
+                onMouseLeave={() => {
+                  setHomeDropdownOpen(false);
+                  setHomeHoveredIndex(null);
+                }}
+              >
                 <Button
+                  onClick={() => navigate("/")}
                   variant={isActive("/") ? "default" : "ghost"}
                   className={`cursor-pointer font-semibold ${
                     isActive("/")
@@ -63,7 +102,68 @@ export function Navigation({ onLogout, cartCount = 0 }) {
                 >
                   Home
                 </Button>
-              </Link>
+
+                {/* Desktop dropdown implemented with inline styles and JS-controlled hover */}
+                <div
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    top: "100%",
+                    paddingTop: 8,
+                    zIndex: 1200,
+                    opacity: homeDropdownOpen ? 1 : 0,
+                    visibility: homeDropdownOpen ? "visible" : "hidden",
+                    transition: "opacity 180ms ease",
+                    pointerEvents: homeDropdownOpen ? "auto" : "none",
+                  }}
+                >
+                  <div
+                    style={{
+                      backgroundColor: "#ffffff",
+                      border: "1px solid rgba(229,231,235,1)",
+                      borderRadius: 8,
+                      boxShadow: "0 8px 20px rgba(2,6,23,0.08)",
+                      padding: "6px 0",
+                      width: 224,
+                    }}
+                  >
+                    {[
+                      ["Upcoming Events", "upcoming-events"],
+                      ["Exhibits", "exhibits"],
+                      ["Membership", "membership"],
+                      ["Today's Activities", "todays-activities"],
+                      ["Weather Conditions", "weather-conditions"],
+                      ["Our Map", "our-map"],
+                    ].map(([label, id], idx) => (
+                      <button
+                        key={id}
+                        onClick={() => {
+                          scrollToSection(id);
+                          setHomeDropdownOpen(false);
+                        }}
+                        onMouseEnter={() => setHomeHoveredIndex(idx)}
+                        onMouseLeave={() => setHomeHoveredIndex(null)}
+                        style={{
+                          display: "block",
+                          width: "100%",
+                          textAlign: "left",
+                          padding: "10px 14px",
+                          background:
+                            homeHoveredIndex === idx
+                              ? "#ecfdf5"
+                              : "transparent",
+                          border: "none",
+                          cursor: "pointer",
+                          color: "#065f46",
+                          fontSize: 14,
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
               <Link to="/animals">
                 <Button
                   variant={isActive("/animals") ? "default" : "ghost"}
@@ -88,18 +188,19 @@ export function Navigation({ onLogout, cartCount = 0 }) {
                   Exhibits
                 </Button>
               </Link>
-              <Link to="/shop">
-                <Button
-                  variant={isActive("/shop") ? "default" : "ghost"}
-                  className={`cursor-pointer font-semibold ${
-                    isActive("/shop")
-                      ? "bg-green-600 hover:bg-green-700"
-                      : "text-green-700 hover:text-green-800 hover:bg-green-200"
-                  }`}
-                >
-                  Gift Shop
-                </Button>
-              </Link>
+              <Button
+                onClick={() =>
+                  navigate("/shop", { state: { anchor: "all-products" } })
+                }
+                variant={isActive("/shop") ? "default" : "ghost"}
+                className={`cursor-pointer font-semibold ${
+                  isActive("/shop")
+                    ? "bg-green-600 hover:bg-green-700"
+                    : "text-green-700 hover:text-green-800 hover:bg-green-200"
+                }`}
+              >
+                Gift Shop
+              </Button>
               <Link to="/food">
                 <Button
                   variant={isActive("/food") ? "default" : "ghost"}
@@ -257,6 +358,51 @@ export function Navigation({ onLogout, cartCount = 0 }) {
                   Home
                 </Button>
               </Link>
+              {/* Home quick section links */}
+              <div className="pl-3 grid grid-cols-2 gap-2">
+                <Button
+                  variant="ghost"
+                  className="justify-start text-sm text-green-700 hover:text-green-800 hover:bg-green-50"
+                  onClick={() => scrollToSection("upcoming-events")}
+                >
+                  Upcoming
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="justify-start text-sm text-green-700 hover:text-green-800 hover:bg-green-50"
+                  onClick={() => scrollToSection("exhibits")}
+                >
+                  Exhibits
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="justify-start text-sm text-green-700 hover:text-green-800 hover:bg-green-50"
+                  onClick={() => scrollToSection("membership")}
+                >
+                  Membership
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="justify-start text-sm text-green-700 hover:text-green-800 hover:bg-green-50"
+                  onClick={() => scrollToSection("todays-activities")}
+                >
+                  Today's Acts
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="justify-start text-sm text-green-700 hover:text-green-800 hover:bg-green-50"
+                  onClick={() => scrollToSection("weather-conditions")}
+                >
+                  Weather
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="justify-start text-sm text-green-700 hover:text-green-800 hover:bg-green-50"
+                  onClick={() => scrollToSection("our-map")}
+                >
+                  Map
+                </Button>
+              </div>
               <Link to="/animals">
                 <Button
                   variant={isActive("/animals") ? "default" : "ghost"}
@@ -273,14 +419,15 @@ export function Navigation({ onLogout, cartCount = 0 }) {
                   Exhibits
                 </Button>
               </Link>
-              <Link to="/shop">
-                <Button
-                  variant={isActive("/shop") ? "default" : "ghost"}
-                  className="w-full justify-start font-semibold text-green-700 hover:text-green-800 hover:bg-green-200"
-                >
-                  Gift Shop
-                </Button>
-              </Link>
+              <Button
+                onClick={() =>
+                  navigate("/shop", { state: { anchor: "all-products" } })
+                }
+                variant={isActive("/shop") ? "default" : "ghost"}
+                className="w-full justify-start font-semibold text-green-700 hover:text-green-800 hover:bg-green-200"
+              >
+                Gift Shop
+              </Button>
               <Link to="/food">
                 <Button
                   variant={isActive("/food") ? "default" : "ghost"}

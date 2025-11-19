@@ -37,6 +37,7 @@ import {
   Upload,
   TrendingUp,
   Trash2,
+  Box,
 } from "lucide-react";
 import {
   Select,
@@ -107,7 +108,6 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
   useEffect(() => {
     const fetchAnalytics = async () => {
       try {
-        // Fetch today's revenue and items sold
         const revenueResponse = await fetch(
           `${API_BASE}/shop/analytics/revenue/today`
         );
@@ -438,9 +438,9 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
                   className="font-medium text-emerald-600"
                   style={{ color: "#059669" }}
                 >
-                  Welcome, {user.First_Name} {user.Last_Name}
+                  Welcome, {user.First_Name}
                 </p>
-                <p className="text-sm text-gray-600">Gift Shop Worker</p>
+                <p className="text-sm text-gray-600">{user.Last_Name}</p>
               </div>
               <Button
                 variant="default"
@@ -471,63 +471,104 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
 
       <div className="container mx-auto px-6 py-12">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <Card>
-            <CardContent className="pt-6 text-center">
-              <div className="flex items-center justify-between mb-2">
-                <DollarSign className="h-6 w-6 text-green-600" />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowRevenueAllTime(!showRevenueAllTime)}
-                  className="text-xs cursor-pointer"
-                >
-                  <TrendingUp className="h-3 w-3 mr-1" />
-                  {showRevenueAllTime ? "Today" : "All Time"}
-                </Button>
-              </div>
-              <div className="text-3xl text-green-600 mb-2">
-                $
-                {showRevenueAllTime
-                  ? allTimeRevenue.toLocaleString("en-US", {
-                      minimumFractionDigits: 2,
-                    })
-                  : todayRevenue.toLocaleString("en-US", {
-                      minimumFractionDigits: 2,
-                    })}
-              </div>
-              <p className="text-gray-700">
-                {showRevenueAllTime ? "All-Time Revenue" : "Today's Revenue"}
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-6 text-center">
-              <div className="text-3xl text-green-600 mb-2">
-                {itemsSoldToday}
-              </div>
-              <p className="text-gray-700">Items Sold Today</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-6 text-center">
-              {topSellingItemToday ? (
-                <>
-                  <div className="text-2xl text-green-600 mb-2">
-                    {topSellingItemToday.item.Item_Name}
-                  </div>
-                  <p className="text-gray-700">Top-Selling Item Today</p>
-                  <p className="text-sm text-gray-500">
-                    ({topSellingItemToday.quantity} sold)
+          <Card
+            className="bg-white"
+            style={{
+              borderLeft: "4px solid #16a34a",
+              background: "linear-gradient(90deg,#d1fae5 0%, #ffffff 100%)",
+              overflow: "hidden",
+            }}
+          >
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-600">
+                    {showRevenueAllTime
+                      ? "All-Time Revenue"
+                      : "Today's Revenue"}
                   </p>
-                </>
+                  <p className="text-3xl text-green-600">
+                    $
+                    {showRevenueAllTime
+                      ? allTimeRevenue.toLocaleString("en-US", {
+                          minimumFractionDigits: 2,
+                        })
+                      : todayRevenue.toLocaleString("en-US", {
+                          minimumFractionDigits: 2,
+                        })}
+                  </p>
+                </div>
+                <div className="flex flex-col items-end">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowRevenueAllTime(!showRevenueAllTime)}
+                    className="text-xs inline-flex items-center gap-1 px-2 py-1 rounded-full border border-transparent hover:bg-white/60 hover:border-gray-200 shadow-sm transition-colors"
+                    aria-pressed={showRevenueAllTime}
+                    title={
+                      showRevenueAllTime
+                        ? "Showing All-Time — click to switch to Today"
+                        : "Showing Today — click to switch to All-Time"
+                    }
+                  >
+                    <TrendingUp className="h-3 w-3" />
+                    <span className="ml-1">
+                      {showRevenueAllTime ? "Today" : "All Time"}
+                    </span>
+                  </Button>
+                  <DollarSign
+                    className="h-10 w-10"
+                    style={{ color: "rgba(16,163,74,0.16)" }}
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card
+            className="bg-white"
+            style={{
+              borderLeft: "4px solid #10b981",
+              background: "linear-gradient(90deg,#f0fdf4 0%, #ffffff 100%)",
+              overflow: "hidden",
+            }}
+          >
+            <CardContent className="pt-6 text-center relative">
+              <p className="text-sm text-gray-600">Items Sold Today</p>
+              <p className="text-3xl text-green-600">{itemsSoldToday}</p>
+              <Box
+                className="h-10 w-10 absolute right-4 top-4"
+                style={{ color: "rgba(16,185,129,0.14)" }}
+              />
+            </CardContent>
+          </Card>
+
+          <Card
+            className="bg-white"
+            style={{
+              borderLeft: "4px solid #0d9488",
+              background: "linear-gradient(90deg,#ecfeff 0%, #ffffff 100%)",
+              overflow: "hidden",
+            }}
+          >
+            <CardContent className="pt-6 text-center relative">
+              <p className="text-sm text-gray-600">Top-Selling Item Today</p>
+              {topSellingItemToday ? (
+                <p className="text-2xl text-teal-600">
+                  {topSellingItemToday.item.Item_Name}
+                </p>
               ) : (
-                <>
-                  <div className="text-2xl text-green-600 mb-2">N/A</div>
-                  <p className="text-gray-700">Top-Selling Item Today</p>
-                </>
+                <p className="text-2xl text-teal-600">N/A</p>
               )}
+              <p className="text-sm text-gray-500">
+                {topSellingItemToday
+                  ? `(${topSellingItemToday.quantity} sold)`
+                  : ""}
+              </p>
+              <ShoppingBag
+                className="h-10 w-10 absolute right-4 top-4"
+                style={{ color: "rgba(13,148,136,0.16)" }}
+              />
             </CardContent>
           </Card>
         </div>
@@ -568,7 +609,7 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[500px] overflow-y-auto pr-2">
               {shopItems
                 .filter((product) =>
                   selectedCategory === "All"
@@ -611,9 +652,9 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
                           size="sm"
                           onClick={() => handleEditClick(product)}
                           className="cursor-pointer border-transparent hover:bg-blue-50 hover:border-blue-300 hover:text-blue-600 focus:bg-blue-50 focus:border-blue-300 focus:text-blue-600 transition-colors"
+                          aria-label="Edit item"
                         >
-                          <Edit2 className="h-4 w-4 mr-1" />
-                          Edit
+                          <Edit2 className="h-4 w-4" />
                         </Button>
                         <Button
                           variant="ghost"
@@ -646,34 +687,98 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
                 {topItems.map((topItem) => (
                   <div
                     key={topItem.item.Item_ID}
-                    className="flex items-center justify-between p-4 rounded-lg border hover:border-green-600 transition-colors"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "1rem",
+                      borderRadius: "0.5rem",
+                      background:
+                        "linear-gradient(90deg,#d1fae5 0%, #ffffff 100%)",
+                      border: "1px solid transparent",
+                      transition: "border-color .15s ease",
+                    }}
                   >
-                    <div className="flex items-center space-x-4 flex-1">
-                      <div className="flex items-center justify-center w-10 h-10 rounded-full bg-green-100 text-green-600 font-bold">
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.75rem",
+                        flex: 1,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          width: 32,
+                          height: 32,
+                          borderRadius: 9999,
+                          background: "#d1fae5",
+                          color: "#16a34a",
+                          fontWeight: 700,
+                          fontSize: "0.75rem",
+                          flexShrink: 0,
+                        }}
+                      >
                         #{topItem.rank}
                       </div>
-                      <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden">
+                      <div
+                        style={{
+                          width: 80,
+                          height: 80,
+                          background: "#f3f4f6",
+                          borderRadius: 8,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          overflow: "hidden",
+                          flexShrink: 0,
+                          padding: 8,
+                        }}
+                      >
                         {topItem.item.Image_URL || topItem.item.image ? (
                           <ImageWithFallback
                             src={topItem.item.Image_URL || topItem.item.image}
                             alt={topItem.item.Item_Name}
-                            className="w-full h-full object-cover"
+                            className="w-full h-full object-contain"
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              objectFit: "contain",
+                            }}
                           />
                         ) : (
                           <ShoppingBag className="h-8 w-8 text-gray-400" />
                         )}
                       </div>
-                      <div className="flex-1">
-                        <h3 className="font-medium">
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <h3
+                          style={{
+                            fontWeight: 500,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
                           {topItem.item.Item_Name}
                         </h3>
-                        <p className="text-xs text-gray-500">
+                        <p
+                          style={{
+                            fontSize: "0.75rem",
+                            color: "#6b7280",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
                           Item #{topItem.item.Item_ID}
                         </p>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className="text-sm text-gray-600">
+                    <div style={{ textAlign: "right" }}>
+                      <p style={{ fontSize: "0.875rem", color: "#374151" }}>
                         {topItem.quantity} sold
                       </p>
                     </div>
@@ -697,36 +802,100 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
                 {bottomItems.map((bottomItem) => (
                   <div
                     key={bottomItem.item.Item_ID}
-                    className="flex items-center justify-between p-4 rounded-lg border hover:border-red-600 transition-colors"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "1rem",
+                      borderRadius: "0.5rem",
+                      background:
+                        "linear-gradient(90deg,#fee2e2 0%, #ffffff 100%)",
+                      border: "1px solid transparent",
+                      transition: "border-color .15s ease",
+                    }}
                   >
-                    <div className="flex items-center space-x-4 flex-1">
-                      <div className="flex items-center justify-center w-10 h-10 rounded-full bg-red-100 text-red-600 font-bold">
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.75rem",
+                        flex: 1,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          width: 32,
+                          height: 32,
+                          borderRadius: 9999,
+                          background: "#fee2e2",
+                          color: "#dc2626",
+                          fontWeight: 700,
+                          fontSize: "0.75rem",
+                          flexShrink: 0,
+                        }}
+                      >
                         #{bottomItem.rank}
                       </div>
-                      <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden">
+                      <div
+                        style={{
+                          width: 80,
+                          height: 80,
+                          background: "#f3f4f6",
+                          borderRadius: 8,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          overflow: "hidden",
+                          flexShrink: 0,
+                          padding: 8,
+                        }}
+                      >
                         {bottomItem.item.Image_URL || bottomItem.item.image ? (
                           <ImageWithFallback
                             src={
                               bottomItem.item.Image_URL || bottomItem.item.image
                             }
                             alt={bottomItem.item.Item_Name}
-                            className="w-full h-full object-cover"
+                            className="w-full h-full object-contain"
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              objectFit: "contain",
+                            }}
                           />
                         ) : (
                           <ShoppingBag className="h-8 w-8 text-gray-400" />
                         )}
                       </div>
-                      <div className="flex-1">
-                        <h3 className="font-medium">
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <h3
+                          style={{
+                            fontWeight: 500,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
                           {bottomItem.item.Item_Name}
                         </h3>
-                        <p className="text-xs text-gray-500">
+                        <p
+                          style={{
+                            fontSize: "0.75rem",
+                            color: "#6b7280",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
                           Item #{bottomItem.item.Item_ID}
                         </p>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className="text-sm text-gray-600">
+                    <div style={{ textAlign: "right" }}>
+                      <p style={{ fontSize: "0.875rem", color: "#374151" }}>
                         {bottomItem.quantity} sold
                       </p>
                     </div>

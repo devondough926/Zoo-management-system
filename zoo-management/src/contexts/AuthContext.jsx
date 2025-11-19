@@ -82,9 +82,6 @@ export function AuthProvider({ children }) {
           });
         } else {
           // If API host equals page host, no fallback needed
-          console.debug(
-            "Skipping same-origin fallback logout (API host equals page host)"
-          );
         }
       } catch (err) {
         // Non-fatal: fallback may fail if no proxy exists

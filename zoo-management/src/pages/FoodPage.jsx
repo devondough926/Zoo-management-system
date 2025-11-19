@@ -394,12 +394,12 @@ export function FoodPage({ addToCart, allowCartActions = true }) {
                     }
                     return Icon ? (
                       <Icon
-                        className="h-5 w-5 mr-2 text-teal-700"
+                        className="h-5 w-5 mr-2 text-green-600"
                         aria-hidden="true"
                       />
                     ) : null;
                   })()}
-                  <CardTitle className="text-md font-semibold">
+                  <CardTitle className="text-md font-semibold text-green-800">
                     {stand.name}
                   </CardTitle>
                 </CardHeader>
@@ -511,7 +511,7 @@ export function FoodPage({ addToCart, allowCartActions = true }) {
                                 flex: `0 0 calc(100% / ${slidesPerView})`,
                               }}
                             >
-                              <Card className="hover:shadow-md transition-shadow overflow-hidden rounded-lg">
+                              <Card className="group hover:shadow-lg transition-all will-change-transform hover:-translate-y-1 overflow-hidden rounded-lg">
                                 <div className="aspect-video w-full overflow-hidden rounded-t-lg bg-gradient-to-br from-orange-50 to-amber-50 flex items-center justify-center">
                                   {item && item.image ? (
                                     (() => {
@@ -523,7 +523,7 @@ export function FoodPage({ addToCart, allowCartActions = true }) {
                                         <ImageWithFallback
                                           src={item.image}
                                           alt={item.name}
-                                          className="w-full h-full object-cover"
+                                          className="w-full h-full object-cover transition-transform duration-300 ease-out group-hover:scale-105"
                                           // hint to ImageWithFallback and browser to load eagerly
                                           priority={isVisible}
                                           loading={isVisible ? "eager" : "lazy"}

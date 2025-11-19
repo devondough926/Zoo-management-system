@@ -1,4 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import { usePageTitle } from "../../hooks/usePageTitle";
+import { useNavigate, useLocation } from "react-router-dom";
 import {
   Card,
   CardContent,
@@ -44,8 +46,36 @@ import {
   SelectValue,
 } from "../../components/ui/select";
 import { Input } from "../../components/ui/input";
+import { Checkbox } from "../../components/ui/checkbox";
+import {
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+} from "../../components/ui/popover";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../../components/ui/table";
+import {
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
 import { veterinarianAPI } from "../../services/veterinarianAPI";
 import { employeeAPI } from "../../services/zookeeperAPI";
+import { animalAPI, locationAPI, referenceAPI } from "../../services/adminAPI";
 import {
   LogOut,
   Stethoscope,
@@ -55,17 +85,17 @@ import {
   ClipboardCheck,
   AlertTriangle,
   CheckCircle2,
-  Clock,
   PawPrint,
   FileText,
-  TrendingUp,
+  Settings,
+  Search,
+  BarChart3,
 } from "lucide-react";
 import { toast } from "sonner";
 import { PaginationControls } from "../../components/PaginationControls";
 import { ZooLogo } from "../../components/ZooLogo";
 import { ImageWithFallback } from "../../components/figma/ImageWithFallback";
 
-// Inline flip styles (ensures flip CSS is applied even if global CSS is not loaded)
 const flipStyles = `
 .flip-card { perspective: 1000px; width: 100%; position: relative; }
 .flip-card .flipper { position: relative; width: 100%; transform-style: preserve-3d; transition: transform 0.45s ease; }
@@ -74,9 +104,6 @@ const flipStyles = `
 .flip-card .front, .flip-card .back { min-height: 360px; }
 .flip-card .front { position: relative; z-index: 2; }
 .flip-card .back { position: absolute; inset: 0; transform: rotateY(180deg); display: flex; flex-direction: column; justify-content: flex-start; z-index: 1; }
-
-/* Use a square image (like before) but cap its max height so it doesn't force an oversized front.
-  This keeps image proportions (not squished) and ensures front/back heights match. */
 .flip-card .front .aspect-square { aspect-ratio: 1 / 1 !important; max-height: 220px; width: 100%; }
 .flip-card .front .aspect-square img, .flip-card .front .aspect-square > img { height: 100% !important; width: 100% !important; object-fit: cover !important; }
 `;
@@ -104,8 +131,6 @@ export function VeterinarianPortal(
   const [vaccinationRecords, setVaccinationRecords] = useState([]);
   const [medicalLog, setMedicalLog] = useState([]);
   const [selectedAnimal, setSelectedAnimal] = useState(null);
-  // Controls whether the (previous) animal detail dialog is open. Kept so
-  // legacy dialog references don't throw runtime errors after refactor.
   const [animalDetailOpen, setAnimalDetailOpen] = useState(false);
   const [healthDialogOpen, setHealthDialogOpen] = useState(false);
   const [vaccinationDialogOpen, setVaccinationDialogOpen] = useState(false);
@@ -118,26 +143,101 @@ export function VeterinarianPortal(
   const ALL_ENCLOSURES = "__ALL__";
   const [enclosureFilter, setEnclosureFilter] = useState(ALL_ENCLOSURES);
   const [filterHealthStatus, setFilterHealthStatus] = useState("all");
-  // Backend health enums are declared below and used for the status select
   const BACKEND_HEALTH_STATUSES = [
     "Excellent",
     "Good",
     "Fair",
-    "Needs Attention", // Stored as "Needs Attention" in DB but displayed as "Critical"
+    "Needs Attention",
   ];
 
-  // Helper to convert backend status to display label
   const backendToDisplayLabel = (backendStatus) => {
     if (backendStatus === "Needs Attention") return "Critical";
     return backendStatus;
   };
   const [vetSearchTerm, setVetSearchTerm] = useState("");
   const [attentionListOpen, setAttentionListOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState("animals");
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const allowedVetTabs = ["animals", "vaccinations", "logs", "report"];
+  const [activeTab, setActiveTab] = useState(() => {
+    try {
+      if (typeof window !== "undefined") {
+        const params = new URLSearchParams(location.search);
+        const tab = params.get("tab");
+        if (tab && allowedVetTabs.includes(tab)) return tab;
+        return localStorage.getItem("vet.activeTab") || "animals";
+      }
+    } catch (e) {
+      // ignore
+    }
+    return "animals";
+  });
+
+  // Persist active tab and set page title to include tab
+  const vetTabLabels = {
+    animals: "Animals",
+    vaccinations: "Vaccinations",
+    logs: "Logs",
+    report: "Report",
+  };
+  const vetBaseTitle = "Veterinarian Portal";
+  const vetPageTitle = vetTabLabels[activeTab]
+    ? `${vetBaseTitle} - ${vetTabLabels[activeTab]}`
+    : vetBaseTitle;
+  usePageTitle(vetPageTitle);
+  useEffect(() => {
+    try {
+      if (typeof window !== "undefined") {
+        localStorage.setItem("vet.activeTab", activeTab);
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, [activeTab]);
+
+  // Keep URL in sync with tab selection
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(location.search);
+      if (params.get("tab") !== activeTab) {
+        params.set("tab", activeTab);
+        navigate(`${location.pathname}?${params.toString()}`, {
+          replace: true,
+        });
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, [activeTab, navigate, location]);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(12);
-  // Local flip state for cards in the Animal Health grid (id -> boolean)
   const [flippedCards, setFlippedCards] = useState({});
+
+  const [allAnimalsDB, setAllAnimalsDB] = useState([]);
+  const [allEnclosures, setAllEnclosures] = useState([]);
+  const [allLocations, setAllLocations] = useState([]);
+  const [healthZoneFilter, setHealthZoneFilter] = useState("None");
+  const [healthEnclosureFilter, setHealthEnclosureFilter] = useState("All");
+  const [genderFilter, setGenderFilter] = useState("All");
+  const [ageFilter, setAgeFilter] = useState("All");
+  const [animalSearch, setAnimalSearch] = useState("");
+  const [animalSortState, setAnimalSortState] = useState({
+    col: null,
+    dir: "asc",
+  });
+  const [animalCurrentPage, setAnimalCurrentPage] = useState(1);
+  const [animalItemsPerPage] = useState(10);
+  const [animalVisibleColumns, setAnimalVisibleColumns] = useState({
+    animalId: true,
+    name: true,
+    species: true,
+    age: true,
+    weight: true,
+    gender: true,
+    enclosure: true,
+    healthStatus: true,
+  });
 
   const toggleFlip = (id) => {
     setFlippedCards((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -163,6 +263,7 @@ export function VeterinarianPortal(
       animals: { text: "#16a34a", ring: "rgba(16,163,74,0.12)" },
       vaccinations: { text: "#0ea5a4", ring: "rgba(14,165,164,0.12)" },
       logs: { text: "#06b6d4", ring: "rgba(6,182,212,0.12)" },
+      report: { text: "#10b981", ring: "rgba(16,185,129,0.12)" },
     };
 
     if (isActive) {
@@ -186,6 +287,12 @@ export function VeterinarianPortal(
           boxShadow: "0 2px 6px rgba(6,182,212,0.12)",
           border: "1px solid rgba(0,0,0,0.04)",
         },
+        report: {
+          backgroundColor: "#10b981",
+          color: "#ffffff",
+          boxShadow: "0 2px 6px rgba(16,185,129,0.12)",
+          border: "1px solid rgba(0,0,0,0.04)",
+        },
       };
 
       return {
@@ -205,12 +312,10 @@ export function VeterinarianPortal(
     };
   };
 
-  // Mapping helpers between backend health statuses and Figma UI statuses
   const backendToUIHealth = (raw) => {
     const backendValues = ["Excellent", "Good", "Fair", "Needs Attention"];
     if (backendValues.includes(raw)) return raw;
 
-    // Fallback: map legacy UI statuses to backend enums
     switch (raw) {
       case "Healthy":
         return "Good";
@@ -226,7 +331,6 @@ export function VeterinarianPortal(
   };
 
   const uiToBackendHealth = (ui) => {
-    // If the value already matches backend enum, return it directly
     const backendValues = ["Excellent", "Good", "Fair", "Needs Attention"];
     if (backendValues.includes(ui)) return ui;
 
@@ -244,7 +348,6 @@ export function VeterinarianPortal(
     }
   };
 
-  // Sorted list of veterinarians for consistent display in select controls
   const sortedVets = useMemo(() => {
     return (vets || []).slice().sort((a, b) => {
       const aLast = (a.lastName || "").toString().toLowerCase();
@@ -258,21 +361,60 @@ export function VeterinarianPortal(
     });
   }, [vets]);
 
-  // Fetch live data with a reusable loader so other actions can refresh tabs
   const isMountedRef = useRef(false);
 
   const loadData = async () => {
     try {
-      const [animals, visits, vaccinationLogs, medicalLogs] = await Promise.all(
-        [
-          veterinarianAPI.getAllAnimals(),
-          veterinarianAPI.getAllVetVisits(),
-          veterinarianAPI.getVaccinationLogs(),
-          veterinarianAPI.getMedicalLogs(),
-        ]
-      );
+      const [
+        animals,
+        visits,
+        vaccinationLogs,
+        medicalLogs,
+        animalsRes,
+        enclosuresRes,
+        locationsRes,
+      ] = await Promise.all([
+        veterinarianAPI.getAllAnimals(),
+        veterinarianAPI.getAllVetVisits(),
+        veterinarianAPI.getVaccinationLogs(),
+        veterinarianAPI.getMedicalLogs(),
+        animalAPI.getAll(),
+        referenceAPI.getEnclosures(),
+        locationAPI.getAll(),
+      ]);
 
       if (!isMountedRef.current) return;
+
+      // Set Analytics data (support both direct-array responses and { success, data } wrappers)
+      if (Array.isArray(animalsRes)) {
+        setAllAnimalsDB(animalsRes);
+      } else if (
+        animalsRes &&
+        animalsRes.success &&
+        Array.isArray(animalsRes.data)
+      ) {
+        setAllAnimalsDB(animalsRes.data);
+      }
+
+      if (Array.isArray(enclosuresRes)) {
+        setAllEnclosures(enclosuresRes);
+      } else if (
+        enclosuresRes &&
+        enclosuresRes.success &&
+        Array.isArray(enclosuresRes.data)
+      ) {
+        setAllEnclosures(enclosuresRes.data);
+      }
+
+      if (Array.isArray(locationsRes)) {
+        setAllLocations(locationsRes);
+      } else if (
+        locationsRes &&
+        locationsRes.success &&
+        Array.isArray(locationsRes.data)
+      ) {
+        setAllLocations(locationsRes.data);
+      }
 
       // Build health records from animals
       const records = animals.map((a /** @type {any} */) => {
@@ -491,7 +633,6 @@ export function VeterinarianPortal(
     };
   }, [user.Employee_ID, user.Last_Name]);
 
-  // Filter health records with optional search and enclosure filter
   const filteredHealthRecords = useMemo(() => {
     const term = (vetSearchTerm || "").trim().toLowerCase();
     return healthRecords.filter((record /** @type {any} */) => {
@@ -552,7 +693,6 @@ export function VeterinarianPortal(
     }
   };
 
-  // Date helpers
   const isSameLocalDay = (a, b) => {
     try {
       const da = new Date(a);
@@ -582,13 +722,11 @@ export function VeterinarianPortal(
     }
   }, [medicalLog]);
 
-  // Compute a responsive height: each item approx 96px, min 150px, max 600px
-  const medicalListHeight = Math.min(
-    600,
-    Math.max(150, (todaysMedicalLogs.length || 0) * 96)
-  );
+  // Allow the log container to size naturally to its content, but cap its
+  // visible height so it becomes scrollable after a threshold. This gives
+  // dynamic sizing for small lists and a scroll for long lists.
+  const MEDICAL_LIST_MAX_HEIGHT = 800; // px
 
-  // Derived values used across the UI (pagination, stats, filters)
   const enclosureOptions = useMemo(() => {
     const s = new Set();
     healthRecords.forEach((r) => {
@@ -673,7 +811,6 @@ export function VeterinarianPortal(
     return filteredHealthRecords.slice(start, start + pageSize);
   }, [filteredHealthRecords, currentPage, pageSize]);
 
-  // Health badge color helper (kept similar to previous implementation)
   const getHealthBadgeColor = (backendStatus) => {
     // Expect backendStatus to be one of BACKEND_HEALTH_STATUSES
     switch (backendStatus) {
@@ -702,9 +839,6 @@ export function VeterinarianPortal(
     }
   };
 
-  // Handlers for opening dialogs and performing updates. These were
-  // present in the original component and were accidentally removed
-  // during the refactor — restore them so buttons still work.
   const handleAnimalClick = (record) => {
     // Keep backward-compatible behavior: toggle detail dialog if needed
     setSelectedAnimal(record);
@@ -813,6 +947,46 @@ export function VeterinarianPortal(
     setConfirmVaccinationOpen(true);
   };
 
+  const toggleAnimalColumn = (col) => {
+    if (col === "all") {
+      const allChecked = Object.values(animalVisibleColumns).every((v) => v);
+      const newState = {};
+      Object.keys(animalVisibleColumns).forEach((k) => {
+        newState[k] = !allChecked;
+      });
+      setAnimalVisibleColumns(newState);
+    } else {
+      setAnimalVisibleColumns((prev) => ({ ...prev, [col]: !prev[col] }));
+    }
+  };
+
+  const toggleAnimalSort = (col) => {
+    setAnimalSortState((prev) => {
+      if (prev.col === col) {
+        return { col, dir: prev.dir === "asc" ? "desc" : "asc" };
+      }
+      return { col, dir: "asc" };
+    });
+  };
+
+  const handleAnimalPageChange = (page) => {
+    setAnimalCurrentPage(page);
+  };
+
+  const enclosureMap = useMemo(() => {
+    const map = {};
+    allEnclosures.forEach((enc) => {
+      map[enc.Enclosure_ID] = enc;
+    });
+    return map;
+  }, [allEnclosures]);
+
+  const formatDate = (dateString) => {
+    if (!dateString) return "N/A";
+    const date = new Date(dateString);
+    return date.toLocaleDateString();
+  };
+
   const confirmVaccination = async () => {
     if (!selectedAnimal || !selectedVetId) return;
     const now = new Date();
@@ -839,6 +1013,7 @@ export function VeterinarianPortal(
       const savedLogDate = savedLogDateRaw
         ? new Date(savedLogDateRaw).toISOString()
         : now.toISOString();
+      F;
 
       const newVaccination = {
         Vaccine_ID: `VAC-${response.log.Log_ID}`,
@@ -1124,6 +1299,10 @@ export function VeterinarianPortal(
                 style={{ width: 16, height: 16, marginRight: 8 }}
               />
               Medical Logs
+            </TabsTrigger>
+            <TabsTrigger value="report" style={getVetTriggerStyle("report")}>
+              <FileText style={{ width: 16, height: 16, marginRight: 8 }} />
+              Analytics
             </TabsTrigger>
           </TabsList>
 
@@ -1474,8 +1653,7 @@ export function VeterinarianPortal(
               <CardContent>
                 <ScrollArea
                   style={{
-                    maxHeight: "600px",
-                    height: `${medicalListHeight}px`,
+                    maxHeight: `${MEDICAL_LIST_MAX_HEIGHT}px`,
                   }}
                 >
                   <div className="space-y-3">
@@ -1539,6 +1717,1282 @@ export function VeterinarianPortal(
                 </ScrollArea>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="report" className="space-y-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl text-gray-900 flex items-center gap-2">
+                <Activity className="h-6 w-6 text-red-500" /> Health Analytics
+              </h2>
+            </div>
+
+            <Card>
+              <div className="flex items-center justify-between">
+                {(healthZoneFilter !== "All" && healthZoneFilter !== "None") ||
+                (healthEnclosureFilter !== "All" &&
+                  healthEnclosureFilter !== "None") ||
+                (genderFilter !== "All" && genderFilter !== "None") ||
+                (ageFilter !== "All" && ageFilter !== "None") ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setHealthZoneFilter("None");
+                      setHealthEnclosureFilter("All");
+                      setGenderFilter("All");
+                      setAgeFilter("All");
+                    }}
+                    className="cursor-pointer"
+                  >
+                    Reset All Filters
+                  </Button>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold text-gray-700"></h3>
+                  </div>
+                )}
+              </div>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {/* Zone Filter */}
+                  <div>
+                    <Label htmlFor="health-zone-filter">Zone</Label>
+                    <Select
+                      value={healthZoneFilter}
+                      onValueChange={(value) => {
+                        setHealthZoneFilter(value);
+                        setHealthEnclosureFilter("All");
+                      }}
+                    >
+                      <SelectTrigger
+                        id="health-zone-filter"
+                        className="cursor-pointer"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem
+                          value="None"
+                          className="text-muted-foreground"
+                        >
+                          No selection . . .
+                        </SelectItem>
+                        <SelectItem value="All">All Zones</SelectItem>
+                        <SelectItem value="A">Zone A</SelectItem>
+                        <SelectItem value="B">Zone B</SelectItem>
+                        <SelectItem value="C">Zone C</SelectItem>
+                        <SelectItem value="D">Zone D</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Enclosure Filter */}
+                  <div>
+                    <Label htmlFor="health-enclosure-filter">Enclosure</Label>
+                    <Select
+                      value={healthEnclosureFilter.toString()}
+                      onValueChange={(value) =>
+                        setHealthEnclosureFilter(
+                          value === "All"
+                            ? "All"
+                            : value === "None"
+                            ? "None"
+                            : parseInt(value)
+                        )
+                      }
+                    >
+                      <SelectTrigger
+                        id="health-enclosure-filter"
+                        className="cursor-pointer"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="All">All Enclosures</SelectItem>
+                        {allEnclosures
+                          .filter((enc) => {
+                            // If user selected 'All' zones, show all enclosures.
+                            if (healthZoneFilter === "All") return true;
+                            // If user selected 'None' (explicitly no selection),
+                            // do not populate enclosure list (only the 'All Enclosures' item will remain).
+                            if (healthZoneFilter === "None") return false;
+                            const location = allLocations.find(
+                              (loc) => loc.Location_ID === enc.Location_ID
+                            );
+                            return location?.Zone === healthZoneFilter;
+                          })
+                          .map((enc) => (
+                            <SelectItem
+                              key={enc.Enclosure_ID}
+                              value={enc.Enclosure_ID.toString()}
+                            >
+                              {enc.Enclosure_Name}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Gender Filter */}
+                  <div>
+                    <Label htmlFor="gender-filter">Gender</Label>
+                    <Select
+                      value={genderFilter}
+                      onValueChange={(value) => setGenderFilter(value)}
+                    >
+                      <SelectTrigger
+                        id="gender-filter"
+                        className="cursor-pointer"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="All">All Genders</SelectItem>
+                        <SelectItem value="M">Male</SelectItem>
+                        <SelectItem value="F">Female</SelectItem>
+                        <SelectItem value="U">Unknown</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Age Filter */}
+                  <div>
+                    <Label htmlFor="age-filter">Age Range (years)</Label>
+                    <Select
+                      value={ageFilter}
+                      onValueChange={(value) => setAgeFilter(value)}
+                    >
+                      <SelectTrigger id="age-filter" className="cursor-pointer">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="All">All Ages</SelectItem>
+                        <SelectItem value="0-2">0-2 years</SelectItem>
+                        <SelectItem value="3-5">3-5 years</SelectItem>
+                        <SelectItem value="6-10">6-10 years</SelectItem>
+                        <SelectItem value="11+">11+ years</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Filtered Charts - Dynamic based on filters */}
+            {(() => {
+              // Helper function to calculate age in years
+              const calculateAge = (birthday) => {
+                const birthDate = new Date(birthday);
+                const today = new Date();
+                let age = today.getFullYear() - birthDate.getFullYear();
+                const monthDiff = today.getMonth() - birthDate.getMonth();
+                if (
+                  monthDiff < 0 ||
+                  (monthDiff === 0 && today.getDate() < birthDate.getDate())
+                ) {
+                  age--;
+                }
+                return age;
+              };
+
+              // Filter animals based on selected filters
+              const filteredAnimals = (() => {
+                // If Zone is explicitly set to 'None' (No selection), do not show any animals
+                if (healthZoneFilter === "None") {
+                  return [];
+                }
+
+                return allAnimalsDB.filter((animal) => {
+                  // Zone filter
+                  if (
+                    healthZoneFilter !== "All" &&
+                    healthZoneFilter !== "None"
+                  ) {
+                    const enclosure = allEnclosures.find(
+                      (e) => e.Enclosure_ID === animal.Enclosure_ID
+                    );
+                    const location = allLocations.find(
+                      (loc) => loc.Location_ID === enclosure?.Location_ID
+                    );
+                    if (location?.Zone !== healthZoneFilter) return false;
+                  }
+
+                  // Enclosure filter
+                  if (
+                    healthEnclosureFilter !== "All" &&
+                    healthEnclosureFilter !== "None" &&
+                    animal.Enclosure_ID !== healthEnclosureFilter
+                  )
+                    return false;
+
+                  // Gender filter
+                  if (
+                    genderFilter !== "All" &&
+                    genderFilter !== "None" &&
+                    animal.Gender !== genderFilter
+                  )
+                    return false;
+
+                  // Age filter
+                  if (ageFilter !== "All" && ageFilter !== "None") {
+                    const age = calculateAge(animal.Birthday);
+                    if (ageFilter === "0-2" && (age < 0 || age > 2))
+                      return false;
+                    if (ageFilter === "3-5" && (age < 3 || age > 5))
+                      return false;
+                    if (ageFilter === "6-10" && (age < 6 || age > 10))
+                      return false;
+                    if (ageFilter === "11+" && age < 11) return false;
+                  }
+
+                  return true;
+                });
+              })();
+
+              // Sort animals based on selected column
+              const sortedAnimals = [...filteredAnimals].sort((a, b) => {
+                if (!animalSortState.col) return 0;
+
+                const key = animalSortState.col;
+                const dir = animalSortState.dir;
+                let A = a[key];
+                let B = b[key];
+
+                // Special handling for certain columns
+                if (key === "Age") {
+                  A = calculateAge(a.Birthday);
+                  B = calculateAge(b.Birthday);
+                } else if (key === "Enclosure_Name") {
+                  A = enclosureMap[a.Enclosure_ID]?.Enclosure_Name || "";
+                  B = enclosureMap[b.Enclosure_ID]?.Enclosure_Name || "";
+                }
+
+                // Handle numeric vs string sorting
+                const numA = Number(A);
+                const numB = Number(B);
+                if (!Number.isNaN(numA) && !Number.isNaN(numB)) {
+                  return dir === "asc" ? numA - numB : numB - numA;
+                } else {
+                  const sa = String(A || "").toUpperCase();
+                  const sb = String(B || "").toUpperCase();
+                  if (sa < sb) return dir === "asc" ? -1 : 1;
+                  if (sa > sb) return dir === "asc" ? 1 : -1;
+                  return 0;
+                }
+              });
+
+              // canonical health status color map
+              const healthColors = {
+                Excellent: "#06B6D4",
+                Good: "#059669",
+                Fair: "#F59E0B",
+                "Needs Attention": "#EF4444",
+              };
+
+              // Helper to convert backend status to display label
+              const backendToDisplayLabelLocal = (backendStatus) => {
+                if (backendStatus === "Needs Attention") return "Critical";
+                return backendStatus;
+              };
+
+              // Health status distribution for pie chart
+              const healthStatusData = [
+                {
+                  name: "Excellent",
+                  value: sortedAnimals.filter(
+                    (a) => a.Health_Status === "Excellent"
+                  ).length,
+                  fill: healthColors.Excellent,
+                },
+                {
+                  name: "Good",
+                  value: sortedAnimals.filter((a) => a.Health_Status === "Good")
+                    .length,
+                  fill: healthColors.Good,
+                },
+                {
+                  name: "Fair",
+                  value: sortedAnimals.filter((a) => a.Health_Status === "Fair")
+                    .length,
+                  fill: healthColors.Fair,
+                },
+                {
+                  name: "Critical",
+                  value: sortedAnimals.filter(
+                    (a) => a.Health_Status === "Needs Attention"
+                  ).length,
+                  fill: healthColors["Needs Attention"],
+                },
+              ].filter((item) => item.value > 0);
+
+              // Health by Exhibit (stacked bar)
+              const byExhibit = (() => {
+                const exhibitMap = new globalThis.Map();
+                const statuses = [
+                  "Excellent",
+                  "Good",
+                  "Fair",
+                  "Needs Attention",
+                ];
+
+                filteredAnimals.forEach((a) => {
+                  const id = a.Enclosure_ID;
+                  if (!exhibitMap.has(id)) {
+                    exhibitMap.set(id, {
+                      enclosureId: id,
+                      enclosureName: null,
+                    });
+                  }
+                });
+
+                for (const [id, entry] of exhibitMap.entries()) {
+                  const enc = allEnclosures.find((e) => e.Enclosure_ID === id);
+                  entry.enclosureName =
+                    enc?.Enclosure_Name || `Enclosure ${id}`;
+                  statuses.forEach((s) => (entry[s] = 0));
+                }
+
+                filteredAnimals.forEach((a) => {
+                  const id = a.Enclosure_ID;
+                  const entry = exhibitMap.get(id);
+                  if (!entry) return;
+                  const status = a.Health_Status || "Fair";
+                  if (statuses.includes(status))
+                    entry[status] = (entry[status] || 0) + 1;
+                  else entry.Fair = (entry.Fair || 0) + 1;
+                });
+
+                return Array.from(exhibitMap.values()).filter((e) =>
+                  statuses.some((s) => e[s] > 0)
+                );
+              })();
+
+              // Pagination for animal table
+              const animalTotalPages = Math.max(
+                1,
+                Math.ceil(
+                  sortedAnimals.filter((a) => {
+                    const searchLower = animalSearch.toLowerCase();
+                    return (
+                      a.Animal_Name?.toLowerCase().includes(searchLower) ||
+                      a.Species?.toLowerCase().includes(searchLower) ||
+                      String(a.Animal_ID).includes(searchLower)
+                    );
+                  }).length / animalItemsPerPage
+                )
+              );
+
+              const displayedAnimals = sortedAnimals
+                .filter((a) => {
+                  const searchLower = animalSearch.toLowerCase();
+                  return (
+                    a.Animal_Name?.toLowerCase().includes(searchLower) ||
+                    a.Species?.toLowerCase().includes(searchLower) ||
+                    String(a.Animal_ID).includes(searchLower)
+                  );
+                })
+                .slice(
+                  (animalCurrentPage - 1) * animalItemsPerPage,
+                  animalCurrentPage * animalItemsPerPage
+                );
+
+              const animalPaginationArray = Array.from(
+                { length: animalTotalPages },
+                (_, i) => i + 1
+              );
+
+              return (
+                <div className="mt-6 space-y-6">
+                  {/* Summary Card */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Summary</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                        <div className="text-center p-4 bg-teal-50 rounded-lg">
+                          <p className="text-sm text-gray-600 mb-1">
+                            Excellent
+                          </p>
+                          <p
+                            className="text-3xl font-semibold"
+                            style={{ color: healthColors.Excellent }}
+                          >
+                            {
+                              sortedAnimals.filter(
+                                (a) => a.Health_Status === "Excellent"
+                              ).length
+                            }
+                          </p>
+                        </div>
+                        <div className="text-center p-4 bg-green-50 rounded-lg">
+                          <p className="text-sm text-gray-600 mb-1">Good</p>
+                          <p
+                            className="text-3xl font-semibold"
+                            style={{ color: healthColors.Good }}
+                          >
+                            {
+                              sortedAnimals.filter(
+                                (a) => a.Health_Status === "Good"
+                              ).length
+                            }
+                          </p>
+                        </div>
+                        <div
+                          className="text-center p-4 rounded-lg"
+                          style={{ backgroundColor: "#fefce8" }}
+                        >
+                          <p className="text-sm text-gray-600 mb-1">Fair</p>
+                          <p
+                            style={{
+                              fontSize: "1.875rem",
+                              fontWeight: 600,
+                              color: healthColors.Fair,
+                            }}
+                          >
+                            {
+                              sortedAnimals.filter(
+                                (a) => a.Health_Status === "Fair"
+                              ).length
+                            }
+                          </p>
+                        </div>
+                        <div className="text-center p-4 bg-red-50 rounded-lg">
+                          <p className="text-sm text-gray-600 mb-1">Critical</p>
+                          <p
+                            className="text-3xl font-semibold"
+                            style={{ color: healthColors["Needs Attention"] }}
+                          >
+                            {
+                              sortedAnimals.filter(
+                                (a) => a.Health_Status === "Needs Attention"
+                              ).length
+                            }
+                          </p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Animals Table */}
+                  <section id="animal-details" className="mt-6">
+                    <>
+                      <div
+                        id="animals-section"
+                        className="flex items-center justify-between mb-2"
+                      >
+                        <h3 className="text-lg font-semibold">
+                          Animal Details
+                        </h3>
+                        <div className="flex items-center gap-3">
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button variant="outline" size="sm">
+                                <Settings className="h-4 w-4 mr-2" />
+                                Columns
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-64" align="end">
+                              <div className="space-y-3">
+                                <h4 className="font-medium text-sm mb-3">
+                                  Toggle Columns
+                                </h4>
+                                <div className="space-y-2">
+                                  <div className="flex items-center space-x-2 pb-2 border-b">
+                                    <Checkbox
+                                      id="animal-col-all"
+                                      checked={Object.values(
+                                        animalVisibleColumns
+                                      ).every((v) => v)}
+                                      onCheckedChange={() =>
+                                        toggleAnimalColumn("all")
+                                      }
+                                    />
+                                    <label
+                                      htmlFor="animal-col-all"
+                                      className="text-sm font-medium cursor-pointer"
+                                    >
+                                      All
+                                    </label>
+                                  </div>
+                                  <div className="flex items-center space-x-2">
+                                    <Checkbox
+                                      id="animal-col-animalId"
+                                      checked={animalVisibleColumns.animalId}
+                                      onCheckedChange={() =>
+                                        toggleAnimalColumn("animalId")
+                                      }
+                                    />
+                                    <label
+                                      htmlFor="animal-col-animalId"
+                                      className="text-sm cursor-pointer"
+                                    >
+                                      Animal ID
+                                    </label>
+                                  </div>
+                                  <div className="flex items-center space-x-2">
+                                    <Checkbox
+                                      id="animal-col-name"
+                                      checked={animalVisibleColumns.name}
+                                      onCheckedChange={() =>
+                                        toggleAnimalColumn("name")
+                                      }
+                                    />
+                                    <label
+                                      htmlFor="animal-col-name"
+                                      className="text-sm cursor-pointer"
+                                    >
+                                      Name
+                                    </label>
+                                  </div>
+                                  <div className="flex items-center space-x-2">
+                                    <Checkbox
+                                      id="animal-col-species"
+                                      checked={animalVisibleColumns.species}
+                                      onCheckedChange={() =>
+                                        toggleAnimalColumn("species")
+                                      }
+                                    />
+                                    <label
+                                      htmlFor="animal-col-species"
+                                      className="text-sm cursor-pointer"
+                                    >
+                                      Species
+                                    </label>
+                                  </div>
+                                  <div className="flex items-center space-x-2">
+                                    <Checkbox
+                                      id="animal-col-age"
+                                      checked={animalVisibleColumns.age}
+                                      onCheckedChange={() =>
+                                        toggleAnimalColumn("age")
+                                      }
+                                    />
+                                    <label
+                                      htmlFor="animal-col-age"
+                                      className="text-sm cursor-pointer"
+                                    >
+                                      Age
+                                    </label>
+                                  </div>
+                                  <div className="flex items-center space-x-2">
+                                    <Checkbox
+                                      id="animal-col-weight"
+                                      checked={animalVisibleColumns.weight}
+                                      onCheckedChange={() =>
+                                        toggleAnimalColumn("weight")
+                                      }
+                                    />
+                                    <label
+                                      htmlFor="animal-col-weight"
+                                      className="text-sm cursor-pointer"
+                                    >
+                                      Weight
+                                    </label>
+                                  </div>
+                                  <div className="flex items-center space-x-2">
+                                    <Checkbox
+                                      id="animal-col-gender"
+                                      checked={animalVisibleColumns.gender}
+                                      onCheckedChange={() =>
+                                        toggleAnimalColumn("gender")
+                                      }
+                                    />
+                                    <label
+                                      htmlFor="animal-col-gender"
+                                      className="text-sm cursor-pointer"
+                                    >
+                                      Gender
+                                    </label>
+                                  </div>
+                                  <div className="flex items-center space-x-2">
+                                    <Checkbox
+                                      id="animal-col-enclosure"
+                                      checked={animalVisibleColumns.enclosure}
+                                      onCheckedChange={() =>
+                                        toggleAnimalColumn("enclosure")
+                                      }
+                                    />
+                                    <label
+                                      htmlFor="animal-col-enclosure"
+                                      className="text-sm cursor-pointer"
+                                    >
+                                      Enclosure
+                                    </label>
+                                  </div>
+                                  <div className="flex items-center space-x-2">
+                                    <Checkbox
+                                      id="animal-col-healthStatus"
+                                      checked={
+                                        animalVisibleColumns.healthStatus
+                                      }
+                                      onCheckedChange={() =>
+                                        toggleAnimalColumn("healthStatus")
+                                      }
+                                    />
+                                    <label
+                                      htmlFor="animal-col-healthStatus"
+                                      className="text-sm cursor-pointer"
+                                    >
+                                      Health Status
+                                    </label>
+                                  </div>
+                                </div>
+                              </div>
+                            </PopoverContent>
+                          </Popover>
+
+                          <div className="relative w-80">
+                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                            <Input
+                              placeholder="Search by name or species..."
+                              value={animalSearch}
+                              onChange={(e) => setAnimalSearch(e.target.value)}
+                              className="pl-10"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <Card id="animals">
+                        <CardContent className="pt-2">
+                          <div
+                            className="w-full rounded-md border"
+                            style={{
+                              overflowX: "auto",
+                              WebkitOverflowScrolling: "touch",
+                            }}
+                          >
+                            <div className="min-w-0">
+                              <Table
+                                id="animal-table"
+                                className="min-w-[900px] table-auto"
+                                style={{
+                                  minWidth: "900px",
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                <TableHeader className="bg-gray-100">
+                                  <TableRow>
+                                    {animalVisibleColumns.animalId && (
+                                      <TableHead
+                                        className="w-[80px] cursor-pointer select-none hover:bg-gray-50"
+                                        onClick={() =>
+                                          toggleAnimalSort("Animal_ID")
+                                        }
+                                      >
+                                        ID
+                                        {animalSortState.col ===
+                                          "Animal_ID" && (
+                                          <span className="ml-1 text-xs">
+                                            {animalSortState.dir === "asc"
+                                              ? "▲"
+                                              : "▼"}
+                                          </span>
+                                        )}
+                                      </TableHead>
+                                    )}
+                                    {animalVisibleColumns.name && (
+                                      <TableHead
+                                        className="cursor-pointer select-none hover:bg-gray-50"
+                                        onClick={() =>
+                                          toggleAnimalSort("Animal_Name")
+                                        }
+                                      >
+                                        Name
+                                        {animalSortState.col ===
+                                          "Animal_Name" && (
+                                          <span className="ml-1 text-xs">
+                                            {animalSortState.dir === "asc"
+                                              ? "▲"
+                                              : "▼"}
+                                          </span>
+                                        )}
+                                      </TableHead>
+                                    )}
+                                    {animalVisibleColumns.species && (
+                                      <TableHead
+                                        className="cursor-pointer select-none hover:bg-gray-50"
+                                        onClick={() =>
+                                          toggleAnimalSort("Species")
+                                        }
+                                      >
+                                        Species
+                                        {animalSortState.col === "Species" && (
+                                          <span className="ml-1 text-xs">
+                                            {animalSortState.dir === "asc"
+                                              ? "▲"
+                                              : "▼"}
+                                          </span>
+                                        )}
+                                      </TableHead>
+                                    )}
+                                    {animalVisibleColumns.gender && (
+                                      <TableHead
+                                        className="cursor-pointer select-none hover:bg-gray-50"
+                                        onClick={() =>
+                                          toggleAnimalSort("Gender")
+                                        }
+                                      >
+                                        Gender
+                                        {animalSortState.col === "Gender" && (
+                                          <span className="ml-1 text-xs">
+                                            {animalSortState.dir === "asc"
+                                              ? "▲"
+                                              : "▼"}
+                                          </span>
+                                        )}
+                                      </TableHead>
+                                    )}
+                                    {animalVisibleColumns.age && (
+                                      <TableHead
+                                        className="cursor-pointer select-none hover:bg-gray-50"
+                                        onClick={() => toggleAnimalSort("Age")}
+                                      >
+                                        Age
+                                        {animalSortState.col === "Age" && (
+                                          <span className="ml-1 text-xs">
+                                            {animalSortState.dir === "asc"
+                                              ? "▲"
+                                              : "▼"}
+                                          </span>
+                                        )}
+                                      </TableHead>
+                                    )}
+                                    {animalVisibleColumns.weight && (
+                                      <TableHead
+                                        className="cursor-pointer select-none hover:bg-gray-50 text-center"
+                                        onClick={() =>
+                                          toggleAnimalSort("Weight")
+                                        }
+                                      >
+                                        Weight (lbs)
+                                        {animalSortState.col === "Weight" && (
+                                          <span className="ml-1 text-xs">
+                                            {animalSortState.dir === "asc"
+                                              ? "▲"
+                                              : "▼"}
+                                          </span>
+                                        )}
+                                      </TableHead>
+                                    )}
+                                    {animalVisibleColumns.healthStatus && (
+                                      <TableHead
+                                        className="cursor-pointer select-none hover:bg-gray-50"
+                                        onClick={() =>
+                                          toggleAnimalSort("Health_Status")
+                                        }
+                                      >
+                                        Health Status
+                                        {animalSortState.col ===
+                                          "Health_Status" && (
+                                          <span className="ml-1 text-xs">
+                                            {animalSortState.dir === "asc"
+                                              ? "▲"
+                                              : "▼"}
+                                          </span>
+                                        )}
+                                      </TableHead>
+                                    )}
+                                    {animalVisibleColumns.enclosure && (
+                                      <TableHead
+                                        className="cursor-pointer select-none hover:bg-gray-50"
+                                        onClick={() =>
+                                          toggleAnimalSort("Enclosure_Name")
+                                        }
+                                      >
+                                        Enclosure
+                                        {animalSortState.col ===
+                                          "Enclosure_Name" && (
+                                          <span className="ml-1 text-xs">
+                                            {animalSortState.dir === "asc"
+                                              ? "▲"
+                                              : "▼"}
+                                          </span>
+                                        )}
+                                      </TableHead>
+                                    )}
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {displayedAnimals.length === 0 ? (
+                                    <TableRow>
+                                      <TableCell
+                                        colSpan={
+                                          Object.values(
+                                            animalVisibleColumns
+                                          ).filter(Boolean).length + 1
+                                        }
+                                        className="text-center py-8 text-gray-500"
+                                      >
+                                        No animals found for the current page
+                                      </TableCell>
+                                    </TableRow>
+                                  ) : (
+                                    displayedAnimals.map((animal) => (
+                                      <TableRow key={animal.Animal_ID}>
+                                        {animalVisibleColumns.animalId && (
+                                          <TableCell className="font-medium">
+                                            #{animal.Animal_ID}
+                                          </TableCell>
+                                        )}
+                                        {animalVisibleColumns.name && (
+                                          <TableCell>
+                                            {animal.Animal_Name}
+                                          </TableCell>
+                                        )}
+                                        {animalVisibleColumns.species && (
+                                          <TableCell>
+                                            {animal.Species}
+                                          </TableCell>
+                                        )}
+                                        {animalVisibleColumns.gender && (
+                                          <TableCell>{animal.Gender}</TableCell>
+                                        )}
+                                        {animalVisibleColumns.age && (
+                                          <TableCell>
+                                            {calculateAge(animal.Birthday)}
+                                          </TableCell>
+                                        )}
+                                        {animalVisibleColumns.weight && (
+                                          <TableCell className="whitespace-nowrap text-center">
+                                            {typeof animal.Weight !==
+                                              "undefined" &&
+                                            animal.Weight !== null &&
+                                            isFinite(Number(animal.Weight))
+                                              ? Number(animal.Weight).toFixed(2)
+                                              : "—"}
+                                          </TableCell>
+                                        )}
+                                        {animalVisibleColumns.healthStatus && (
+                                          <TableCell>
+                                            <Badge
+                                              variant="outline"
+                                              className={
+                                                animal.Health_Status === "Good"
+                                                  ? "bg-green-50 text-green-700 border-green-200"
+                                                  : ""
+                                              }
+                                              style={
+                                                animal.Health_Status ===
+                                                "Excellent"
+                                                  ? {
+                                                      backgroundColor:
+                                                        "#ECFEFF",
+                                                      color: "#0E7490",
+                                                      border:
+                                                        "1px solid #A5F3FC",
+                                                    }
+                                                  : animal.Health_Status ===
+                                                    "Fair"
+                                                  ? {
+                                                      backgroundColor:
+                                                        "#FEFCE8",
+                                                      color: "#ad7f49ff",
+                                                      border:
+                                                        "1px solid #FEF08A",
+                                                    }
+                                                  : animal.Health_Status ===
+                                                    "Needs Attention"
+                                                  ? {
+                                                      backgroundColor:
+                                                        "#FEF2F2",
+                                                      color: "#B91C1C",
+                                                      border:
+                                                        "1px solid #FECACA",
+                                                    }
+                                                  : {}
+                                              }
+                                            >
+                                              {backendToDisplayLabelLocal(
+                                                animal.Health_Status
+                                              )}
+                                            </Badge>
+                                          </TableCell>
+                                        )}
+                                        {animalVisibleColumns.enclosure && (
+                                          <TableCell>
+                                            {enclosureMap[animal.Enclosure_ID]
+                                              ?.Enclosure_Name || "Unknown"}
+                                          </TableCell>
+                                        )}
+                                      </TableRow>
+                                    ))
+                                  )}
+                                </TableBody>
+                              </Table>
+                            </div>
+                          </div>
+                          <div className="mt-4 flex items-center justify-between text-sm text-gray-600">
+                            <span>
+                              Showing{" "}
+                              {sortedAnimals.length > 0
+                                ? (animalCurrentPage - 1) * animalItemsPerPage +
+                                  1
+                                : 0}
+                              -
+                              {Math.min(
+                                animalCurrentPage * animalItemsPerPage,
+                                sortedAnimals.filter((a) => {
+                                  const searchLower =
+                                    animalSearch.toLowerCase();
+                                  return (
+                                    a.Animal_Name?.toLowerCase().includes(
+                                      searchLower
+                                    ) ||
+                                    a.Species?.toLowerCase().includes(
+                                      searchLower
+                                    ) ||
+                                    String(a.Animal_ID).includes(searchLower)
+                                  );
+                                }).length
+                              )}{" "}
+                              of{" "}
+                              {
+                                sortedAnimals.filter((a) => {
+                                  const searchLower =
+                                    animalSearch.toLowerCase();
+                                  return (
+                                    a.Animal_Name?.toLowerCase().includes(
+                                      searchLower
+                                    ) ||
+                                    a.Species?.toLowerCase().includes(
+                                      searchLower
+                                    ) ||
+                                    String(a.Animal_ID).includes(searchLower)
+                                  );
+                                }).length
+                              }{" "}
+                              animal
+                              {sortedAnimals.filter((a) => {
+                                const searchLower = animalSearch.toLowerCase();
+                                return (
+                                  a.Animal_Name?.toLowerCase().includes(
+                                    searchLower
+                                  ) ||
+                                  a.Species?.toLowerCase().includes(
+                                    searchLower
+                                  ) ||
+                                  String(a.Animal_ID).includes(searchLower)
+                                );
+                              }).length !== 1
+                                ? "s"
+                                : ""}
+                            </span>
+                          </div>
+                          <PaginationControls
+                            currentPage={animalCurrentPage}
+                            totalPages={animalTotalPages}
+                            onPageChange={handleAnimalPageChange}
+                            paginationArray={animalPaginationArray}
+                            className="mt-4"
+                          />
+                        </CardContent>
+                      </Card>
+                    </>
+                  </section>
+                  {sortedAnimals.length === 0 ? (
+                    <Card>
+                      <CardContent className="pt-6">
+                        <div className="text-center py-12">
+                          <AlertTriangle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                          <p className="text-lg text-gray-600">
+                            No animals found matching the selected filters
+                          </p>
+                          <p className="text-sm text-gray-500 mt-2">
+                            Try adjusting your filter criteria
+                          </p>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ) : (
+                    <>
+                      {/* Charts Grid */}
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-semibold text-gray-700">
+                          Visual Analysis
+                        </h3>
+                      </div>
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {/* Health Status Distribution - Pie Chart */}
+                        <Card>
+                          <CardHeader className="bg-gradient-to-r from-green-50 to-teal-50">
+                            <CardTitle className="flex items-center gap-2">
+                              <Heart className="h-5 w-5 text-green-600" />
+                              Health Status Distribution
+                            </CardTitle>
+                            <CardDescription>
+                              Overview of animal health by status
+                            </CardDescription>
+                          </CardHeader>
+                          <CardContent className="pt-6">
+                            <ResponsiveContainer width="100%" height={300}>
+                              <PieChart>
+                                <Pie
+                                  data={healthStatusData}
+                                  cx="50%"
+                                  cy="50%"
+                                  labelLine={{
+                                    stroke: "#6b7280",
+                                    strokeWidth: 1,
+                                  }}
+                                  label={({ name, percent }) => {
+                                    if (!percent || percent === 0) return null;
+                                    return `${name} — ${(percent * 100).toFixed(
+                                      0
+                                    )}%`;
+                                  }}
+                                  outerRadius={100}
+                                  innerRadius={45}
+                                  fill="#8884d8"
+                                  dataKey="value"
+                                  paddingAngle={2}
+                                >
+                                  {healthStatusData.map((entry, index) => (
+                                    <Cell
+                                      key={`cell-${index}`}
+                                      fill={entry.fill}
+                                    />
+                                  ))}
+                                </Pie>
+                                <Tooltip
+                                  contentStyle={{
+                                    backgroundColor: "#ffffff",
+                                    border: "1px solid #e5e7eb",
+                                    borderRadius: "0.5rem",
+                                  }}
+                                  formatter={(value) => [`${value}`, "Count"]}
+                                />
+                                <Legend
+                                  verticalAlign="bottom"
+                                  height={36}
+                                  iconType="circle"
+                                  wrapperStyle={{ fontSize: "0.875rem" }}
+                                />
+                              </PieChart>
+                            </ResponsiveContainer>
+                          </CardContent>
+                        </Card>
+
+                        {/* Health by Exhibit */}
+                        {byExhibit.length > 0 && (
+                          <Card>
+                            <CardHeader className="bg-gradient-to-r from-green-50 to-teal-50">
+                              <CardTitle className="flex items-center gap-2">
+                                <BarChart3 className="h-5 w-5 text-green-600" />
+                                Health by Exhibit
+                              </CardTitle>
+                              <CardDescription>
+                                Health counts grouped by exhibit
+                              </CardDescription>
+                            </CardHeader>
+                            <CardContent className="pt-6">
+                              <ResponsiveContainer width="100%" height={300}>
+                                <BarChart
+                                  data={byExhibit}
+                                  margin={{ left: 0, right: 8 }}
+                                >
+                                  <defs>
+                                    <linearGradient
+                                      id="excellentGradient"
+                                      x1="0"
+                                      y1="0"
+                                      x2="0"
+                                      y2="1"
+                                    >
+                                      <stop
+                                        offset="5%"
+                                        stopColor={healthColors.Excellent}
+                                        stopOpacity={0.85}
+                                      />
+                                      <stop
+                                        offset="95%"
+                                        stopColor={healthColors.Excellent}
+                                        stopOpacity={0.35}
+                                      />
+                                    </linearGradient>
+                                    <linearGradient
+                                      id="goodGradient"
+                                      x1="0"
+                                      y1="0"
+                                      x2="0"
+                                      y2="1"
+                                    >
+                                      <stop
+                                        offset="5%"
+                                        stopColor={healthColors.Good}
+                                        stopOpacity={0.85}
+                                      />
+                                      <stop
+                                        offset="95%"
+                                        stopColor={healthColors.Good}
+                                        stopOpacity={0.35}
+                                      />
+                                    </linearGradient>
+                                    <linearGradient
+                                      id="fairGradient"
+                                      x1="0"
+                                      y1="0"
+                                      x2="0"
+                                      y2="1"
+                                    >
+                                      <stop
+                                        offset="5%"
+                                        stopColor={healthColors.Fair}
+                                        stopOpacity={0.85}
+                                      />
+                                      <stop
+                                        offset="95%"
+                                        stopColor={healthColors.Fair}
+                                        stopOpacity={0.35}
+                                      />
+                                    </linearGradient>
+                                    <linearGradient
+                                      id="criticalGradient"
+                                      x1="0"
+                                      y1="0"
+                                      x2="0"
+                                      y2="1"
+                                    >
+                                      <stop
+                                        offset="5%"
+                                        stopColor={
+                                          healthColors["Needs Attention"]
+                                        }
+                                        stopOpacity={0.85}
+                                      />
+                                      <stop
+                                        offset="95%"
+                                        stopColor={
+                                          healthColors["Needs Attention"]
+                                        }
+                                        stopOpacity={0.35}
+                                      />
+                                    </linearGradient>
+                                  </defs>
+                                  <CartesianGrid
+                                    strokeDasharray="3 3"
+                                    stroke="#e5e7eb"
+                                  />
+                                  <XAxis
+                                    dataKey="enclosureName"
+                                    interval={0}
+                                    height={80}
+                                    stroke="#6b7280"
+                                    style={{ fontSize: "0.875rem" }}
+                                    tick={({ x, y, payload }) => {
+                                      const label = String(
+                                        payload?.value || ""
+                                      );
+                                      const rotate = byExhibit.length > 4;
+
+                                      if (!rotate) {
+                                        return (
+                                          <g
+                                            transform={`translate(${x}, ${
+                                              y + 16
+                                            })`}
+                                          >
+                                            <text
+                                              textAnchor="middle"
+                                              fontSize={12}
+                                            >
+                                              {label}
+                                            </text>
+                                          </g>
+                                        );
+                                      }
+
+                                      const maxChars = 18;
+                                      let line1 = label;
+                                      let line2 = "";
+                                      if (label.length > maxChars) {
+                                        const idx = label.lastIndexOf(
+                                          " ",
+                                          maxChars
+                                        );
+                                        if (idx > 0) {
+                                          line1 = label.slice(0, idx);
+                                          line2 = label.slice(idx + 1);
+                                        } else {
+                                          line1 = label.slice(0, maxChars);
+                                          line2 = label.slice(maxChars);
+                                        }
+                                      }
+
+                                      return (
+                                        <g
+                                          transform={`translate(${x}, ${
+                                            y + 10
+                                          })`}
+                                        >
+                                          <text
+                                            textAnchor="end"
+                                            fontSize={12}
+                                            transform="rotate(-45)"
+                                          >
+                                            <tspan x={0} dy={0}>
+                                              {line1}
+                                            </tspan>
+                                            {line2 && (
+                                              <tspan x={0} dy={12}>
+                                                {line2}
+                                              </tspan>
+                                            )}
+                                          </text>
+                                        </g>
+                                      );
+                                    }}
+                                  />
+                                  <YAxis
+                                    allowDecimals={false}
+                                    stroke="#6b7280"
+                                    style={{ fontSize: "0.875rem" }}
+                                  />
+                                  <Tooltip
+                                    contentStyle={{
+                                      backgroundColor: "#ffffff",
+                                      border: "1px solid #e5e7eb",
+                                      borderRadius: "0.5rem",
+                                    }}
+                                  />
+                                  <Legend
+                                    verticalAlign="bottom"
+                                    height={36}
+                                    iconType="circle"
+                                    wrapperStyle={{ fontSize: "0.875rem" }}
+                                  />
+                                  <Bar
+                                    dataKey="Excellent"
+                                    stackId="a"
+                                    fill="url(#excellentGradient)"
+                                  />
+                                  <Bar
+                                    dataKey="Good"
+                                    stackId="a"
+                                    fill="url(#goodGradient)"
+                                  />
+                                  <Bar
+                                    dataKey="Fair"
+                                    stackId="a"
+                                    fill="url(#fairGradient)"
+                                  />
+                                  <Bar
+                                    dataKey="Needs Attention"
+                                    name="Critical"
+                                    stackId="a"
+                                    fill="url(#criticalGradient)"
+                                  />
+                                </BarChart>
+                              </ResponsiveContainer>
+                            </CardContent>
+                          </Card>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })()}
           </TabsContent>
         </Tabs>
       </div>

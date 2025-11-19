@@ -11,12 +11,12 @@ export function HomePage() {
       <CustomerHighlights />
       <OperationalDashboard />
 
-      {/* Spacer between Today's Activities and Weather section (no divider line) */}
-      <div className="py-16 bg-white" />
+      {/* Reduced spacer between Today's Activities and Weather section */}
+      <div className="py-6 bg-white" />
 
-      {/* Zoo Map Section */}
+      {/* Weather Conditions Section */}
       <WeatherSelector />
-      <section className="py-16 bg-gray-50">
+      <section id="our-map" className="py-16 bg-gray-50">
         <div className="container mx-auto px-6">
           <div className="text-center mb-12">
             <h2 className="text-3xl md:text-4xl mb-4">Explore Our Zoo</h2>

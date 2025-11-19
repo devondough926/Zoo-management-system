@@ -240,15 +240,30 @@ export function CleaningCard({ data, onClean, onSkip, loading = false }) {
                   overflow: "hidden",
                 }}
               >
+                {/* Light gray empty track inside the padded area so the unfilled
+                    portion is visibly gray even when the fill width is small */}
                 <div
                   style={{
                     position: "absolute",
                     top: 2,
                     left: 2,
-                    width: `calc(${Math.min(
-                      100,
-                      data.progress_percent
-                    )}% - 4px)`,
+                    width: "calc(100% - 4px)",
+                    height: "calc(100% - 4px)",
+                    backgroundColor: "#f3f4f6",
+                    borderRadius: 4,
+                    zIndex: 0,
+                  }}
+                />
+
+                <div
+                  style={{
+                    position: "absolute",
+                    top: 2,
+                    left: 2,
+                    width:
+                      Number(data.progress_percent) > 0
+                        ? `calc(${Math.min(100, data.progress_percent)}% - 4px)`
+                        : "0px",
                     height: "calc(100% - 4px)",
                     backgroundColor: progressColor,
                     borderRadius: 4,
@@ -265,6 +280,7 @@ export function CleaningCard({ data, onClean, onSkip, loading = false }) {
                     backgroundSize: "28px 28px",
                     animation: "prog-move 1s linear infinite",
                     transition: "width 0.3s ease-in-out",
+                    zIndex: 1,
                   }}
                 />
                 <div

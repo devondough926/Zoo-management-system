@@ -121,9 +121,25 @@ export function LoginPage({ onLogin }) {
         Back to Home
       </Button>
 
-      {/* Centered Container */}
-      <div className="h-screen flex items-center justify-center overflow-y-auto">
-        <div className="w-full max-w-sm">
+      {/* Top-aligned Container: keep horizontal centering but push content toward top */}
+      <div
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "center",
+          paddingTop: "6%",
+          paddingBottom: "2rem",
+        }}
+      >
+        <div
+          style={{
+            width: "100%",
+            maxWidth: "24rem",
+            marginLeft: "auto",
+            marginRight: "auto",
+          }}
+        >
           {/* Logo with drop shadow for standout effect */}
           <div className="flex flex-col items-center justify-center mb-8">
             <span className="text-5xl font-bold text-white mt-4 drop-shadow-lg">
