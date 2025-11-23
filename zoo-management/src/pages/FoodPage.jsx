@@ -20,6 +20,7 @@ import {
 import { toast } from "sonner";
 import { useAuth } from "../contexts/AuthContext";
 import { useData } from "../data/DataContext";
+import LoadingWithIcon from "../components/ui/LoadingWithIcon";
 import { preloadImages } from "../utils/imagePreloader";
 import { useHeroImage } from "../utils/heroImages";
 
@@ -30,16 +31,20 @@ export function FoodPage({ addToCart, allowCartActions = true }) {
   const { user, userType } = useAuth();
   const heroImage = useHeroImage("food");
   const [concessionItems, setConcessionItems] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchConcessionItems = async () => {
       try {
+        setLoading(true);
         const res = await fetch(`${API_BASE}/food`);
         if (!res.ok) throw new Error("Failed to fetch food items");
         const data = await res.json();
         setConcessionItems(data);
       } catch (err) {
         toast.error("Failed to load food items");
+      } finally {
+        setLoading(false);
       }
     };
     fetchConcessionItems();
@@ -175,6 +180,9 @@ export function FoodPage({ addToCart, allowCartActions = true }) {
     // Set any missing carousel indices to their initial offsetStart
     setCarouselIndices((prev) => ({ ...initialIndices, ...prev }));
   }, [itemsByStand]);
+
+  // Show centered overlay while concession items are loading
+  const isFoodLoading = loading;
 
   const hasMembership =
     user && userType === "customer" && memberships
@@ -316,6 +324,13 @@ export function FoodPage({ addToCart, allowCartActions = true }) {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {isFoodLoading && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg shadow-lg">
+            <LoadingWithIcon text="Loading food items..." size={48} />
+          </div>
+        </div>
+      )}
       <section className="relative bg-gradient-to-br from-green-600 to-emerald-700 text-white py-16 overflow-hidden">
         <div className="absolute inset-0 z-0">
           <ImageWithFallback

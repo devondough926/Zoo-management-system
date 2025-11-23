@@ -23,7 +23,7 @@ const weatherIcons = {
   Snow: CloudSnow,
 };
 
-export function WeatherSelector() {
+export function WeatherSelector({ isAdminView = false }) {
   const { selectedWeather, setSelectedWeather, weatherConditions } =
     useWeather();
   // pendingWeather holds the card selection until the user clicks Apply
@@ -182,10 +182,7 @@ export function WeatherSelector() {
       <div style={styles.container}>
         <div style={styles.header}>
           <h2 style={styles.title}>Weather Conditions</h2>
-          <p style={styles.intro}>
-            Select a weather condition to see how it affects exhibit
-            availability
-          </p>
+          {isAdminView && <p style={styles.intro}></p>}
           {selectedWeather && (
             <span
               style={{
@@ -200,159 +197,168 @@ export function WeatherSelector() {
           )}
         </div>
 
-        <div style={styles.grid}>
-          {weatherConditions.map((condition) => {
-            const Icon = weatherIcons[condition.type];
-            const isSelected = pendingWeather?.id === condition.id;
-            const color = cardColors[condition.type] || "#6b7280";
+        {isAdminView && (
+          <div style={styles.grid}>
+            {weatherConditions.map((condition) => {
+              const Icon = weatherIcons[condition.type];
+              const isSelected = pendingWeather?.id === condition.id;
+              const color = cardColors[condition.type] || "#6b7280";
 
-            return (
-              <Card
-                key={condition.id}
-                style={styles.cardStyle(isSelected, color)}
-                onClick={() => handleWeatherSelect(condition)}
-                onMouseEnter={(e) => {
-                  if (!isSelected) {
-                    e.currentTarget.style.transform = "translateY(-4px)";
-                    e.currentTarget.style.boxShadow =
-                      "0 10px 30px rgba(2,6,23,0.06)";
-                  } else {
-                    e.currentTarget.style.transform = "translateY(-8px)";
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!isSelected) {
-                    e.currentTarget.style.transform = "none";
-                    e.currentTarget.style.boxShadow =
-                      "0 6px 14px rgba(2,6,23,0.03)";
-                  } else {
-                    e.currentTarget.style.transform = "translateY(-6px)";
-                  }
-                }}
-              >
-                {/* colored accent stripe at top of card (softer tone) */}
-                <div
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    height: 6,
-                    background: isSelected ? color : hexToRgba(color, 0.18),
-                    borderTopLeftRadius: 12,
-                    borderTopRightRadius: 12,
+              return (
+                <Card
+                  key={condition.id}
+                  style={styles.cardStyle(isSelected, color)}
+                  onClick={() => handleWeatherSelect(condition)}
+                  onMouseEnter={(e) => {
+                    if (!isSelected) {
+                      e.currentTarget.style.transform = "translateY(-4px)";
+                      e.currentTarget.style.boxShadow =
+                        "0 10px 30px rgba(2,6,23,0.06)";
+                    } else {
+                      e.currentTarget.style.transform = "translateY(-8px)";
+                    }
                   }}
-                />
-                <CardContent style={styles.cardContent}>
-                  <div style={styles.iconWrap}>
-                    {Icon && (
-                      <Icon style={{ ...styles.icon(color), opacity: 0.95 }} />
-                    )}
-                  </div>
-                  <p style={styles.typeText(isSelected)}>{condition.type}</p>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+                  onMouseLeave={(e) => {
+                    if (!isSelected) {
+                      e.currentTarget.style.transform = "none";
+                      e.currentTarget.style.boxShadow =
+                        "0 6px 14px rgba(2,6,23,0.03)";
+                    } else {
+                      e.currentTarget.style.transform = "translateY(-6px)";
+                    }
+                  }}
+                >
+                  {/* colored accent stripe at top of card (softer tone) */}
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      height: 6,
+                      background: isSelected ? color : hexToRgba(color, 0.18),
+                      borderTopLeftRadius: 12,
+                      borderTopRightRadius: 12,
+                    }}
+                  />
+                  <CardContent style={styles.cardContent}>
+                    <div style={styles.iconWrap}>
+                      {Icon && (
+                        <Icon
+                          style={{ ...styles.icon(color), opacity: 0.95 }}
+                        />
+                      )}
+                    </div>
+                    <p style={styles.typeText(isSelected)}>{condition.type}</p>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
 
-        <div style={styles.clearWrap}>
-          {/* Single Clear button: clears pending if present, otherwise clears applied weather */}
-          <button
-            onMouseEnter={() => setIsClearHover(true)}
-            onMouseLeave={() => setIsClearHover(false)}
-            style={{
-              background: isClearHover ? "#f8fafc" : "#ffffff",
-              color: "#374151",
-              border: "1px solid #e5e7eb",
-              padding: "10px 20px",
-              borderRadius: 999,
-              cursor:
-                pendingWeather || selectedWeather ? "pointer" : "not-allowed",
-              boxShadow:
-                pendingWeather || selectedWeather
-                  ? isClearHover
-                    ? "0 10px 30px rgba(2,6,23,0.08)"
-                    : "0 6px 18px rgba(2,6,23,0.04)"
+        {isAdminView && (
+          <div style={styles.clearWrap}>
+            {/* Single Clear button: clears pending if present, otherwise clears applied weather */}
+            <button
+              onMouseEnter={() => setIsClearHover(true)}
+              onMouseLeave={() => setIsClearHover(false)}
+              style={{
+                background: isClearHover ? "#f8fafc" : "#ffffff",
+                color: "#374151",
+                border: "1px solid #e5e7eb",
+                padding: "10px 20px",
+                borderRadius: 999,
+                cursor:
+                  pendingWeather || selectedWeather ? "pointer" : "not-allowed",
+                boxShadow:
+                  pendingWeather || selectedWeather
+                    ? isClearHover
+                      ? "0 10px 30px rgba(2,6,23,0.08)"
+                      : "0 6px 18px rgba(2,6,23,0.04)"
+                    : "none",
+                marginRight: 12,
+                transition: "all 160ms ease",
+                transform: isClearHover ? "translateY(-2px)" : "none",
+              }}
+              onClick={async () => {
+                if (pendingWeather) {
+                  setPendingWeather(null);
+                  return;
+                }
+
+                if (selectedWeather) {
+                  // Clear server-side active weather
+                  try {
+                    const base =
+                      import.meta.env.VITE_API_URL ||
+                      "http://localhost:5000/api";
+                    await fetch(`${base}/weather/clear`, { method: "POST" });
+                  } catch (err) {
+                    console.error("Failed to clear weather on server:", err);
+                  }
+                  setSelectedWeather(null);
+                }
+              }}
+              disabled={!pendingWeather && !selectedWeather}
+            >
+              Clear
+            </button>
+
+            {/* Apply button applies the pending selection to the global weather */}
+            <button
+              onMouseEnter={() => setIsApplyHover(true)}
+              onMouseLeave={() => setIsApplyHover(false)}
+              style={{
+                background: !isApplyDisabled
+                  ? isApplyHover
+                    ? "#0b1220"
+                    : "#111827"
+                  : "#f3f4f6",
+                color: !isApplyDisabled ? "#ffffff" : "#9ca3af",
+                border: "none",
+                padding: "10px 20px",
+                borderRadius: 999,
+                cursor: !isApplyDisabled ? "pointer" : "not-allowed",
+                boxShadow: !isApplyDisabled
+                  ? isApplyHover
+                    ? "0 14px 36px rgba(2,6,23,0.12)"
+                    : "0 8px 20px rgba(2,6,23,0.06)"
                   : "none",
-              marginRight: 12,
-              transition: "all 160ms ease",
-              transform: isClearHover ? "translateY(-2px)" : "none",
-            }}
-            onClick={async () => {
-              if (pendingWeather) {
-                setPendingWeather(null);
-                return;
-              }
+                transition: "all 160ms ease",
+                transform:
+                  isApplyHover && !isApplyDisabled
+                    ? "translateY(-3px)"
+                    : "none",
+              }}
+              onClick={async () => {
+                if (isApplyDisabled || !pendingWeather) return;
 
-              if (selectedWeather) {
-                // Clear server-side active weather
+                // First tell the server to activate this weather so DB triggers run
                 try {
                   const base =
                     import.meta.env.VITE_API_URL || "http://localhost:5000/api";
-                  await fetch(`${base}/weather/clear`, { method: "POST" });
+                  await fetch(`${base}/weather/activate`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      id: pendingWeather.id,
+                      type: pendingWeather.type,
+                    }),
+                  });
                 } catch (err) {
-                  console.error("Failed to clear weather on server:", err);
+                  console.error("Failed to activate weather on server:", err);
+                  // fall through to setSelectedWeather locally anyway
                 }
-                setSelectedWeather(null);
-              }
-            }}
-            disabled={!pendingWeather && !selectedWeather}
-          >
-            Clear
-          </button>
 
-          {/* Apply button applies the pending selection to the global weather */}
-          <button
-            onMouseEnter={() => setIsApplyHover(true)}
-            onMouseLeave={() => setIsApplyHover(false)}
-            style={{
-              background: !isApplyDisabled
-                ? isApplyHover
-                  ? "#0b1220"
-                  : "#111827"
-                : "#f3f4f6",
-              color: !isApplyDisabled ? "#ffffff" : "#9ca3af",
-              border: "none",
-              padding: "10px 20px",
-              borderRadius: 999,
-              cursor: !isApplyDisabled ? "pointer" : "not-allowed",
-              boxShadow: !isApplyDisabled
-                ? isApplyHover
-                  ? "0 14px 36px rgba(2,6,23,0.12)"
-                  : "0 8px 20px rgba(2,6,23,0.06)"
-                : "none",
-              transition: "all 160ms ease",
-              transform:
-                isApplyHover && !isApplyDisabled ? "translateY(-3px)" : "none",
-            }}
-            onClick={async () => {
-              if (isApplyDisabled || !pendingWeather) return;
-
-              // First tell the server to activate this weather so DB triggers run
-              try {
-                const base =
-                  import.meta.env.VITE_API_URL || "http://localhost:5000/api";
-                await fetch(`${base}/weather/activate`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    id: pendingWeather.id,
-                    type: pendingWeather.type,
-                  }),
-                });
-              } catch (err) {
-                console.error("Failed to activate weather on server:", err);
-                // fall through to setSelectedWeather locally anyway
-              }
-
-              setSelectedWeather(pendingWeather);
-            }}
-            disabled={isApplyDisabled}
-          >
-            Apply
-          </button>
-        </div>
+                setSelectedWeather(pendingWeather);
+              }}
+              disabled={isApplyDisabled}
+            >
+              Apply
+            </button>
+          </div>
+        )}
 
         {selectedWeather && (
           <div style={styles.impactWrap}>

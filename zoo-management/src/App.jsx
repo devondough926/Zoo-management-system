@@ -122,20 +122,38 @@ function AppContent() {
     // Navigate based on type and role
     if (type === "employee") {
       if (userRole === "admin" || userRole === "supervisor") {
-        navigate("/admin-portal");
+        navigate("/admin-portal", { replace: true });
       } else {
-        navigate("/staff-portal");
+        navigate("/staff-portal", { replace: true });
       }
     } else if (type === "customer") {
-      navigate("/customer-dashboard");
+      navigate("/customer-dashboard", { replace: true });
     }
   };
 
   const handleLogout = async () => {
     // Clear cart state before logging out
     clearCart();
+    // Clear saved portal tab state so next login starts on default tabs
+    try {
+      if (typeof window !== "undefined" && window.localStorage) {
+        localStorage.removeItem("admin.activeTab");
+        localStorage.removeItem("zookeeper.activeTab");
+        localStorage.removeItem("vet.activeTab");
+      }
+    } catch (e) {
+      // ignore
+    }
+
     // Call the original logout function from AuthContext
     await logout();
+
+    // Ensure we're on a clean route (remove any `tab` query param)
+    try {
+      navigate("/login", { replace: true });
+    } catch (e) {
+      // ignore
+    }
   };
 
   const addToCart = (item) => {

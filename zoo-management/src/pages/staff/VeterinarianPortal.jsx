@@ -60,6 +60,9 @@ import {
   TableHeader,
   TableRow,
 } from "../../components/ui/table";
+import { DayPicker } from "react-day-picker";
+import "react-day-picker/dist/style.css";
+import { Calendar } from "lucide-react";
 import {
   BarChart,
   Bar,
@@ -95,6 +98,7 @@ import { toast } from "sonner";
 import { PaginationControls } from "../../components/PaginationControls";
 import { ZooLogo } from "../../components/ZooLogo";
 import { ImageWithFallback } from "../../components/figma/ImageWithFallback";
+import LoadingWithIcon from "../../components/ui/LoadingWithIcon";
 
 const flipStyles = `
 .flip-card { perspective: 1000px; width: 100%; position: relative; }
@@ -140,6 +144,10 @@ export function VeterinarianPortal(
   const [vets, setVets] = useState([]);
   const [selectedVetId, setSelectedVetId] = useState(null);
   const [vaccinationNotes, setVaccinationNotes] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
+  const [tabLoading, setTabLoading] = useState(false);
+  const [pendingTab, setPendingTab] = useState(null);
   const ALL_ENCLOSURES = "__ALL__";
   const [enclosureFilter, setEnclosureFilter] = useState(ALL_ENCLOSURES);
   const [filterHealthStatus, setFilterHealthStatus] = useState("all");
@@ -222,6 +230,40 @@ export function VeterinarianPortal(
   const [genderFilter, setGenderFilter] = useState("All");
   const [ageFilter, setAgeFilter] = useState("All");
   const [animalSearch, setAnimalSearch] = useState("");
+
+  // New filter states for Health Report tab
+  const [vaccinationStatusFilter, setVaccinationStatusFilter] = useState("All");
+  const [weightRangeFilter, setWeightRangeFilter] = useState("All");
+  const [speciesFilter, setSpeciesFilter] = useState("All");
+  const [reportHealthStatusFilter, setReportHealthStatusFilter] =
+    useState("All");
+
+  // Applied filter states - these are the actual filters used for data filtering
+  const [appliedHealthZoneFilter, setAppliedHealthZoneFilter] =
+    useState("None");
+  const [appliedHealthEnclosureFilter, setAppliedHealthEnclosureFilter] =
+    useState("All");
+  const [appliedGenderFilter, setAppliedGenderFilter] = useState("All");
+  const [appliedAgeFilter, setAppliedAgeFilter] = useState("All");
+  const [appliedVaccinationStatusFilter, setAppliedVaccinationStatusFilter] =
+    useState("All");
+  const [appliedWeightRangeFilter, setAppliedWeightRangeFilter] =
+    useState("All");
+  const [appliedSpeciesFilter, setAppliedSpeciesFilter] = useState("All");
+  const [appliedReportHealthStatusFilter, setAppliedReportHealthStatusFilter] =
+    useState("All");
+  const [appliedDateRangeFilter, setAppliedDateRangeFilter] = useState({
+    from: null,
+    to: null,
+  });
+  const [dateRangeFilter, setDateRangeFilter] = useState({
+    from: null,
+    to: null,
+  });
+  const [dateRangePreset, setDateRangePreset] = useState("all");
+  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
+  const [tempDateRange, setTempDateRange] = useState({ from: null, to: null });
+  const [prevDateRange, setPrevDateRange] = useState({ from: null, to: null });
   const [animalSortState, setAnimalSortState] = useState({
     col: null,
     dir: "asc",
@@ -239,9 +281,60 @@ export function VeterinarianPortal(
     healthStatus: true,
   });
 
+  // Check if date range can be applied (different from current)
+  const canApplyDate = useMemo(() => {
+    if (!tempDateRange || !tempDateRange.from || !tempDateRange.to)
+      return false;
+    // Must be a true range with different start and end
+    if (tempDateRange.to.getTime() === tempDateRange.from.getTime()) {
+      return false;
+    }
+    // Check if different from current dateRangeFilter
+    if (!dateRangeFilter.from || !dateRangeFilter.to) return true;
+    return (
+      tempDateRange.from.getTime() !== dateRangeFilter.from.getTime() ||
+      tempDateRange.to.getTime() !== dateRangeFilter.to.getTime()
+    );
+  }, [tempDateRange, dateRangeFilter]);
+
   const toggleFlip = (id) => {
     setFlippedCards((prev) => ({ ...prev, [id]: !prev[id] }));
   };
+
+  // Check if any filter has changed from the applied state
+  const hasFilterChanges = useMemo(() => {
+    return (
+      healthZoneFilter !== appliedHealthZoneFilter ||
+      healthEnclosureFilter !== appliedHealthEnclosureFilter ||
+      genderFilter !== appliedGenderFilter ||
+      ageFilter !== appliedAgeFilter ||
+      vaccinationStatusFilter !== appliedVaccinationStatusFilter ||
+      weightRangeFilter !== appliedWeightRangeFilter ||
+      speciesFilter !== appliedSpeciesFilter ||
+      reportHealthStatusFilter !== appliedReportHealthStatusFilter ||
+      dateRangeFilter.from !== appliedDateRangeFilter.from ||
+      dateRangeFilter.to !== appliedDateRangeFilter.to
+    );
+  }, [
+    healthZoneFilter,
+    appliedHealthZoneFilter,
+    healthEnclosureFilter,
+    appliedHealthEnclosureFilter,
+    genderFilter,
+    appliedGenderFilter,
+    ageFilter,
+    appliedAgeFilter,
+    vaccinationStatusFilter,
+    appliedVaccinationStatusFilter,
+    weightRangeFilter,
+    appliedWeightRangeFilter,
+    speciesFilter,
+    appliedSpeciesFilter,
+    reportHealthStatusFilter,
+    appliedReportHealthStatusFilter,
+    dateRangeFilter,
+    appliedDateRangeFilter,
+  ]);
 
   const getVetTriggerStyle = (val) => {
     // Compact base styles for tab pills; active pill gets filled background
@@ -348,6 +441,27 @@ export function VeterinarianPortal(
     }
   };
 
+  // Helper to get date range based on preset
+  const getDateRangeFromPreset = (preset) => {
+    const now = new Date();
+    const startDate = new Date(now);
+
+    switch (preset) {
+      case "today":
+        startDate.setHours(0, 0, 0, 0);
+        return { from: startDate, to: new Date(now) };
+      case "week":
+        startDate.setDate(now.getDate() - 7);
+        return { from: startDate, to: new Date(now) };
+      case "month":
+        startDate.setMonth(now.getMonth() - 1);
+        return { from: startDate, to: new Date(now) };
+      case "all":
+      default:
+        return { from: null, to: null };
+    }
+  };
+
   const sortedVets = useMemo(() => {
     return (vets || []).slice().sort((a, b) => {
       const aLast = (a.lastName || "").toString().toLowerCase();
@@ -364,6 +478,7 @@ export function VeterinarianPortal(
   const isMountedRef = useRef(false);
 
   const loadData = async () => {
+    setLoading(true);
     try {
       const [
         animals,
@@ -622,6 +737,9 @@ export function VeterinarianPortal(
       }
     } catch (err) {
       console.error("[VeterinarianPortal] Failed to load data", err);
+    } finally {
+      setLoading(false);
+      setInitialLoadDone(true);
     }
   };
 
@@ -632,6 +750,34 @@ export function VeterinarianPortal(
       isMountedRef.current = false;
     };
   }, [user.Employee_ID, user.Last_Name]);
+
+  // Show small popup when switching tabs after initial load
+  useEffect(() => {
+    if (!initialLoadDone) return;
+    setTabLoading(true);
+    const t = setTimeout(() => setTabLoading(false), 300);
+    return () => clearTimeout(t);
+  }, [activeTab, initialLoadDone]);
+
+  // Handle tab changes by preloading necessary data then switching
+  const handleTabChange = async (tab) => {
+    if (tab === activeTab) return;
+    if (tabLoading) return;
+    setPendingTab(tab);
+    setTabLoading(true);
+    try {
+      // For now, reload main data bundle to ensure tab content has data
+      await loadData();
+      // avoid flicker
+      await new Promise((r) => setTimeout(r, 120));
+    } catch (e) {
+      console.warn("Vet tab preload failed:", e);
+    } finally {
+      setActiveTab(tab);
+      setPendingTab(null);
+      setTabLoading(false);
+    }
+  };
 
   const filteredHealthRecords = useMemo(() => {
     const term = (vetSearchTerm || "").trim().toLowerCase();
@@ -973,6 +1119,18 @@ export function VeterinarianPortal(
     setAnimalCurrentPage(page);
   };
 
+  const handleApplyFilters = () => {
+    setAppliedHealthZoneFilter(healthZoneFilter);
+    setAppliedHealthEnclosureFilter(healthEnclosureFilter);
+    setAppliedGenderFilter(genderFilter);
+    setAppliedAgeFilter(ageFilter);
+    setAppliedVaccinationStatusFilter(vaccinationStatusFilter);
+    setAppliedWeightRangeFilter(weightRangeFilter);
+    setAppliedSpeciesFilter(speciesFilter);
+    setAppliedReportHealthStatusFilter(reportHealthStatusFilter);
+    setAppliedDateRangeFilter(dateRangeFilter);
+  };
+
   const enclosureMap = useMemo(() => {
     const map = {};
     allEnclosures.forEach((enc) => {
@@ -1082,6 +1240,13 @@ export function VeterinarianPortal(
 
   return (
     <div className="min-h-screen bg-gray-100">
+      {(tabLoading || loading) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
+          <div className="pointer-events-auto bg-white rounded-lg shadow-lg px-6 py-6 w-56 text-center">
+            <LoadingWithIcon text="Loading..." size={36} imgClassName="" />
+          </div>
+        </div>
+      )}
       <style>{flipStyles}</style>
       {/* Header - match other staff portals */}
       <header
@@ -1264,7 +1429,7 @@ export function VeterinarianPortal(
         {/* Main Tabs */}
         <Tabs
           value={activeTab}
-          onValueChange={setActiveTab}
+          onValueChange={handleTabChange}
           style={{ display: "block", marginBottom: 24 }}
         >
           <TabsList
@@ -1302,7 +1467,7 @@ export function VeterinarianPortal(
             </TabsTrigger>
             <TabsTrigger value="report" style={getVetTriggerStyle("report")}>
               <FileText style={{ width: 16, height: 16, marginRight: 8 }} />
-              Analytics
+              Health Report
             </TabsTrigger>
           </TabsList>
 
@@ -1722,38 +1887,284 @@ export function VeterinarianPortal(
           <TabsContent value="report" className="space-y-6">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl text-gray-900 flex items-center gap-2">
-                <Activity className="h-6 w-6 text-red-500" /> Health Analytics
+                <Activity className="h-6 w-6 text-red-500" /> Analytics
               </h2>
+
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-gray-600">Date added:</span>
+                <Popover
+                  open={isDatePickerOpen}
+                  onOpenChange={(open) => {
+                    if (open) {
+                      setTempDateRange(dateRangeFilter);
+                      setPrevDateRange(dateRangeFilter);
+                    }
+                    setIsDatePickerOpen(open);
+                  }}
+                >
+                  <PopoverTrigger asChild>
+                    <button
+                      aria-label="Open date range picker"
+                      onClick={(e) => e.stopPropagation()}
+                      className="inline-flex items-center gap-2 px-3 py-2 rounded-md border bg-white text-sm"
+                      style={{ borderColor: "#e5e7eb" }}
+                    >
+                      <Calendar className="h-4 w-4 text-gray-600" />
+                      <span className="text-gray-700">
+                        {dateRangePreset === "today" && "Today"}
+                        {dateRangePreset === "week" && "Past Week"}
+                        {dateRangePreset === "month" && "Past Month"}
+                        {dateRangePreset === "all" && "All Time"}
+                        {dateRangePreset === "custom" &&
+                          dateRangeFilter.from &&
+                          dateRangeFilter.to && (
+                            <>
+                              {new Date(
+                                dateRangeFilter.from
+                              ).toLocaleDateString()}{" "}
+                              -{" "}
+                              {new Date(
+                                dateRangeFilter.to
+                              ).toLocaleDateString()}
+                            </>
+                          )}
+                      </span>
+                    </button>
+                  </PopoverTrigger>
+
+                  <PopoverContent
+                    className="w-auto p-0"
+                    align="end"
+                    style={{ width: "450px" }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div style={{ display: "flex" }}>
+                      {/* Quick Ranges */}
+                      <div
+                        style={{
+                          width: "160px",
+                          borderRight: "1px solid #e5e7eb",
+                          paddingRight: "0.75rem",
+                          padding: "1rem",
+                        }}
+                      >
+                        <ul
+                          style={{
+                            listStyle: "none",
+                            padding: 0,
+                            margin: 0,
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: "0.5rem",
+                          }}
+                        >
+                          <li>
+                            <button
+                              onClick={() => {
+                                const range = getDateRangeFromPreset("today");
+                                setDateRangeFilter(range);
+                                setTempDateRange(range);
+                                setDateRangePreset("today");
+                                setIsDatePickerOpen(false);
+                              }}
+                              style={{
+                                width: "100%",
+                                textAlign: "left",
+                                padding: "0.5rem",
+                                borderRadius: "0.375rem",
+                                border: "none",
+                                background:
+                                  dateRangePreset === "today"
+                                    ? "#f3f4f6"
+                                    : "transparent",
+                                cursor: "pointer",
+                                fontSize: "0.875rem",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              Today
+                            </button>
+                          </li>
+                          <li>
+                            <button
+                              onClick={() => {
+                                const range = getDateRangeFromPreset("week");
+                                setDateRangeFilter(range);
+                                setTempDateRange(range);
+                                setDateRangePreset("week");
+                                setIsDatePickerOpen(false);
+                              }}
+                              style={{
+                                width: "100%",
+                                textAlign: "left",
+                                padding: "0.5rem",
+                                borderRadius: "0.375rem",
+                                border: "none",
+                                background:
+                                  dateRangePreset === "week"
+                                    ? "#f3f4f6"
+                                    : "transparent",
+                                cursor: "pointer",
+                                fontSize: "0.875rem",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              Past Week
+                            </button>
+                          </li>
+                          <li>
+                            <button
+                              onClick={() => {
+                                const range = getDateRangeFromPreset("month");
+                                setDateRangeFilter(range);
+                                setTempDateRange(range);
+                                setDateRangePreset("month");
+                                setIsDatePickerOpen(false);
+                              }}
+                              style={{
+                                width: "100%",
+                                textAlign: "left",
+                                padding: "0.5rem",
+                                borderRadius: "0.375rem",
+                                border: "none",
+                                background:
+                                  dateRangePreset === "month"
+                                    ? "#f3f4f6"
+                                    : "transparent",
+                                cursor: "pointer",
+                                fontSize: "0.875rem",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              Past Month
+                            </button>
+                          </li>
+                          <li>
+                            <button
+                              onClick={() => {
+                                const range = getDateRangeFromPreset("all");
+                                setDateRangeFilter(range);
+                                setTempDateRange(range);
+                                setDateRangePreset("all");
+                                setIsDatePickerOpen(false);
+                              }}
+                              style={{
+                                width: "100%",
+                                textAlign: "left",
+                                padding: "0.5rem",
+                                borderRadius: "0.375rem",
+                                border: "none",
+                                background:
+                                  dateRangePreset === "all"
+                                    ? "#f3f4f6"
+                                    : "transparent",
+                                cursor: "pointer",
+                                fontSize: "0.875rem",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              All Time
+                            </button>
+                          </li>
+                          <li>
+                            <button
+                              onClick={() => {
+                                const range = getDateRangeFromPreset("all");
+                                setDateRangeFilter(range);
+                                setTempDateRange(range);
+                                setDateRangePreset("all");
+                                setIsDatePickerOpen(false);
+                              }}
+                              style={{
+                                width: "100%",
+                                textAlign: "left",
+                                padding: "0.5rem",
+                                borderRadius: "0.375rem",
+                                border: "none",
+                                color: "#2563eb",
+                                background: "transparent",
+                                cursor: "pointer",
+                                fontSize: "0.875rem",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              Reset
+                            </button>
+                          </li>
+                        </ul>
+                      </div>
+
+                      {/* Calendar Picker */}
+                      <div style={{ flex: 1, padding: "1rem" }}>
+                        <DayPicker
+                          mode="range"
+                          selected={tempDateRange}
+                          onSelect={(range) => {
+                            if (!range) return;
+                            if (range?.from) {
+                              const sel = {
+                                from: range.from,
+                                to: range.to || range.from,
+                              };
+                              setTempDateRange(sel);
+                            }
+                          }}
+                          numberOfMonths={1}
+                        />
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: "0.5rem",
+                            marginTop: "1rem",
+                            justifyContent: "flex-end",
+                          }}
+                        >
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              setTempDateRange({ from: null, to: null })
+                            }
+                          >
+                            Clear
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              if (!canApplyDate) return;
+                              setDateRangeFilter(tempDateRange);
+                              setDateRangePreset("custom");
+                              setIsDatePickerOpen(false);
+                            }}
+                            disabled={!canApplyDate}
+                            className={`${
+                              canApplyDate
+                                ? "bg-green-600 hover:bg-green-700"
+                                : "bg-green-200 cursor-not-allowed"
+                            } text-white`}
+                            title={
+                              !canApplyDate
+                                ? "Select a date range (at least two different dates) to apply"
+                                : "Apply selected date range"
+                            }
+                          >
+                            Apply
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </div>
             </div>
 
             <Card>
               <div className="flex items-center justify-between">
-                {(healthZoneFilter !== "All" && healthZoneFilter !== "None") ||
-                (healthEnclosureFilter !== "All" &&
-                  healthEnclosureFilter !== "None") ||
-                (genderFilter !== "All" && genderFilter !== "None") ||
-                (ageFilter !== "All" && ageFilter !== "None") ? (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      setHealthZoneFilter("None");
-                      setHealthEnclosureFilter("All");
-                      setGenderFilter("All");
-                      setAgeFilter("All");
-                    }}
-                    className="cursor-pointer"
-                  >
-                    Reset All Filters
-                  </Button>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-semibold text-gray-700"></h3>
-                  </div>
-                )}
+                {/* left placeholder so right-side button aligns to the right */}
+                <div />
               </div>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <CardContent className="pt-2">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
                   {/* Zone Filter */}
                   <div>
                     <Label htmlFor="health-zone-filter">Zone</Label>
@@ -1874,6 +2285,153 @@ export function VeterinarianPortal(
                       </SelectContent>
                     </Select>
                   </div>
+
+                  {/* Vaccination Status Filter */}
+                  <div>
+                    <Label htmlFor="vaccination-status-filter">
+                      Vaccination Status
+                    </Label>
+                    <Select
+                      value={vaccinationStatusFilter}
+                      onValueChange={(value) =>
+                        setVaccinationStatusFilter(value)
+                      }
+                    >
+                      <SelectTrigger
+                        id="vaccination-status-filter"
+                        className="cursor-pointer"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="All">All Animals</SelectItem>
+                        <SelectItem value="Vaccinated">Vaccinated</SelectItem>
+                        <SelectItem value="Not Vaccinated">
+                          Not Vaccinated
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Weight Range Filter */}
+                  <div>
+                    <Label htmlFor="weight-range-filter">
+                      Weight Range (lbs)
+                    </Label>
+                    <Select
+                      value={weightRangeFilter}
+                      onValueChange={(value) => setWeightRangeFilter(value)}
+                    >
+                      <SelectTrigger
+                        id="weight-range-filter"
+                        className="cursor-pointer"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="All">All Weights</SelectItem>
+                        <SelectItem value="0-50">0-50 lbs</SelectItem>
+                        <SelectItem value="51-100">51-100 lbs</SelectItem>
+                        <SelectItem value="101-200">101-200 lbs</SelectItem>
+                        <SelectItem value="201-500">201-500 lbs</SelectItem>
+                        <SelectItem value="501+">501+ lbs</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Species Filter */}
+                  <div>
+                    <Label htmlFor="species-filter">Species</Label>
+                    <Select
+                      value={speciesFilter}
+                      onValueChange={(value) => setSpeciesFilter(value)}
+                    >
+                      <SelectTrigger
+                        id="species-filter"
+                        className="cursor-pointer"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-60">
+                        <SelectItem value="All">All Species</SelectItem>
+                        {Array.from(new Set(allAnimalsDB.map((a) => a.Species)))
+                          .sort()
+                          .map((species) => (
+                            <SelectItem key={species} value={species}>
+                              {species}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Health Status Filter */}
+                  <div>
+                    <Label htmlFor="report-health-status-filter">
+                      Health Status
+                    </Label>
+                    <Select
+                      value={reportHealthStatusFilter}
+                      onValueChange={(value) =>
+                        setReportHealthStatusFilter(value)
+                      }
+                    >
+                      <SelectTrigger
+                        id="report-health-status-filter"
+                        className="cursor-pointer"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="All">All Statuses</SelectItem>
+                        {BACKEND_HEALTH_STATUSES.map((status) => (
+                          <SelectItem key={status} value={status}>
+                            {backendToDisplayLabel(status)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="flex justify-end pt-4 border-t mt-4 gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      // Reset current selections and applied filters to defaults
+                      setHealthZoneFilter("None");
+                      setHealthEnclosureFilter("All");
+                      setGenderFilter("All");
+                      setAgeFilter("All");
+                      setVaccinationStatusFilter("All");
+                      setWeightRangeFilter("All");
+                      setSpeciesFilter("All");
+                      setReportHealthStatusFilter("All");
+                      setDateRangeFilter({ from: null, to: null });
+                      setTempDateRange({ from: null, to: null });
+                      setDateRangePreset("all");
+                      setAppliedHealthZoneFilter("None");
+                      setAppliedHealthEnclosureFilter("All");
+                      setAppliedGenderFilter("All");
+                      setAppliedAgeFilter("All");
+                      setAppliedVaccinationStatusFilter("All");
+                      setAppliedWeightRangeFilter("All");
+                      setAppliedSpeciesFilter("All");
+                      setAppliedReportHealthStatusFilter("All");
+                      setAppliedDateRangeFilter({ from: null, to: null });
+                    }}
+                    className="cursor-pointer"
+                  >
+                    Reset All
+                  </Button>
+
+                  <Button
+                    onClick={handleApplyFilters}
+                    disabled={!hasFilterChanges}
+                    className="bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Apply
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -1895,18 +2453,18 @@ export function VeterinarianPortal(
                 return age;
               };
 
-              // Filter animals based on selected filters
+              // Filter animals based on applied filters
               const filteredAnimals = (() => {
                 // If Zone is explicitly set to 'None' (No selection), do not show any animals
-                if (healthZoneFilter === "None") {
+                if (appliedHealthZoneFilter === "None") {
                   return [];
                 }
 
                 return allAnimalsDB.filter((animal) => {
                   // Zone filter
                   if (
-                    healthZoneFilter !== "All" &&
-                    healthZoneFilter !== "None"
+                    appliedHealthZoneFilter !== "All" &&
+                    appliedHealthZoneFilter !== "None"
                   ) {
                     const enclosure = allEnclosures.find(
                       (e) => e.Enclosure_ID === animal.Enclosure_ID
@@ -1914,27 +2472,31 @@ export function VeterinarianPortal(
                     const location = allLocations.find(
                       (loc) => loc.Location_ID === enclosure?.Location_ID
                     );
-                    if (location?.Zone !== healthZoneFilter) return false;
+                    if (location?.Zone !== appliedHealthZoneFilter)
+                      return false;
                   }
 
                   // Enclosure filter
                   if (
-                    healthEnclosureFilter !== "All" &&
-                    healthEnclosureFilter !== "None" &&
-                    animal.Enclosure_ID !== healthEnclosureFilter
+                    appliedHealthEnclosureFilter !== "All" &&
+                    appliedHealthEnclosureFilter !== "None" &&
+                    animal.Enclosure_ID !== appliedHealthEnclosureFilter
                   )
                     return false;
 
                   // Gender filter
                   if (
-                    genderFilter !== "All" &&
-                    genderFilter !== "None" &&
-                    animal.Gender !== genderFilter
+                    appliedGenderFilter !== "All" &&
+                    appliedGenderFilter !== "None" &&
+                    animal.Gender !== appliedGenderFilter
                   )
                     return false;
 
                   // Age filter
-                  if (ageFilter !== "All" && ageFilter !== "None") {
+                  if (
+                    appliedAgeFilter !== "All" &&
+                    appliedAgeFilter !== "None"
+                  ) {
                     const age = calculateAge(animal.Birthday);
                     if (ageFilter === "0-2" && (age < 0 || age > 2))
                       return false;
@@ -1943,6 +2505,88 @@ export function VeterinarianPortal(
                     if (ageFilter === "6-10" && (age < 6 || age > 10))
                       return false;
                     if (ageFilter === "11+" && age < 11) return false;
+                  }
+
+                  // Vaccination Status filter
+                  if (appliedVaccinationStatusFilter !== "All") {
+                    const healthRecord = healthRecords.find(
+                      (hr) => hr.Animal_ID === animal.Animal_ID
+                    );
+                    if (
+                      appliedVaccinationStatusFilter === "Vaccinated" &&
+                      !healthRecord?.Vaccinated
+                    )
+                      return false;
+                    if (
+                      appliedVaccinationStatusFilter === "Not Vaccinated" &&
+                      healthRecord?.Vaccinated
+                    )
+                      return false;
+                  }
+
+                  // Weight Range filter
+                  if (appliedWeightRangeFilter !== "All" && animal.Weight) {
+                    const weight = animal.Weight;
+                    if (
+                      appliedWeightRangeFilter === "0-50" &&
+                      (weight < 0 || weight > 50)
+                    )
+                      return false;
+                    if (
+                      appliedWeightRangeFilter === "51-100" &&
+                      (weight < 51 || weight > 100)
+                    )
+                      return false;
+                    if (
+                      appliedWeightRangeFilter === "101-200" &&
+                      (weight < 101 || weight > 200)
+                    )
+                      return false;
+                    if (
+                      appliedWeightRangeFilter === "201-500" &&
+                      (weight < 201 || weight > 500)
+                    )
+                      return false;
+                    if (appliedWeightRangeFilter === "501+" && weight < 501)
+                      return false;
+                  }
+
+                  // Species filter
+                  if (
+                    appliedSpeciesFilter !== "All" &&
+                    animal.Species !== appliedSpeciesFilter
+                  )
+                    return false;
+
+                  // Health Status filter
+                  if (appliedReportHealthStatusFilter !== "All") {
+                    if (
+                      animal.Health_Status !== appliedReportHealthStatusFilter
+                    )
+                      return false;
+                  }
+
+                  // Date Range filter (based on Date_Added)
+                  if (
+                    appliedDateRangeFilter.from ||
+                    appliedDateRangeFilter.to
+                  ) {
+                    if (!animal.Date_Added) return false;
+
+                    const animalDate = new Date(animal.Date_Added);
+                    animalDate.setHours(0, 0, 0, 0);
+
+                    if (appliedDateRangeFilter.from) {
+                      const fromDate = new Date(appliedDateRangeFilter.from);
+                      fromDate.setHours(0, 0, 0, 0);
+                      if (animalDate < fromDate) return false;
+                    }
+
+                    if (appliedDateRangeFilter.to) {
+                      const toDate = new Date(appliedDateRangeFilter.to);
+                      toDate.setHours(23, 59, 59, 999);
+                      if (animalDate > toDate) return false;
+                    }
                   }
 
                   return true;

@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { useData } from "../data/DataContext";
+import LoadingWithIcon from "../components/ui/LoadingWithIcon";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { PaginationControls } from "../components/PaginationControls";
 import { useHeroImage } from "../utils/heroImages";
@@ -241,6 +242,8 @@ export function ShopPage({ addToCart, allowCartActions = true }) {
 
   const totalPages = Math.ceil(filteredItems.length / ITEMS_PER_PAGE);
 
+  const isShopLoading = !dbItems || dbItems.length === 0;
+
   // Reset to page 1 when category changes
   useEffect(() => {
     setCurrentPage(1);
@@ -304,6 +307,13 @@ export function ShopPage({ addToCart, allowCartActions = true }) {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {isShopLoading && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg shadow-lg">
+            <LoadingWithIcon text="Loading shop items..." size={48} />
+          </div>
+        </div>
+      )}
       {/* Hero Section */}
       <section className="relative bg-gradient-to-br from-green-600 to-emerald-700 text-white py-16 overflow-hidden">
         {/* Background Image */}

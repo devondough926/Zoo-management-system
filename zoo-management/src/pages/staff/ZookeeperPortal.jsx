@@ -89,6 +89,9 @@ export function ZookeeperPortal({ user, onLogout }) {
   const [topAlertDismissed, setTopAlertDismissed] = useState(false);
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
+  const [tabLoading, setTabLoading] = useState(false);
+  const [pendingTab, setPendingTab] = useState(null);
   const [cleaningActionLoading, setCleaningActionLoading] = useState(false);
 
   const { selectedWeather } = useWeather();
@@ -160,6 +163,7 @@ export function ZookeeperPortal({ user, onLogout }) {
       toast.error("Failed to load dashboard data");
     } finally {
       setLoading(false);
+      setInitialLoadDone(true);
     }
   };
 
@@ -533,6 +537,39 @@ export function ZookeeperPortal({ user, onLogout }) {
       // ignore
     }
   }, [activeTab, navigate, location]);
+
+  // Show a small centered loading popup when switching tabs after initial load
+  useEffect(() => {
+    if (!initialLoadDone) return;
+    setTabLoading(true);
+    const t = setTimeout(() => setTabLoading(false), 300);
+    return () => clearTimeout(t);
+  }, [activeTab, initialLoadDone]);
+
+  // Handle tab changes: wait for required data to load before switching
+  const handleTabChange = async (tab) => {
+    if (tab === activeTab) return;
+    if (tabLoading) return;
+    setPendingTab(tab);
+    setTabLoading(true);
+    try {
+      if (tab === "feeding") {
+        await Promise.all([loadFeedingTasks(), loadEmployees()]);
+      } else if (tab === "cleaning") {
+        await Promise.all([loadCleaningSchedules(), loadCleaningCardData()]);
+      } else if (tab === "activity") {
+        await loadActivityLog();
+      }
+      // small debounce to avoid flicker
+      await new Promise((r) => setTimeout(r, 120));
+    } catch (e) {
+      console.warn("Tab preload failed:", e);
+    } finally {
+      setActiveTab(tab);
+      setPendingTab(null);
+      setTabLoading(false);
+    }
+  };
   const activityListRef = useRef(null);
 
   useEffect(() => {
@@ -864,18 +901,18 @@ export function ZookeeperPortal({ user, onLogout }) {
 
   const saveDisabled = taskType === "feeding" && !selectedEmployeeId;
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[#F5F5DC] flex items-center justify-center">
-        <div className="text-center">
-          <LoadingWithIcon text="Loading dashboard..." size={56} />
-        </div>
-      </div>
-    );
-  }
+  // Always render main layout; show a small centered loading popup while loading
 
   return (
     <div className="min-h-screen bg-gray-100">
+      {/* Small centered loading popup for tab navigation */}
+      {(tabLoading || loading) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
+          <div className="pointer-events-auto bg-white rounded-lg shadow-lg px-6 py-6 w-56 text-center">
+            <LoadingWithIcon text="Loading..." size={36} imgClassName="" />
+          </div>
+        </div>
+      )}
       <style>{`
         .progress-animated-fill{
           position: relative;
@@ -1552,7 +1589,7 @@ export function ZookeeperPortal({ user, onLogout }) {
         {/* Tabs for Tasks */}
         <Tabs
           value={activeTab}
-          onValueChange={setActiveTab}
+          onValueChange={handleTabChange}
           className="space-y-6"
         >
           <TabsList

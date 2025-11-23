@@ -10,6 +10,7 @@ import { Check, X } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../contexts/AuthContext";
 import { usePricing } from "../data/PricingContext";
+import LoadingWithIcon from "../components/ui/LoadingWithIcon";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { useHeroImage } from "../utils/heroImages";
 
@@ -29,7 +30,11 @@ const comparisonFeatures = [
 
 export function TicketsPage({ addToCart, cart = [], allowCartActions = true }) {
   const navigate = useNavigate();
-  const { ticketPrices: prices, membershipPrice } = usePricing();
+  const {
+    ticketPrices: prices,
+    membershipPrice,
+    isLoading: pricingLoading,
+  } = usePricing();
   const { user } = useAuth();
   const heroImage = useHeroImage("tickets");
 
@@ -119,6 +124,13 @@ export function TicketsPage({ addToCart, cart = [], allowCartActions = true }) {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {pricingLoading && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg shadow-lg">
+            <LoadingWithIcon text="Loading pricing..." size={48} />
+          </div>
+        </div>
+      )}
       {/* Hero Section */}
       <section className="relative bg-gradient-to-br from-green-600 to-emerald-700 text-white py-16 overflow-hidden">
         {/* Background Image */}

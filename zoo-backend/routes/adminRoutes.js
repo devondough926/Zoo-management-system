@@ -88,7 +88,7 @@ router.delete("/exhibits/:id/remove-image", async (req, res) => {
 
     // Get current image URL
     const [currentExhibit] = await db.query(
-      "SELECT Image_URL FROM Exhibit WHERE Exhibit_ID = ?",
+      "SELECT Image_URL FROM exhibit WHERE Exhibit_ID = ?",
       [id]
     );
 
@@ -100,7 +100,7 @@ router.delete("/exhibits/:id/remove-image", async (req, res) => {
     await deleteFromAzure(currentExhibit[0].Image_URL);
 
     // Remove image URL from database
-    await db.query("UPDATE Exhibit SET Image_URL = NULL WHERE Exhibit_ID = ?", [
+    await db.query("UPDATE exhibit SET Image_URL = NULL WHERE Exhibit_ID = ?", [
       id,
     ]);
 
@@ -124,7 +124,7 @@ router.delete("/animals/:id/remove-image", async (req, res) => {
 
     // Get current image URL
     const [currentAnimal] = await db.query(
-      "SELECT Image_URL FROM Animal WHERE Animal_ID = ?",
+      "SELECT Image_URL FROM animal WHERE Animal_ID = ?",
       [id]
     );
 
@@ -136,7 +136,7 @@ router.delete("/animals/:id/remove-image", async (req, res) => {
     await deleteFromAzure(currentAnimal[0].Image_URL);
 
     // Remove image URL from database
-    await db.query("UPDATE Animal SET Image_URL = NULL WHERE Animal_ID = ?", [
+    await db.query("UPDATE animal SET Image_URL = NULL WHERE Animal_ID = ?", [
       id,
     ]);
 
@@ -168,7 +168,7 @@ router.post(
 
       // Get current image URL to delete old file
       const [currentExhibit] = await db.query(
-        "SELECT Image_URL FROM Exhibit WHERE Exhibit_ID = ?",
+        "SELECT Image_URL FROM exhibit WHERE Exhibit_ID = ?",
         [id]
       );
 
@@ -181,7 +181,7 @@ router.post(
       const imageUrl = req.file.url;
 
       // Update exhibit with new image URL
-      await db.query("UPDATE Exhibit SET Image_URL = ? WHERE Exhibit_ID = ?", [
+      await db.query("UPDATE exhibit SET Image_URL = ? WHERE Exhibit_ID = ?", [
         imageUrl,
         id,
       ]);
@@ -216,7 +216,7 @@ router.post(
 
       // Get current image URL to delete old file
       const [currentAnimal] = await db.query(
-        "SELECT Image_URL FROM Animal WHERE Animal_ID = ?",
+        "SELECT Image_URL FROM animal WHERE Animal_ID = ?",
         [id]
       );
 
@@ -229,7 +229,7 @@ router.post(
       const imageUrl = req.file.url;
 
       // Update animal with new image URL
-      await db.query("UPDATE Animal SET Image_URL = ? WHERE Animal_ID = ?", [
+      await db.query("UPDATE animal SET Image_URL = ? WHERE Animal_ID = ?", [
         imageUrl,
         id,
       ]);

@@ -623,37 +623,37 @@ export function CustomerDashboard({ user }) {
       </section>
 
       {/* Today's Activities Banner */}
+      {/* Weather Alert - persistent (shows even when there are no active activities) */}
+      {weatherAlert && (
+        <div
+          style={{
+            paddingTop: 24,
+            paddingBottom: 0,
+            background: "#f3f4f6",
+            display: "flex",
+            justifyContent: "center",
+          }}
+        >
+          <div style={{ maxWidth: 880, width: "100%", padding: "0 24px" }}>
+            <Card className="rounded-lg shadow-sm border border-red-200 bg-red-100">
+              <CardContent className="py-6 text-center">
+                <div className="flex flex-col items-center">
+                  <AlertTriangle className="h-6 w-6 text-red-800 mb-2 pt-1" />
+                  <h3 className="font-semibold text-lg text-red-900">
+                    {weatherAlert.title}
+                  </h3>
+                  <p className="text-sm text-red-800 mt-2 max-w-xl">
+                    {weatherAlert.detail}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      )}
+
       {!activitiesLoading && activeActivities.length > 0 && (
         <>
-          {/* Weather Alert - centered above activities */}
-          {weatherAlert && (
-            <div
-              style={{
-                paddingTop: 24,
-                paddingBottom: 0,
-                background: "#f3f4f6",
-                display: "flex",
-                justifyContent: "center",
-              }}
-            >
-              <div style={{ maxWidth: 880, width: "100%", padding: "0 24px" }}>
-                <Card className="rounded-lg shadow-sm border border-red-200 bg-red-100">
-                  <CardContent className="py-6 text-center">
-                    <div className="flex flex-col items-center">
-                      <AlertTriangle className="h-6 w-6 text-red-800 mb-2 pt-1" />
-                      <h3 className="font-semibold text-lg text-red-900">
-                        {weatherAlert.title}
-                      </h3>
-                      <p className="text-sm text-red-800 mt-2 max-w-xl">
-                        {weatherAlert.detail}
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-            </div>
-          )}
-
           <section
             style={{ paddingTop: 24, paddingBottom: 24, background: "#f3f4f6" }}
           >

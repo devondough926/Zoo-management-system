@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
+import LoadingWithIcon from "../components/ui/LoadingWithIcon";
 import { Button } from "../components/ui/button";
 import {
   Stethoscope,
@@ -199,11 +200,15 @@ export function AnimalsPage() {
         </div>
       </section>
 
-      {loading ? (
-        <div className="flex items-center justify-center py-16">
-          <p className="text-gray-500">Loading animals...</p>
+      {loading && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg shadow-lg">
+            <LoadingWithIcon text="Loading animals..." size={48} />
+          </div>
         </div>
-      ) : error ? (
+      )}
+
+      {error ? (
         <div className="flex items-center justify-center py-16">
           <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-2xl mx-auto">
             <p className="text-red-600 font-semibold mb-2">Connection Error</p>

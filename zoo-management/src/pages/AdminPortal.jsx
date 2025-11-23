@@ -113,6 +113,7 @@ import { usePricing } from "../data/PricingContext";
 import { Reports } from "../components/admin-components/Reports";
 import { Assets } from "../components/admin-components/Assets";
 import { Operations } from "../components/admin-components/Operations";
+import { WeatherSelector } from "../components/WeatherSelector";
 import {
   employeeAPI,
   locationAPI,
@@ -2230,6 +2231,7 @@ export function AdminPortal({ user, onLogout }) {
                   <PopoverTrigger asChild>
                     <button
                       aria-label="Open date range picker"
+                      onClick={(e) => e.stopPropagation()}
                       style={{
                         display: "inline-flex",
                         alignItems: "center",
@@ -2254,12 +2256,15 @@ export function AdminPortal({ user, onLogout }) {
                       </span>
                     </button>
                   </PopoverTrigger>
-                  <PopoverContent style={{ width: "380px" }}>
+                  <PopoverContent
+                    style={{ width: "450px", overflow: "hidden" }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <div style={{ display: "flex" }}>
-                      {/* Left: Quick Ranges */}
+                      {/* Quick Ranges - match Reports layout */}
                       <div
                         style={{
-                          width: "176px",
+                          width: "180px",
                           borderRight: "1px solid #e5e7eb",
                           paddingRight: "0.75rem",
                         }}
@@ -2293,6 +2298,7 @@ export function AdminPortal({ user, onLogout }) {
                                     : "transparent",
                                 cursor: "pointer",
                                 fontSize: "0.875rem",
+                                whiteSpace: "nowrap",
                               }}
                             >
                               Today
@@ -2317,6 +2323,7 @@ export function AdminPortal({ user, onLogout }) {
                                     : "transparent",
                                 cursor: "pointer",
                                 fontSize: "0.875rem",
+                                whiteSpace: "nowrap",
                               }}
                             >
                               Past Week
@@ -2341,6 +2348,7 @@ export function AdminPortal({ user, onLogout }) {
                                     : "transparent",
                                 cursor: "pointer",
                                 fontSize: "0.875rem",
+                                whiteSpace: "nowrap",
                               }}
                             >
                               Past Month
@@ -2365,6 +2373,7 @@ export function AdminPortal({ user, onLogout }) {
                                     : "transparent",
                                 cursor: "pointer",
                                 fontSize: "0.875rem",
+                                whiteSpace: "nowrap",
                               }}
                             >
                               All Time
@@ -2387,6 +2396,7 @@ export function AdminPortal({ user, onLogout }) {
                                 background: "transparent",
                                 cursor: "pointer",
                                 fontSize: "0.875rem",
+                                whiteSpace: "nowrap",
                               }}
                             >
                               Reset
@@ -2620,7 +2630,13 @@ export function AdminPortal({ user, onLogout }) {
 
         {/* Interactive Revenue Report Builder */}
         {activeTab === "reports" && (
-          <Reports detailedTransactions={allTimeTransactions} />
+          <Reports
+            detailedTransactions={
+              allTimeTransactions.length > 0
+                ? allTimeTransactions
+                : detailedTransactions
+            }
+          />
         )}
 
         {/* Detailed Transactions Table (restored) */}
@@ -3739,6 +3755,13 @@ export function AdminPortal({ user, onLogout }) {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* Weather Conditions Section - Admin can select weather (Overview tab only) */}
+        {activeTab === "overview" && (
+          <section id="weather-conditions" className="mt-12">
+            <WeatherSelector isAdminView={true} />
+          </section>
+        )}
       </div>
     </div>
   );

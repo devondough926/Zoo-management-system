@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { preloadImages } from "../utils/imagePreloader";
+import { useWeather } from "../contexts/WeatherContext";
+import { Link } from "react-router-dom";
 
 // Dynamically import all background images from the backgrounds folder
 const backgroundImages = Object.entries(
@@ -15,6 +17,7 @@ const backgroundImages = Object.entries(
 }));
 
 export function HeroSection() {
+  const { selectedWeather } = useWeather();
   const [currentImageIndex, setCurrentImageIndex] = useState(1); // Start at 1 (first real image)
   const [isTransitioning, setIsTransitioning] = useState(true);
   const [lastInteraction, setLastInteraction] = useState(Date.now());
@@ -122,6 +125,37 @@ export function HeroSection() {
       className="relative flex items-center justify-center overflow-hidden"
       style={{ minHeight: "calc(80vh)" }}
     >
+      {/* Weather Alert */}
+      {selectedWeather && (
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            zIndex: 30,
+            backgroundColor: "#fee2e2",
+            borderBottom: "2px solid #fecaca",
+            padding: "12px 20px",
+            textAlign: "center",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+          }}
+        >
+          <p
+            style={{
+              color: "#1f2937",
+              fontSize: 14,
+              margin: 0,
+              fontWeight: 600,
+            }}
+          >
+            <strong style={{ color: "#111827" }}>
+              Weather Impact Information:
+            </strong>{" "}
+            {getWeatherImpactText(selectedWeather.type)}
+          </p>
+        </div>
+      )}
       {/* Background Image Carousel */}
       <div className="absolute inset-0 z-0 overflow-hidden">
         <div
@@ -285,4 +319,80 @@ export function HeroSection() {
       {/* (Old carousel indicators removed — replaced by consolidated pagination above) */}
     </section>
   );
+}
+
+function getWeatherImpactText(weatherType) {
+  switch (weatherType) {
+    case "Rain":
+    case "Storm":
+    case "High Wind":
+      return (
+        <>
+          Outdoor and Hybrid{" "}
+          <Link
+            to="/attractions"
+            style={{
+              textDecoration: "underline",
+              color: "#dc2626",
+              fontWeight: 700,
+            }}
+          >
+            exhibits
+          </Link>{" "}
+          are closed for visitor safety.
+        </>
+      );
+    case "Snow":
+      return (
+        <>
+          Outdoor{" "}
+          <Link
+            to="/attractions"
+            style={{
+              textDecoration: "underline",
+              color: "#dc2626",
+              fontWeight: 700,
+            }}
+          >
+            exhibits
+          </Link>{" "}
+          are closed for visitor safety.
+        </>
+      );
+    case "Extreme Heat":
+    case "Extreme Cold":
+      return (
+        <>
+          All{" "}
+          <Link
+            to="/attractions"
+            style={{
+              textDecoration: "underline",
+              color: "#dc2626",
+              fontWeight: 700,
+            }}
+          >
+            exhibits
+          </Link>{" "}
+          are closed due to extreme weather conditions.
+        </>
+      );
+    default:
+      return (
+        <>
+          Some{" "}
+          <Link
+            to="/attractions"
+            style={{
+              textDecoration: "underline",
+              color: "#dc2626",
+              fontWeight: 700,
+            }}
+          >
+            exhibits
+          </Link>{" "}
+          may be affected by current weather conditions.
+        </>
+      );
+  }
 }

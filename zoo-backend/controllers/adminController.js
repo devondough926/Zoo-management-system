@@ -1194,9 +1194,9 @@ export const getDetailedTransactions = async (req, res) => {
           t.Quantity,
           t.Price as Unit_Price,
           t.Price * t.Quantity as Total_Amount
-        FROM Purchase p
-        LEFT JOIN Customer c ON p.Customer_ID = c.Customer_ID
-        INNER JOIN Ticket t ON p.Purchase_ID = t.Purchase_ID
+        FROM purchase p
+        LEFT JOIN customer c ON p.Customer_ID = c.Customer_ID
+        INNER JOIN ticket t ON p.Purchase_ID = t.Purchase_ID
         ${dateFilter}
       )
       UNION ALL
@@ -1217,10 +1217,10 @@ export const getDetailedTransactions = async (req, res) => {
           pi.Quantity,
           pi.Unit_Price,
           pi.Unit_Price * pi.Quantity as Total_Amount
-        FROM Purchase p
-        LEFT JOIN Customer c ON p.Customer_ID = c.Customer_ID
-        INNER JOIN Purchase_Item pi ON p.Purchase_ID = pi.Purchase_ID
-        INNER JOIN Item i ON pi.Item_ID = i.Item_ID
+        FROM purchase p
+        LEFT JOIN customer c ON p.Customer_ID = c.Customer_ID
+        INNER JOIN purchase_item pi ON p.Purchase_ID = pi.Purchase_ID
+        INNER JOIN item i ON pi.Item_ID = i.Item_ID
         ${dateFilter}
       )
       UNION ALL
@@ -1241,10 +1241,10 @@ export const getDetailedTransactions = async (req, res) => {
           pci.Quantity,
           pci.Unit_Price,
           pci.Unit_Price * pci.Quantity as Total_Amount
-        FROM Purchase p
-        LEFT JOIN Customer c ON p.Customer_ID = c.Customer_ID
-        INNER JOIN Purchase_Concession_Item pci ON p.Purchase_ID = pci.Purchase_ID
-        INNER JOIN Concession_Item ci ON pci.Concession_Item_ID = ci.Concession_Item_ID
+        FROM purchase p
+        LEFT JOIN customer c ON p.Customer_ID = c.Customer_ID
+        INNER JOIN purchase_concession_item pci ON p.Purchase_ID = pci.Purchase_ID
+        INNER JOIN concession_item ci ON pci.Concession_Item_ID = ci.Concession_Item_ID
         ${dateFilter}
       )
       UNION ALL
@@ -1265,9 +1265,9 @@ export const getDetailedTransactions = async (req, res) => {
           1 as Quantity,
           m.Price as Unit_Price,
           m.Price as Total_Amount
-  FROM Purchase p
-  LEFT JOIN Customer c ON p.Customer_ID = c.Customer_ID
-  JOIN Membership m ON p.Membership_ID = m.Membership_ID
+  FROM purchase p
+  LEFT JOIN customer c ON p.Customer_ID = c.Customer_ID
+  JOIN membership m ON p.Membership_ID = m.Membership_ID
   ${membershipFilter}
       )
       ORDER BY Purchase_Date DESC, Purchase_ID, Category
@@ -1291,7 +1291,7 @@ export const getPricing = async (req, res) => {
     // Get pricing from Config table
     const [config] = await db.query(`
       SELECT Config_Key, Config_Value
-      FROM Config
+      FROM config
       WHERE Config_Key IN ('ticket_adult', 'ticket_child', 'ticket_senior', 'ticket_student', 'membership_annual')
     `);
 
