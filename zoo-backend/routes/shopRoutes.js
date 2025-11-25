@@ -47,18 +47,21 @@ router.get("/analytics/top-selling", async (req, res) => {
   try {
     const db = (await import("../config/database.js")).default;
 
+    // Aggregate by Item_Name to persist sales across item deletions/re-additions
+    // Join purchase_item with item table to get Item_Name, then aggregate
     const [results] = await db.query(`
       SELECT 
-        i.Item_ID,
         i.Item_Name,
-        i.Price,
-        i.Category,
-        i.Image_URL,
+        MAX(i.Item_ID) as Item_ID,
+        MAX(i.Price) as Price,
+        MAX(i.Category) as Category,
+        MAX(i.Image_URL) as Image_URL,
         COALESCE(SUM(pi.Quantity), 0) as totalSold
       FROM item i
-      LEFT JOIN purchase_item pi ON i.Item_ID = pi.Item_ID
+      LEFT JOIN item i2 ON i.Item_Name = i2.Item_Name
+      LEFT JOIN purchase_item pi ON i2.Item_ID = pi.Item_ID
       WHERE i.Item_ID != 9000
-      GROUP BY i.Item_ID, i.Item_Name, i.Price, i.Category, i.Image_URL
+      GROUP BY i.Item_Name
       ORDER BY totalSold DESC
       LIMIT 3
     `);
@@ -74,9 +77,9 @@ router.get("/analytics/top-selling-today", async (req, res) => {
   try {
     const db = (await import("../config/database.js")).default;
 
+    // Aggregate by Item_Name to persist sales across item deletions/re-additions
     const [results] = await db.query(`
       SELECT 
-        i.Item_ID,
         i.Item_Name,
         SUM(pi.Quantity) as soldToday
       FROM purchase_item pi
@@ -84,7 +87,7 @@ router.get("/analytics/top-selling-today", async (req, res) => {
       JOIN item i ON pi.Item_ID = i.Item_ID
       WHERE DATE(p.Purchase_Date) = CURDATE()
         AND pi.Item_ID != 9000
-      GROUP BY i.Item_ID, i.Item_Name
+      GROUP BY i.Item_Name
       ORDER BY soldToday DESC
       LIMIT 1
     `);

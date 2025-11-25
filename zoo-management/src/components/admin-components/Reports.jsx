@@ -10,6 +10,7 @@ import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { Label } from "../ui/label";
 import { Input } from "../ui/input";
+import { Checkbox } from "../ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -44,10 +45,16 @@ import {
   ShoppingCart,
   Clock,
   Package,
+  Coffee,
   Receipt,
   ArrowUpRight,
   ArrowDownRight,
   Boxes,
+  Activity,
+  Settings,
+  Search,
+  Ticket,
+  Crown,
 } from "lucide-react";
 import {
   Table,
@@ -57,6 +64,7 @@ import {
   TableHeader,
   TableRow,
 } from "../ui/table";
+import { PaginationControls } from "../PaginationControls";
 
 const COLORS = {
   tickets: "#10B981",
@@ -98,6 +106,7 @@ function HoverTooltip({ content, children }) {
     whiteSpace: "nowrap",
     zIndex: 2147483647,
     fontSize: "0.85rem",
+    fontWeight: 400,
   };
 
   return (
@@ -113,7 +122,55 @@ function HoverTooltip({ content, children }) {
   );
 }
 
-export function Reports({ detailedTransactions }) {
+// Empty state component for charts with no data
+function EmptyState({
+  message = "No data available for the selected filters",
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        height: 300,
+        color: "#9ca3af",
+        textAlign: "center",
+        padding: "2rem",
+      }}
+    >
+      <svg
+        style={{ width: 64, height: 64, marginBottom: 16 }}
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={1.5}
+          d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+        />
+      </svg>
+      <p style={{ fontSize: "0.95rem", fontWeight: 500, marginBottom: 8 }}>
+        {message}
+      </p>
+      <p style={{ fontSize: "0.85rem", color: "#d1d5db" }}>
+        Try adjusting your filters to see more data
+      </p>
+    </div>
+  );
+}
+
+export function Reports({
+  detailedTransactions,
+  memberships,
+  items = [],
+  concessionItems = [],
+  revenueData = null,
+  comparisonData = null,
+  renderPercentageChange = null,
+}) {
   const [activeReportTab, setActiveReportTab] = useState("revenue");
 
   // ========== REPORT 1: Revenue & Financial Analysis ==========
@@ -138,6 +195,27 @@ export function Reports({ detailedTransactions }) {
     max: "",
     topN: "",
   });
+
+  // ========== TRANSACTION DETAILS TABLE STATE ==========
+  const [transactionSortState, setTransactionSortState] = useState({
+    col: null,
+    dir: null,
+  });
+  const [transactionSource, setTransactionSource] = useState("No Selection");
+  const [transactionSearch, setTransactionSearch] = useState("");
+  const [visibleColumns, setVisibleColumns] = useState({
+    purchaseId: true,
+    dateTime: true,
+    customer: true,
+    category: true,
+    description: true,
+    quantity: true,
+    unitPrice: true,
+    total: true,
+    payment: true,
+  });
+  const [transactionCurrentPage, setTransactionCurrentPage] = useState(1);
+  const [transactionItemsPerPage, setTransactionItemsPerPage] = useState(15);
 
   // Ensure initial applied filters are explicitly applied on mount
   useEffect(() => {
@@ -254,7 +332,8 @@ export function Reports({ detailedTransactions }) {
 
   const canApplyRange = (customRange) => {
     if (!customRange || !customRange.from || !customRange.to) return false;
-    return customRange.to.getTime() !== customRange.from.getTime();
+    // Allow single-day selections (from === to) as valid ranges
+    return true;
   };
 
   // Number of unique days available for the revenue filters (based on the current
@@ -388,7 +467,86 @@ export function Reports({ detailedTransactions }) {
     setBehaviorConfig({ ...initialBehaviorConfig });
   };
 
+  // ========== TRANSACTION TABLE HANDLERS ==========
+
+  const toggleColumn = (columnKey) => {
+    if (columnKey === "all") {
+      const allChecked = Object.values(visibleColumns).every((v) => v);
+      const newState = {};
+      Object.keys(visibleColumns).forEach((k) => {
+        newState[k] = !allChecked;
+      });
+      setVisibleColumns(newState);
+    } else {
+      setVisibleColumns((prev) => ({ ...prev, [columnKey]: !prev[columnKey] }));
+    }
+  };
+
+  const toggleTransactionSort = (col) => {
+    setTransactionSortState((prev) => {
+      if (prev.col === col) {
+        return { col, dir: prev.dir === "asc" ? "desc" : "asc" };
+      }
+      return { col, dir: "asc" };
+    });
+  };
+
+  const handleTransactionPageChange = (page) => {
+    if (page < 1 || page > transactionTotalPages) return;
+    setTransactionCurrentPage(page);
+    // Scroll to top of transactions section
+    setTimeout(() => {
+      const el = document.getElementById("revenue-transactions");
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 50);
+  };
+
+  // Reset transaction page when search changes
+  useEffect(() => {
+    setTransactionCurrentPage(1);
+  }, [transactionSearch]);
+
+  // Reset transaction page when revenue filters are applied
+  useEffect(() => {
+    setTransactionCurrentPage(1);
+  }, [appliedRevenueConfig]);
+
   // ========== REVENUE REPORT DATA PROCESSING ==========
+
+  // Precompute a map of Customer_ID -> membership ranges to speed up "is member at purchase" checks
+  const membershipsByCustomer = useMemo(() => {
+    const m = new Map();
+    if (!Array.isArray(memberships)) return m;
+    memberships.forEach((row) => {
+      const cid = row.Customer_ID;
+      if (cid == null) return;
+      const start = row.Start_Date ? new Date(row.Start_Date) : null;
+      const end = row.End_Date ? new Date(row.End_Date) : null;
+      const status = (row.Membership_Status || "").toLowerCase();
+      if (!m.has(String(cid))) m.set(String(cid), []);
+      m.get(String(cid)).push({ start, end, status });
+    });
+    return m;
+  }, [memberships]);
+
+  // Helper to check if a customer was an active member at a specific datetime
+  const isMemberAt = (customerId, date) => {
+    if (customerId == null || !date) return false;
+    const arr = membershipsByCustomer.get(String(customerId));
+    if (!arr || arr.length === 0) return false;
+    const dt = date instanceof Date ? date : new Date(date);
+    for (const r of arr) {
+      if (r.status !== "active") continue;
+      // Treat missing start as -Infinity and missing end as +Infinity
+      const start = r.start ? new Date(r.start) : null;
+      const end = r.end ? new Date(r.end) : null;
+      // inclusive comparison
+      if (start && dt < start) continue;
+      if (end && dt > end) continue;
+      return true;
+    }
+    return false;
+  };
 
   const filteredRevenueTransactions = useMemo(() => {
     let filtered = filterTransactionsByDateRange(
@@ -413,16 +571,42 @@ export function Reports({ detailedTransactions }) {
       });
     }
 
-    // Filter by visitor type (day pass tickets vs annual members)
+    // Filter by visitor type (classify transactions by whether the purchaser
+    // was an active member at the Purchase_Date). We use datetime-aware
+    // membership ranges (inclusive on both ends). For consistency with the
+    // attendance logic, treat explicit membership transactions as member-related.
     if (appliedRevenueConfig.visitorType !== "all") {
-      filtered = filtered.filter((t) => {
-        const cat = t.Category?.toLowerCase() || "";
-        if (appliedRevenueConfig.visitorType === "daypass")
-          return cat.includes("ticket");
-        if (appliedRevenueConfig.visitorType === "members")
-          return cat.includes("membership");
-        return true;
-      });
+      if (appliedRevenueConfig.visitorType === "daypass") {
+        // daypass (non-members): include any transaction where the purchaser
+        // was NOT an active member at the purchase datetime. We exclude
+        // explicit membership purchase transactions here because those are
+        // classified with members (they represent a membership sale).
+        filtered = filtered.filter((t) => {
+          const cat = t.Category?.toLowerCase() || "";
+          const desc = (t.Item_Description || "").toLowerCase();
+          // If this is an explicit membership sale, treat it as member-side
+          if (cat.includes("membership") || desc.includes("annual"))
+            return false;
+          const cid = t.Customer_ID;
+          const pDate = t.Purchase_Date ? new Date(t.Purchase_Date) : null;
+          // null/undefined Customer_ID are considered non-members
+          const member = isMemberAt(cid, pDate);
+          return !member;
+        });
+      } else if (appliedRevenueConfig.visitorType === "members") {
+        // members: include transactions where purchaser was a member at purchase
+        // time, or the transaction itself is a membership purchase
+        filtered = filtered.filter((t) => {
+          const cid = t.Customer_ID;
+          const pDate = t.Purchase_Date ? new Date(t.Purchase_Date) : null;
+          const cat = t.Category?.toLowerCase() || "";
+          const desc = (t.Item_Description || "").toLowerCase();
+          if (cat.includes("membership") || desc.includes("annual"))
+            return true;
+          if (!pDate) return false;
+          return isMemberAt(cid, pDate);
+        });
+      }
     }
 
     // Filter by day of week
@@ -550,6 +734,90 @@ export function Reports({ detailedTransactions }) {
       .slice(0, appliedRevenueConfig.topN);
   }, [filteredRevenueTransactions, appliedRevenueConfig.topN]);
 
+  // ========== TRANSACTION TABLE DATA PROCESSING ==========
+
+  const sortedTransactions = useMemo(() => {
+    if (!transactionSortState.col) return filteredRevenueTransactions;
+    const sorted = [...filteredRevenueTransactions].sort((a, b) => {
+      const aVal = a[transactionSortState.col];
+      const bVal = b[transactionSortState.col];
+      if (aVal == null && bVal == null) return 0;
+      if (aVal == null) return 1;
+      if (bVal == null) return -1;
+      if (typeof aVal === "string") {
+        const cmp = aVal.localeCompare(bVal);
+        return transactionSortState.dir === "asc" ? cmp : -cmp;
+      }
+      const cmp = aVal - bVal;
+      return transactionSortState.dir === "asc" ? cmp : -cmp;
+    });
+    return sorted;
+  }, [filteredRevenueTransactions, transactionSortState]);
+
+  const transactionCategories = useMemo(() => {
+    const cats = new Set();
+    filteredRevenueTransactions.forEach((t) => {
+      if (t.Category) cats.add(t.Category);
+    });
+    return Array.from(cats).sort();
+  }, [filteredRevenueTransactions]);
+
+  const filteredTransactions = useMemo(() => {
+    let filtered = sortedTransactions;
+    if (transactionSearch.trim()) {
+      const search = transactionSearch.toLowerCase();
+      filtered = filtered.filter((t) =>
+        (t.Customer_Name || "").toLowerCase().includes(search)
+      );
+    }
+    return filtered;
+  }, [sortedTransactions, transactionSearch]);
+
+  const displayedTransactions = useMemo(() => {
+    const start = (transactionCurrentPage - 1) * transactionItemsPerPage;
+    return filteredTransactions.slice(start, start + transactionItemsPerPage);
+  }, [filteredTransactions, transactionCurrentPage, transactionItemsPerPage]);
+
+  const transactionTotalPages = useMemo(() => {
+    return Math.ceil(filteredTransactions.length / transactionItemsPerPage);
+  }, [filteredTransactions.length, transactionItemsPerPage]);
+
+  const transactionPaginationArray = useMemo(() => {
+    const total = transactionTotalPages;
+    const current = transactionCurrentPage;
+    return Array.from({ length: total }, (_, i) => i + 1);
+  }, [transactionCurrentPage, transactionTotalPages]);
+
+  // ========== REVENUE BREAKDOWN FROM FILTERED TRANSACTIONS ==========
+
+  const filteredRevenueBreakdown = useMemo(() => {
+    const breakdown = {
+      ticketRevenue: 0,
+      membershipRevenue: 0,
+      giftShopRevenue: 0,
+      foodRevenue: 0,
+      totalRevenue: 0,
+    };
+
+    filteredRevenueTransactions.forEach((t) => {
+      const amount = parseFloat(t.Total_Amount) || 0;
+      const category = t.Category || "";
+
+      if (category === "Ticket") {
+        breakdown.ticketRevenue += amount;
+      } else if (category === "Membership") {
+        breakdown.membershipRevenue += amount;
+      } else if (category === "Gift Shop") {
+        breakdown.giftShopRevenue += amount;
+      } else if (category === "Food & Beverage" || category === "Concession") {
+        breakdown.foodRevenue += amount;
+      }
+      breakdown.totalRevenue += amount;
+    });
+
+    return breakdown;
+  }, [filteredRevenueTransactions]);
+
   // ========== VISITOR BEHAVIOR REPORT DATA PROCESSING ==========
 
   const filteredBehaviorTransactions = useMemo(() => {
@@ -565,9 +833,9 @@ export function Reports({ detailedTransactions }) {
         if (!t.Purchase_Date) return true;
         const hour = new Date(t.Purchase_Date).getHours();
         if (appliedBehaviorConfig.timeOfDay === "morning")
-          return hour >= 9 && hour < 12;
+          return hour >= 9 && hour <= 12;
         if (appliedBehaviorConfig.timeOfDay === "afternoon")
-          return hour >= 12 && hour < 17;
+          return hour >= 12 && hour <= 17;
         if (appliedBehaviorConfig.timeOfDay === "evening") return hour >= 17;
         return true;
       });
@@ -586,14 +854,33 @@ export function Reports({ detailedTransactions }) {
       });
     }
 
-    // Filter by visitor type
+    // Filter by visitor type (use membership table to determine membership at purchase time)
     if (appliedBehaviorConfig.visitorType !== "all") {
       filtered = filtered.filter((t) => {
         const cat = t.Category?.toLowerCase() || "";
-        if (appliedBehaviorConfig.visitorType === "daypass")
-          return cat.includes("ticket");
-        if (appliedBehaviorConfig.visitorType === "members")
-          return cat.includes("membership");
+        const desc = (t.Item_Description || "").toLowerCase();
+        const cid = t.Customer_ID;
+        const pDate = t.Purchase_Date ? new Date(t.Purchase_Date) : null;
+
+        // If daypass (non-members): include transactions where purchaser was NOT
+        // an active member at purchase time. Exclude explicit membership purchases
+        // (those are treated as member-side sales).
+        if (appliedBehaviorConfig.visitorType === "daypass") {
+          if (cat.includes("membership") || desc.includes("annual"))
+            return false;
+          const member = isMemberAt(cid, pDate);
+          return !member;
+        }
+
+        // If members: include transactions where purchaser was an active member
+        // at purchase time OR the transaction itself is a membership purchase.
+        if (appliedBehaviorConfig.visitorType === "members") {
+          if (cat.includes("membership") || desc.includes("annual"))
+            return true;
+          if (!pDate) return false;
+          return isMemberAt(cid, pDate);
+        }
+
         return true;
       });
     }
@@ -629,45 +916,237 @@ export function Reports({ detailedTransactions }) {
     return filtered;
   }, [detailedTransactions, appliedBehaviorConfig]);
 
-  const behaviorKPIs = useMemo(() => {
-    // Count visitors by date
-    // 1 ticket purchase = 1 visitor
-    // 1 customer with active membership who made any purchase that day = 1 member visitor
-    const visitorsByDate = new Map();
-    const memberVisitorsByDate = new Map();
+  // Transactions used for computing visitor-level KPIs (attendance)
+  // This set respects date range, dayType, timeOfDay and visitorType, but
+  // intentionally ignores productCategory and transactionSize so Total Visitors
+  // represents attendance rather than product-filtered counts.
+  const visitorTransactions = useMemo(() => {
+    let tx = filterTransactionsByDateRange(
+      detailedTransactions,
+      appliedBehaviorConfig.dateRange,
+      appliedBehaviorConfig.customRange
+    );
 
-    filteredBehaviorTransactions.forEach((t) => {
+    // Day type filter (weekdays/weekends)
+    if (
+      appliedBehaviorConfig.dayType &&
+      appliedBehaviorConfig.dayType !== "all"
+    ) {
+      tx = tx.filter((t) => {
+        const d = t.Purchase_Date ? new Date(t.Purchase_Date) : null;
+        if (!d) return false;
+        const day = d.getDay();
+        if (appliedBehaviorConfig.dayType === "weekdays")
+          return day >= 1 && day <= 5;
+        if (appliedBehaviorConfig.dayType === "weekends")
+          return day === 0 || day === 6;
+        return true;
+      });
+    }
+
+    // Visitor type: use membership table to decide membership at purchase time
+    if (
+      appliedBehaviorConfig.visitorType &&
+      appliedBehaviorConfig.visitorType !== "all"
+    ) {
+      tx = tx.filter((t) => {
+        const cat = (t.Category || "").toLowerCase();
+        const desc = (t.Item_Description || "").toLowerCase();
+        const cid = t.Customer_ID;
+        const pDate = t.Purchase_Date ? new Date(t.Purchase_Date) : null;
+
+        if (appliedBehaviorConfig.visitorType === "daypass") {
+          if (cat.includes("membership") || desc.includes("annual"))
+            return false;
+          return !isMemberAt(cid, pDate);
+        }
+
+        if (appliedBehaviorConfig.visitorType === "members") {
+          if (cat.includes("membership") || desc.includes("annual"))
+            return true;
+          if (!pDate) return false;
+          return isMemberAt(cid, pDate);
+        }
+
+        return true;
+      });
+    }
+
+    // Time of day filter: if a time slice is selected, only include transactions in that hour range
+    const tod = appliedBehaviorConfig.timeOfDay || "all";
+    if (tod && tod !== "all") {
+      let startHour = 9;
+      let endHour = 18;
+      if (tod === "morning") {
+        startHour = 9;
+        endHour = 12;
+      } else if (tod === "afternoon") {
+        startHour = 12;
+        endHour = 17;
+      } else if (tod === "evening") {
+        startHour = 17;
+        endHour = 23;
+      }
+      tx = tx.filter((t) => {
+        if (!t.Purchase_Date) return false;
+        const h = new Date(t.Purchase_Date).getHours();
+        return h >= startHour && h <= endHour;
+      });
+    }
+
+    return tx;
+  }, [
+    detailedTransactions,
+    appliedBehaviorConfig.dateRange,
+    appliedBehaviorConfig.customRange,
+    appliedBehaviorConfig.dayType,
+    appliedBehaviorConfig.visitorType,
+    appliedBehaviorConfig.timeOfDay,
+  ]);
+
+  const behaviorKPIs = useMemo(() => {
+    // Build per-customer-per-date groups from visitorTransactions
+    // Each group collects ticket quantities and whether non-ticket items were bought
+    const groups = new Map();
+    visitorTransactions.forEach((t) => {
       const date = new Date(t.Purchase_Date).toLocaleDateString();
       const customerId = t.Customer_ID;
-      const cat = t.Category?.toLowerCase() || "";
-      const desc = t.Item_Description?.toLowerCase() || "";
-
-      // Check if customer has active membership
-      const hasMembership =
-        cat.includes("membership") || desc.includes("annual");
-
-      // Track tickets purchased (each ticket = 1 visitor)
-      if (cat.includes("ticket")) {
-        const quantity = parseInt(t.Quantity) || 1;
-        if (!visitorsByDate.has(date)) visitorsByDate.set(date, 0);
-        visitorsByDate.set(date, visitorsByDate.get(date) + quantity);
+      const key = `${date}-${customerId}`;
+      if (!groups.has(key)) {
+        groups.set(key, {
+          date,
+          customerId,
+          ticketQty: 0,
+          hasNonTicket: false,
+          hasMembershipTxToday: false,
+          hasNonMembershipNonTicket: false,
+        });
       }
-
-      // Track member visitors (one per customer per day with active membership)
-      if (hasMembership || cat.includes("membership")) {
-        const key = `${date}-${customerId}`;
-        if (!memberVisitorsByDate.has(key)) {
-          memberVisitorsByDate.set(key, true);
+      const g = groups.get(key);
+      const cat = (t.Category || "").toLowerCase();
+      const desc = (t.Item_Description || "").toLowerCase();
+      const isTicket = cat.includes("ticket");
+      const isMembershipTx =
+        cat.includes("membership") || desc.includes("annual");
+      const qty = parseInt(t.Quantity) || 1;
+      if (isTicket) {
+        g.ticketQty = (g.ticketQty || 0) + qty;
+      } else {
+        g.hasNonTicket = true;
+        if (isMembershipTx) {
+          g.hasMembershipTxToday = true;
+        } else {
+          g.hasNonMembershipNonTicket = true;
         }
       }
     });
 
-    // Total visitors = ticket count + unique member visits
-    const ticketVisitors = Array.from(visitorsByDate.values()).reduce(
-      (sum, count) => sum + count,
-      0
-    );
-    const memberVisitors = memberVisitorsByDate.size;
+    // Now compute ticketVisitors and memberVisitors according to the rules:
+    // - If account is a member on that date (membership table covers date OR they bought membership that day):
+    //     * tickets count by quantity
+    //     * if they bought any other non-ticket items that day, add +1 visitor
+    //     * if they bought only non-ticket items (no tickets), count 1 visitor
+    // - If not a member on that date:
+    //     * only tickets count (by quantity); non-ticket-only purchases do NOT count
+    let ticketVisitors = 0;
+    let memberVisitors = 0; // unique member visitors (per-day)
+
+    for (const [key, g] of groups.entries()) {
+      const {
+        date,
+        customerId,
+        ticketQty = 0,
+        hasNonTicket,
+        hasMembershipTxToday,
+        hasNonMembershipNonTicket,
+      } = g;
+
+      // Normalize tx date to date-only
+      const dateObj = new Date(date);
+      const txDateOnly = new Date(
+        dateObj.getFullYear(),
+        dateObj.getMonth(),
+        dateObj.getDate()
+      );
+
+      let isMemberFromTable = false;
+      let wasActiveYesterday = false;
+      if (
+        customerId != null &&
+        Array.isArray(memberships) &&
+        memberships.length > 0
+      ) {
+        // check if membership covers tx date
+        isMemberFromTable = memberships.some((m) => {
+          if (m.Customer_ID == null) return false;
+          if (String(m.Customer_ID) !== String(customerId)) return false;
+          if ((m.Membership_Status || "").toLowerCase() !== "active")
+            return false;
+          const start = m.Start_Date ? new Date(m.Start_Date) : null;
+          const end = m.End_Date ? new Date(m.End_Date) : null;
+          const startDateOnly = start
+            ? new Date(start.getFullYear(), start.getMonth(), start.getDate())
+            : null;
+          const endDateOnly = end
+            ? new Date(end.getFullYear(), end.getMonth(), end.getDate())
+            : null;
+          if (startDateOnly && txDateOnly < startDateOnly) return false;
+          if (endDateOnly && txDateOnly > endDateOnly) return false;
+          return true;
+        });
+
+        // check if they were active the day before (to detect extensions)
+        const yesterday = new Date(txDateOnly);
+        yesterday.setDate(yesterday.getDate() - 1);
+        wasActiveYesterday = memberships.some((m) => {
+          if (m.Customer_ID == null) return false;
+          if (String(m.Customer_ID) !== String(customerId)) return false;
+          if ((m.Membership_Status || "").toLowerCase() !== "active")
+            return false;
+          const start = m.Start_Date ? new Date(m.Start_Date) : null;
+          const end = m.End_Date ? new Date(m.End_Date) : null;
+          const startDateOnly = start
+            ? new Date(start.getFullYear(), start.getMonth(), start.getDate())
+            : null;
+          const endDateOnly = end
+            ? new Date(end.getFullYear(), end.getMonth(), end.getDate())
+            : null;
+          if (startDateOnly && yesterday < startDateOnly) return false;
+          if (endDateOnly && yesterday > endDateOnly) return false;
+          return true;
+        });
+      }
+
+      // Determine membership status for counting
+      let isMember = false;
+      let isNewMemberToday = false;
+      if (isMemberFromTable) {
+        isMember = true;
+      } else if (hasMembershipTxToday) {
+        // no membership in table but bought membership today -> treat as new member for that day
+        isMember = true;
+        isNewMemberToday = true;
+      }
+
+      if (isMember) {
+        // tickets always count by quantity
+        ticketVisitors += ticketQty;
+
+        // Decide whether to add the unique member visitor for non-ticket activity:
+        // - If they bought any non-membership non-ticket items that day -> count 1
+        // - Else if they bought no tickets and they are a NEW member today -> count 1
+        // - Else if they were already active before today and only bought a membership (extension) -> do NOT count
+        if (hasNonMembershipNonTicket) {
+          memberVisitors += 1;
+        } else if (ticketQty === 0 && isNewMemberToday) {
+          memberVisitors += 1;
+        }
+      } else {
+        // non-members: only tickets count
+        ticketVisitors += ticketQty;
+      }
+    }
+
     const totalVisitors = ticketVisitors + memberVisitors;
 
     // Calculate items per transaction (using Quantity, excluding tickets)
@@ -683,16 +1162,13 @@ export function Reports({ detailedTransactions }) {
         ? totalItems / nonTicketTransactions.length
         : 0;
 
-    // Find peak hour based on visitor traffic (tickets sold)
+    // Find peak hour based on all transaction activity using filteredBehaviorTransactions
     const hourCounts = new Map();
     filteredBehaviorTransactions.forEach((t) => {
       if (t.Purchase_Date) {
-        const cat = t.Category?.toLowerCase() || "";
-        if (cat.includes("ticket")) {
-          const hour = new Date(t.Purchase_Date).getHours();
-          const quantity = parseInt(t.Quantity) || 1;
-          hourCounts.set(hour, (hourCounts.get(hour) || 0) + quantity);
-        }
+        const hour = new Date(t.Purchase_Date).getHours();
+        // Count each transaction (not quantities) to show actual activity/traffic
+        hourCounts.set(hour, (hourCounts.get(hour) || 0) + 1);
       }
     });
     const peakHourEntry = Array.from(hourCounts.entries()).sort(
@@ -736,9 +1212,7 @@ export function Reports({ detailedTransactions }) {
     const topCategoryEntry = Array.from(categoryRevenue.entries()).sort(
       (a, b) => b[1] - a[1]
     )[0];
-    const topProductCategory = topCategoryEntry
-      ? `${topCategoryEntry[0]} - $${topCategoryEntry[1].toFixed(2)}`
-      : "N/A";
+    const topProductCategory = topCategoryEntry ? topCategoryEntry[0] : "N/A";
 
     // Compute member vs non-member ratio based on unique accounts present
     // We consider an account a 'member' if there's any transaction for that
@@ -777,7 +1251,7 @@ export function Reports({ detailedTransactions }) {
       shoppingVisitors,
       avgItems,
     };
-  }, [filteredBehaviorTransactions]);
+  }, [filteredBehaviorTransactions, visitorTransactions, memberships]);
   const trafficByHour = useMemo(() => {
     const hourlyData = new Map();
 
@@ -791,10 +1265,10 @@ export function Reports({ detailedTransactions }) {
       endHour = 23;
     } else if (tod === "morning") {
       startHour = 9;
-      endHour = 11;
+      endHour = 12;
     } else if (tod === "afternoon") {
       startHour = 12;
-      endHour = 16;
+      endHour = 17;
     } else if (tod === "evening") {
       startHour = 17;
       endHour = 23;
@@ -825,6 +1299,53 @@ export function Reports({ detailedTransactions }) {
   const topProducts = useMemo(() => {
     const productSales = new Map();
 
+    // Helper to extract display name from catalog items
+    const extractName = (it) => {
+      if (!it) return "Unknown";
+      return (
+        it.Item_Name ||
+        it.Concession_Item_Name ||
+        it.name ||
+        it.item_name ||
+        it.Name ||
+        "Unknown"
+      );
+    };
+
+    // Seed productSales with catalog items so products with zero sales appear
+    if (Array.isArray(items)) {
+      items.forEach((it) => {
+        const raw = extractName(it) || "Unknown";
+        const cleaned = raw.replace(/\s*\([^)]*\)\s*$/, "");
+        const key = cleaned || "Unknown";
+        if (!productSales.has(key)) {
+          productSales.set(key, {
+            product: key,
+            // track a set of Purchase_IDs so we can compute distinct orders
+            ordersSet: new Set(),
+            quantity: 0,
+            revenue: 0,
+          });
+        }
+      });
+    }
+    if (Array.isArray(concessionItems)) {
+      concessionItems.forEach((it) => {
+        const raw = extractName(it) || "Unknown";
+        const cleaned = raw.replace(/\s*\([^)]*\)\s*$/, "");
+        const key = cleaned || "Unknown";
+        if (!productSales.has(key)) {
+          productSales.set(key, {
+            product: key,
+            ordersSet: new Set(),
+            quantity: 0,
+            revenue: 0,
+          });
+        }
+      });
+    }
+
+    // Aggregate from transactions, merging into seeded catalog entries when possible
     filteredBehaviorTransactions.forEach((t) => {
       const rawDesc = t.Item_Description || "Unknown";
       const cat = t.Category?.toLowerCase() || "";
@@ -837,32 +1358,79 @@ export function Reports({ detailedTransactions }) {
 
       // Strip trailing parenthetical category markers like " (Shop)" or " (Food)"
       const cleaned = rawDesc.replace(/\s*\([^)]*\)\s*$/, "");
-
       const key = cleaned || "Unknown";
 
       if (!productSales.has(key)) {
         productSales.set(key, {
           product: key,
-          sales: 0,
+          ordersSet: new Set(),
           quantity: 0,
           revenue: 0,
         });
       }
       const data = productSales.get(key);
-      data.sales += 1;
+      // Record the purchase id for distinct orders counting
+      const purchaseId = t.Purchase_ID ?? t.PurchaseId ?? t.PurchaseId;
+      if (purchaseId != null) data.ordersSet.add(String(purchaseId));
       data.quantity += parseInt(t.Quantity) || 1;
       data.revenue += parseFloat(t.Total_Amount) || 0;
     });
 
-    return Array.from(productSales.values())
-      .sort((a, b) => b.revenue - a.revenue)
+    // Convert ordersSet to numeric `orders` and remove internal sets
+    const out = Array.from(productSales.values()).map((v) => ({
+      product: v.product,
+      orders: v.ordersSet ? v.ordersSet.size : 0,
+      quantity: v.quantity || 0,
+      revenue: v.revenue || 0,
+    }));
+
+    return out
+      .sort((a, b) => b.quantity - a.quantity)
       .slice(0, appliedBehaviorConfig.topNProducts);
-  }, [filteredBehaviorTransactions, appliedBehaviorConfig.topNProducts]);
+  }, [
+    filteredBehaviorTransactions,
+    appliedBehaviorConfig.topNProducts,
+    items,
+    concessionItems,
+  ]);
 
   // Number of unique available products (excluding tickets/memberships) so the UI can
   // clamp the user-entered top-N value
   const availableProductCount = useMemo(() => {
     const set = new Set();
+
+    // Seed from catalog
+    const extractName = (it) => {
+      if (!it) return "Unknown";
+      return (
+        it.Item_Name ||
+        it.Concession_Item_Name ||
+        it.name ||
+        it.item_name ||
+        it.Name ||
+        "Unknown"
+      );
+    };
+    if (Array.isArray(items)) {
+      items.forEach((it) => {
+        const cleaned = (extractName(it) || "Unknown").replace(
+          /\s*\([^)]*\)\s*$/,
+          ""
+        );
+        set.add(cleaned || "Unknown");
+      });
+    }
+    if (Array.isArray(concessionItems)) {
+      concessionItems.forEach((it) => {
+        const cleaned = (extractName(it) || "Unknown").replace(
+          /\s*\([^)]*\)\s*$/,
+          ""
+        );
+        set.add(cleaned || "Unknown");
+      });
+    }
+
+    // Also include any sold products found in transactions
     filteredBehaviorTransactions.forEach((t) => {
       const rawDesc = t.Item_Description || "Unknown";
       const cat = t.Category?.toLowerCase() || "";
@@ -873,29 +1441,54 @@ export function Reports({ detailedTransactions }) {
       const cleaned = rawDesc.replace(/\s*\([^)]*\)\s*$/, "");
       set.add(cleaned || "Unknown");
     });
+
     return set.size;
-  }, [filteredBehaviorTransactions]);
+  }, [filteredBehaviorTransactions, items, concessionItems]);
 
   // Keep configured topNProducts within bounds when availableProductCount changes
   useEffect(() => {
-    const max = Math.max(1, availableProductCount || 1);
-    if (behaviorConfig.topNProducts > max) {
-      setBehaviorConfig((b) => ({ ...b, topNProducts: max }));
-    }
-    if (behaviorConfig.topNProducts < 1) {
-      setBehaviorConfig((b) => ({ ...b, topNProducts: 1 }));
-    }
+    // Avoid clamping when availableProductCount is unknown/0 on initial load.
+    if (!availableProductCount || availableProductCount <= 0) return;
+
+    const max = Math.max(1, availableProductCount);
+    setBehaviorConfig((b) => {
+      const current = parseInt(b.topNProducts, 10);
+      const defaultTop =
+        typeof initialBehaviorConfig.topNProducts === "number"
+          ? initialBehaviorConfig.topNProducts
+          : parseInt(initialBehaviorConfig.topNProducts, 10) || 1;
+      let next;
+      if (Number.isNaN(current)) {
+        next = Math.min(defaultTop, max);
+      } else {
+        next = Math.max(1, Math.min(current, max));
+      }
+      if (String(b.topNProducts) === String(next)) return b;
+      return { ...b, topNProducts: next };
+    });
   }, [availableProductCount]);
 
   // Ensure revenueConfig.topN remains in valid bounds when availableDaysCount changes
   useEffect(() => {
-    const max = Math.max(0, availableDaysCount || 0);
+    // If we don't yet know how many days are available (e.g. initial load),
+    // avoid clamping to 0 and preserve the configured default (usually 6).
+    if (!availableDaysCount || availableDaysCount <= 0) return;
+
+    const max = Math.max(1, availableDaysCount);
     setRevenueConfig((r) => {
       const current = parseInt(r.topN, 10);
-      let next = Number.isNaN(current) ? 0 : current;
-      if (next < 0) next = 0;
-      if (next > max) next = max;
-      if (next === current) return r;
+      const defaultTop =
+        typeof initialRevenueConfig.topN === "number"
+          ? initialRevenueConfig.topN
+          : parseInt(initialRevenueConfig.topN, 10) || 1;
+      let next;
+      if (Number.isNaN(current)) {
+        // use the default topN but don't exceed available days
+        next = Math.min(defaultTop, max);
+      } else {
+        next = Math.max(1, Math.min(current, max));
+      }
+      if (String(r.topN) === String(next)) return r;
       return { ...r, topN: next };
     });
   }, [availableDaysCount]);
@@ -1538,7 +2131,7 @@ export function Reports({ detailedTransactions }) {
                           }}
                         />
                         <div>
-                          <p style={{ fontSize: "0.875rem" }}>Revenue</p>
+                          <p style={{ fontSize: "0.875rem" }}>Total Revenue</p>
                           <p
                             style={{
                               fontSize: "1.5rem",
@@ -1580,7 +2173,9 @@ export function Reports({ detailedTransactions }) {
                           }}
                         />
                         <div>
-                          <p style={{ fontSize: "0.875rem" }}>Transactions</p>
+                          <p style={{ fontSize: "0.875rem" }}>
+                            Total Transactions
+                          </p>
                           <p
                             style={{
                               fontSize: "1.5rem",
@@ -1708,27 +2303,31 @@ export function Reports({ detailedTransactions }) {
                   </CardTitle>
                 </CardHeader>
                 <CardContent style={{ paddingBottom: 0 }}>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <LineChart data={revenueTrendData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="date" />
-                      <YAxis />
-                      <Tooltip
-                        formatter={(value) =>
-                          `$${value.toLocaleString("en-US", {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}`
-                        }
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="revenue"
-                        stroke={COLORS.primary}
-                        strokeWidth={2}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
+                  {revenueTrendData.length === 0 ? (
+                    <EmptyState message="No revenue data available" />
+                  ) : (
+                    <ResponsiveContainer width="100%" height={300}>
+                      <LineChart data={revenueTrendData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="date" />
+                        <YAxis />
+                        <Tooltip
+                          formatter={(value) =>
+                            `$${value.toLocaleString("en-US", {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}`
+                          }
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="revenue"
+                          stroke={COLORS.primary}
+                          strokeWidth={2}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  )}
                 </CardContent>
               </Card>
 
@@ -1754,106 +2353,131 @@ export function Reports({ detailedTransactions }) {
                     </CardTitle>
                   </CardHeader>
                   <CardContent style={{ paddingBottom: 0 }}>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <PieChart>
-                        <defs>
-                          {PIE_COLORS.map((c, i) => (
-                            <linearGradient
-                              key={`pg-${i}`}
-                              id={`pieGrad${i}`}
-                              x1="0%"
-                              x2="100%"
-                              y1="0%"
-                              y2="100%"
+                    {revenueBySource.length === 0 ? (
+                      <EmptyState message="No revenue sources available" />
+                    ) : (
+                      <>
+                        <ResponsiveContainer width="100%" height={300}>
+                          <PieChart>
+                            <defs>
+                              {revenueBySource.map((entry, i) => {
+                                const c =
+                                  entry.fill ||
+                                  PIE_COLORS[i % PIE_COLORS.length];
+                                return (
+                                  <linearGradient
+                                    key={`pg-${i}`}
+                                    id={`pieGrad${i}`}
+                                    x1="0%"
+                                    x2="100%"
+                                    y1="0%"
+                                    y2="100%"
+                                  >
+                                    <stop
+                                      offset="0%"
+                                      stopColor={c}
+                                      stopOpacity="1"
+                                    />
+                                    <stop
+                                      offset="100%"
+                                      stopColor={c}
+                                      stopOpacity="1"
+                                    />
+                                  </linearGradient>
+                                );
+                              })}
+                            </defs>
+                            <Pie
+                              data={revenueBySource}
+                              cx="50%"
+                              cy="50%"
+                              labelLine={false}
+                              label={(entry) => {
+                                const total = revenueSourceTotal || 0;
+                                const pct =
+                                  total > 0 ? (entry.value / total) * 100 : 0;
+                                return `${entry.name}: ${pct.toFixed(1)}%`;
+                              }}
+                              innerRadius={50}
+                              outerRadius={80}
+                              dataKey="value"
                             >
-                              <stop offset="0%" stopColor={c} stopOpacity="1" />
-                              <stop
-                                offset="100%"
-                                stopColor={c}
-                                stopOpacity="1"
-                              />
-                            </linearGradient>
-                          ))}
-                        </defs>
-                        <Pie
-                          data={revenueBySource}
-                          cx="50%"
-                          cy="50%"
-                          labelLine={false}
-                          label={(entry) =>
-                            `${entry.name}: $${entry.value.toFixed(0)}`
-                          }
-                          innerRadius={50}
-                          outerRadius={80}
-                          dataKey="value"
-                        >
-                          {revenueBySource.map((entry, index) => (
-                            <Cell
-                              key={`cell-${index}`}
-                              fill={`url(#pieGrad${index})`}
+                              {revenueBySource.map((entry, index) => (
+                                <Cell
+                                  key={`cell-${index}`}
+                                  fill={`url(#pieGrad${index})`}
+                                />
+                              ))}
+                            </Pie>
+                            {/* Center label showing total revenue */}
+                            <text
+                              x="50%"
+                              y="50%"
+                              textAnchor="middle"
+                              dominantBaseline="middle"
+                              style={{
+                                fontSize: 16,
+                                fontWeight: 700,
+                                fill: "red",
+                              }}
+                            >
+                              {`$${revenueSourceTotal.toLocaleString("en-US", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}`}
+                            </text>
+                            <Tooltip
+                              formatter={(value) =>
+                                `$${value.toLocaleString("en-US", {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}`
+                              }
                             />
-                          ))}
-                        </Pie>
-                        {/* Center label showing total revenue */}
-                        <text
-                          x="50%"
-                          y="50%"
-                          textAnchor="middle"
-                          dominantBaseline="middle"
-                          style={{ fontSize: 16, fontWeight: 700, fill: "red" }}
-                        >
-                          {`$${revenueSourceTotal.toLocaleString("en-US", {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}`}
-                        </text>
-                        <Tooltip
-                          formatter={(value) =>
-                            `$${value.toLocaleString("en-US", {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            })}`
-                          }
-                        />
-                      </PieChart>
-                    </ResponsiveContainer>
+                          </PieChart>
+                        </ResponsiveContainer>
 
-                    {/* Legend below pie chart showing colors matching the slices */}
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "center",
-                        gap: "1.25rem",
-                        marginTop: "0.75rem",
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      {revenueBySource.map((entry, idx) => (
+                        {/* Legend below pie chart showing colors matching the slices */}
                         <div
-                          key={`legend-${idx}`}
                           style={{
                             display: "flex",
-                            alignItems: "center",
-                            gap: "0.5rem",
+                            justifyContent: "center",
+                            gap: "1.25rem",
+                            marginTop: "0.75rem",
+                            flexWrap: "wrap",
                           }}
                         >
-                          <span
-                            style={{
-                              width: 12,
-                              height: 12,
-                              borderRadius: 3,
-                              display: "inline-block",
-                              background: entry.fill || PIE_COLORS[idx],
-                            }}
-                          />
-                          <span
-                            style={{ fontSize: "0.85rem", color: "#374151" }}
-                          >
-                            {entry.name}
-                          </span>
+                          {revenueBySource.map((entry, idx) => (
+                            <div
+                              key={`legend-${idx}`}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "0.5rem",
+                              }}
+                            >
+                              <span
+                                style={{
+                                  width: 12,
+                                  height: 12,
+                                  borderRadius: 3,
+                                  display: "inline-block",
+                                  background: entry.fill || PIE_COLORS[idx],
+                                }}
+                              />
+                              <span
+                                style={{
+                                  fontSize: "0.85rem",
+                                  color: "#374151",
+                                }}
+                              >
+                                {entry.name}
+                              </span>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
+                      </>
+                    )}
                   </CardContent>
                 </Card>
 
@@ -1877,70 +2501,614 @@ export function Reports({ detailedTransactions }) {
                     </CardTitle>
                   </CardHeader>
                   <CardContent style={{ paddingBottom: 0 }}>
-                    {(() => {
-                      const maxLabelsToShow = 6;
-                      const showXAxisLabels =
-                        topRevenueDays.length <= maxLabelsToShow;
-                      const chartHeight = showXAxisLabels ? 300 : 380;
-                      const xAxisHeight = showXAxisLabels ? 80 : 6;
+                    {topRevenueDays.length === 0 ? (
+                      <EmptyState message="No revenue days available" />
+                    ) : (
+                      (() => {
+                        const maxLabelsToShow = 6;
+                        const showXAxisLabels =
+                          topRevenueDays.length <= maxLabelsToShow;
+                        const chartHeight = showXAxisLabels ? 300 : 380;
+                        const xAxisHeight = showXAxisLabels ? 80 : 6;
 
-                      return (
-                        <ResponsiveContainer width="100%" height={chartHeight}>
-                          <BarChart data={topRevenueDays}>
-                            <defs>
-                              <linearGradient
-                                id="barGrad"
-                                x1="0"
-                                x2="0"
-                                y1="0"
-                                y2="1"
-                              >
-                                <stop
-                                  offset="0%"
-                                  stopColor={COLORS.primary}
-                                  stopOpacity="0.95"
-                                />
-                                <stop
-                                  offset="100%"
-                                  stopColor={COLORS.primary}
-                                  stopOpacity="0.6"
-                                />
-                              </linearGradient>
-                            </defs>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis
-                              dataKey="date"
-                              // only render ticks when there are <= maxLabelsToShow bars
-                              tick={
-                                showXAxisLabels ? (
-                                  <MultiLineTick angle={-45} />
-                                ) : (
-                                  false
-                                )
-                              }
-                              height={xAxisHeight}
-                            />
-                            <YAxis />
-                            <Tooltip
-                              formatter={(value) =>
-                                `$${value.toLocaleString("en-US", {
-                                  minimumFractionDigits: 2,
-                                  maximumFractionDigits: 2,
-                                })}`
-                              }
-                            />
-                            <Bar
-                              dataKey="revenue"
-                              fill="url(#barGrad)"
-                              radius={[8, 8, 0, 0]}
-                            />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      );
-                    })()}
+                        return (
+                          <ResponsiveContainer
+                            width="100%"
+                            height={chartHeight}
+                          >
+                            <BarChart data={topRevenueDays}>
+                              <defs>
+                                <linearGradient
+                                  id="barGrad"
+                                  x1="0"
+                                  x2="0"
+                                  y1="0"
+                                  y2="1"
+                                >
+                                  <stop
+                                    offset="0%"
+                                    stopColor={COLORS.primary}
+                                    stopOpacity="0.95"
+                                  />
+                                  <stop
+                                    offset="100%"
+                                    stopColor={COLORS.primary}
+                                    stopOpacity="0.6"
+                                  />
+                                </linearGradient>
+                              </defs>
+                              <CartesianGrid strokeDasharray="3 3" />
+                              <XAxis
+                                dataKey="date"
+                                // only render ticks when there are <= maxLabelsToShow bars
+                                tick={
+                                  showXAxisLabels ? (
+                                    <MultiLineTick angle={-45} />
+                                  ) : (
+                                    false
+                                  )
+                                }
+                                height={xAxisHeight}
+                              />
+                              <YAxis />
+                              <Tooltip
+                                formatter={(value) =>
+                                  `$${value.toLocaleString("en-US", {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2,
+                                  })}`
+                                }
+                              />
+                              <Bar
+                                dataKey="revenue"
+                                fill="url(#barGrad)"
+                                radius={[8, 8, 0, 0]}
+                              />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        );
+                      })()
+                    )}
                   </CardContent>
                 </Card>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Revenue Breakdown Section */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-2xl text-gray-900 flex items-center gap-2">
+                <DollarSign className="h-6 w-6" /> Revenue Breakdown
+              </CardTitle>
+              <CardDescription>
+                Revenue totals based on current filters
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="pt-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                {[
+                  {
+                    category: "Tickets",
+                    amount: filteredRevenueBreakdown.ticketRevenue,
+                    color: "bg-green-600",
+                    icon: Ticket,
+                  },
+                  {
+                    category: "Memberships",
+                    amount: filteredRevenueBreakdown.membershipRevenue,
+                    color: "bg-purple-600",
+                    icon: Crown,
+                  },
+                  {
+                    category: "Gift Shop",
+                    amount: filteredRevenueBreakdown.giftShopRevenue,
+                    color: "bg-blue-600",
+                    icon: Package,
+                  },
+                  {
+                    category: "Food & Beverages",
+                    amount: filteredRevenueBreakdown.foodRevenue,
+                    color: "bg-orange-600",
+                    icon: Coffee,
+                  },
+                ].map((stat) => {
+                  const IconComponent = stat.icon;
+                  return (
+                    <div
+                      key={stat.category}
+                      className="p-4 bg-gray-50 rounded-lg border border-gray-200"
+                    >
+                      <div className="flex flex-col items-center text-center">
+                        <div className="flex items-center justify-center mb-2">
+                          <IconComponent
+                            className={`h-10 w-10 ${stat.color.replace(
+                              "bg-",
+                              "text-"
+                            )}`}
+                          />
+                        </div>
+                        <div>
+                          <h3 className="font-medium mb-1">{stat.category}</h3>
+                          <p className="text-lg font-semibold text-green-600">
+                            $
+                            {stat.amount.toLocaleString("en-US", {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Transaction Details Table */}
+          <Card id="revenue-transactions">
+            <CardHeader>
+              <div className="flex items-center justify-between mb-2">
+                <CardTitle className="text-2xl text-gray-900 flex items-center gap-2">
+                  <Activity className="h-6 w-6" /> Transaction Details
+                </CardTitle>
+                <div className="flex items-center gap-4">
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm">
+                        <Settings className="h-4 w-4 mr-2" />
+                        All
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-64" align="end">
+                      <div className="space-y-3">
+                        <h4 className="font-medium text-sm mb-3">
+                          Toggle Columns
+                        </h4>
+                        <div className="space-y-2">
+                          <div className="flex items-center space-x-2 pb-2 border-b">
+                            <Checkbox
+                              id="col-all"
+                              checked={Object.values(visibleColumns).every(
+                                (v) => v
+                              )}
+                              onCheckedChange={() => toggleColumn("all")}
+                            />
+                            <label
+                              htmlFor="col-all"
+                              className="text-sm font-medium cursor-pointer"
+                            >
+                              All
+                            </label>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id="col-purchaseId"
+                              checked={visibleColumns.purchaseId}
+                              onCheckedChange={() => toggleColumn("purchaseId")}
+                            />
+                            <label
+                              htmlFor="col-purchaseId"
+                              className="text-sm cursor-pointer"
+                            >
+                              Purchase ID
+                            </label>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id="col-dateTime"
+                              checked={visibleColumns.dateTime}
+                              onCheckedChange={() => toggleColumn("dateTime")}
+                            />
+                            <label
+                              htmlFor="col-dateTime"
+                              className="text-sm cursor-pointer"
+                            >
+                              Date & Time
+                            </label>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id="col-customer"
+                              checked={visibleColumns.customer}
+                              onCheckedChange={() => toggleColumn("customer")}
+                            />
+                            <label
+                              htmlFor="col-customer"
+                              className="text-sm cursor-pointer"
+                            >
+                              Customer
+                            </label>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id="col-category"
+                              checked={visibleColumns.category}
+                              onCheckedChange={() => toggleColumn("category")}
+                            />
+                            <label
+                              htmlFor="col-category"
+                              className="text-sm cursor-pointer"
+                            >
+                              Category
+                            </label>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id="col-description"
+                              checked={visibleColumns.description}
+                              onCheckedChange={() =>
+                                toggleColumn("description")
+                              }
+                            />
+                            <label
+                              htmlFor="col-description"
+                              className="text-sm cursor-pointer"
+                            >
+                              Description
+                            </label>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id="col-quantity"
+                              checked={visibleColumns.quantity}
+                              onCheckedChange={() => toggleColumn("quantity")}
+                            />
+                            <label
+                              htmlFor="col-quantity"
+                              className="text-sm cursor-pointer"
+                            >
+                              Quantity
+                            </label>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id="col-unitPrice"
+                              checked={visibleColumns.unitPrice}
+                              onCheckedChange={() => toggleColumn("unitPrice")}
+                            />
+                            <label
+                              htmlFor="col-unitPrice"
+                              className="text-sm cursor-pointer"
+                            >
+                              Unit Price
+                            </label>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id="col-total"
+                              checked={visibleColumns.total}
+                              onCheckedChange={() => toggleColumn("total")}
+                            />
+                            <label
+                              htmlFor="col-total"
+                              className="text-sm cursor-pointer"
+                            >
+                              Total
+                            </label>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id="col-payment"
+                              checked={visibleColumns.payment}
+                              onCheckedChange={() => toggleColumn("payment")}
+                            />
+                            <label
+                              htmlFor="col-payment"
+                              className="text-sm cursor-pointer"
+                            >
+                              Payment
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                  <div className="relative w-80">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Input
+                      placeholder="Search by customer name..."
+                      value={transactionSearch}
+                      onChange={(e) => setTransactionSearch(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-2">
+              <div
+                className="w-full rounded-md border"
+                style={{
+                  overflowX: "auto",
+                  WebkitOverflowScrolling: "touch",
+                }}
+              >
+                <div className="min-w-0">
+                  <Table
+                    className="min-w-[900px] table-auto"
+                    style={{ minWidth: "900px", whiteSpace: "nowrap" }}
+                  >
+                    <TableHeader className="bg-gray-100">
+                      <TableRow>
+                        {visibleColumns.purchaseId && (
+                          <TableHead
+                            className="w-[100px] cursor-pointer select-none hover:bg-gray-50"
+                            onClick={() => toggleTransactionSort("Purchase_ID")}
+                          >
+                            Purchase ID
+                            {transactionSortState.col === "Purchase_ID" && (
+                              <span className="ml-1 text-xs">
+                                {transactionSortState.dir === "asc" ? "▲" : "▼"}
+                              </span>
+                            )}
+                          </TableHead>
+                        )}
+                        {visibleColumns.dateTime && (
+                          <TableHead
+                            className="cursor-pointer select-none hover:bg-gray-50"
+                            onClick={() =>
+                              toggleTransactionSort("Purchase_Date")
+                            }
+                          >
+                            Date & Time
+                            {transactionSortState.col === "Purchase_Date" && (
+                              <span className="ml-1 text-xs">
+                                {transactionSortState.dir === "asc" ? "▲" : "▼"}
+                              </span>
+                            )}
+                          </TableHead>
+                        )}
+                        {visibleColumns.customer && (
+                          <TableHead
+                            className="cursor-pointer select-none hover:bg-gray-50"
+                            onClick={() =>
+                              toggleTransactionSort("Customer_Name")
+                            }
+                          >
+                            Customer
+                            {transactionSortState.col === "Customer_Name" && (
+                              <span className="ml-1 text-xs">
+                                {transactionSortState.dir === "asc" ? "▲" : "▼"}
+                              </span>
+                            )}
+                          </TableHead>
+                        )}
+                        {visibleColumns.category && (
+                          <TableHead
+                            className="cursor-pointer select-none hover:bg-gray-50"
+                            onClick={() => toggleTransactionSort("Category")}
+                          >
+                            Category
+                            {transactionSortState.col === "Category" && (
+                              <span className="ml-1 text-xs">
+                                {transactionSortState.dir === "asc" ? "▲" : "▼"}
+                              </span>
+                            )}
+                          </TableHead>
+                        )}
+                        {visibleColumns.description && (
+                          <TableHead
+                            className="cursor-pointer select-none hover:bg-gray-50"
+                            onClick={() =>
+                              toggleTransactionSort("Item_Description")
+                            }
+                          >
+                            Description
+                            {transactionSortState.col ===
+                              "Item_Description" && (
+                              <span className="ml-1 text-xs">
+                                {transactionSortState.dir === "asc" ? "▲" : "▼"}
+                              </span>
+                            )}
+                          </TableHead>
+                        )}
+                        {visibleColumns.quantity && (
+                          <TableHead
+                            className="text-center cursor-pointer select-none hover:bg-gray-50"
+                            onClick={() => toggleTransactionSort("Quantity")}
+                          >
+                            Quantity
+                            {transactionSortState.col === "Quantity" && (
+                              <span className="ml-1 text-xs">
+                                {transactionSortState.dir === "asc" ? "▲" : "▼"}
+                              </span>
+                            )}
+                          </TableHead>
+                        )}
+                        {visibleColumns.unitPrice && (
+                          <TableHead
+                            className="text-right cursor-pointer select-none hover:bg-gray-50"
+                            onClick={() => toggleTransactionSort("Unit_Price")}
+                          >
+                            Unit Price
+                            {transactionSortState.col === "Unit_Price" && (
+                              <span className="ml-1 text-xs">
+                                {transactionSortState.dir === "asc" ? "▲" : "▼"}
+                              </span>
+                            )}
+                          </TableHead>
+                        )}
+                        {visibleColumns.total && (
+                          <TableHead
+                            className="text-right cursor-pointer select-none hover:bg-gray-50"
+                            onClick={() =>
+                              toggleTransactionSort("Total_Amount")
+                            }
+                          >
+                            Total
+                            {transactionSortState.col === "Total_Amount" && (
+                              <span className="ml-1 text-xs">
+                                {transactionSortState.dir === "asc" ? "▲" : "▼"}
+                              </span>
+                            )}
+                          </TableHead>
+                        )}
+                        {visibleColumns.payment && (
+                          <TableHead
+                            className="cursor-pointer select-none hover:bg-gray-50"
+                            onClick={() =>
+                              toggleTransactionSort("Payment_Method")
+                            }
+                          >
+                            Payment
+                            {transactionSortState.col === "Payment_Method" && (
+                              <span className="ml-1 text-xs">
+                                {transactionSortState.dir === "asc" ? "▲" : "▼"}
+                              </span>
+                            )}
+                          </TableHead>
+                        )}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {displayedTransactions.length === 0 ? (
+                        <TableRow>
+                          <TableCell
+                            colSpan={
+                              Object.values(visibleColumns).filter(Boolean)
+                                .length
+                            }
+                            className="text-center py-8 text-gray-500"
+                          >
+                            No transactions found for the selected filters
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        displayedTransactions.map((transaction, index) => (
+                          <TableRow key={`${transaction.Purchase_ID}-${index}`}>
+                            {visibleColumns.purchaseId && (
+                              <TableCell className="font-medium">
+                                #{transaction.Purchase_ID}
+                              </TableCell>
+                            )}
+                            {visibleColumns.dateTime && (
+                              <TableCell className="whitespace-nowrap">
+                                {new Date(
+                                  transaction.Purchase_Date
+                                ).toLocaleString("en-US", {
+                                  month: "short",
+                                  day: "numeric",
+                                  year: "numeric",
+                                  hour: "numeric",
+                                  minute: "2-digit",
+                                })}
+                              </TableCell>
+                            )}
+                            {visibleColumns.customer && (
+                              <TableCell className="whitespace-nowrap">
+                                {transaction.Customer_Name}
+                              </TableCell>
+                            )}
+                            {visibleColumns.category && (
+                              <TableCell>
+                                <Badge
+                                  variant="outline"
+                                  className={
+                                    transaction.Category === "Ticket"
+                                      ? "bg-green-50 text-green-700 border-green-200"
+                                      : transaction.Category === "Membership"
+                                      ? "bg-purple-50 text-purple-700 border-purple-200"
+                                      : transaction.Category === "Gift Shop"
+                                      ? "bg-blue-50 text-blue-700 border-blue-200"
+                                      : ""
+                                  }
+                                  style={
+                                    transaction.Category !== "Ticket" &&
+                                    transaction.Category !== "Membership" &&
+                                    transaction.Category !== "Gift Shop"
+                                      ? {
+                                          backgroundColor: "#FFF7ED",
+                                          color: "#C2410C",
+                                          border: "1px solid #FED7AA",
+                                        }
+                                      : {}
+                                  }
+                                >
+                                  {transaction.Category}
+                                </Badge>
+                              </TableCell>
+                            )}
+                            {visibleColumns.description && (
+                              <TableCell>
+                                {transaction.Item_Description
+                                  ? transaction.Item_Description.replace(
+                                      /\s*\([^)]*\)\s*$/,
+                                      ""
+                                    )
+                                  : ""}
+                              </TableCell>
+                            )}
+                            {visibleColumns.quantity && (
+                              <TableCell className="text-center">
+                                {transaction.Quantity}
+                              </TableCell>
+                            )}
+                            {visibleColumns.unitPrice && (
+                              <TableCell className="text-right whitespace-nowrap">
+                                ${parseFloat(transaction.Unit_Price).toFixed(2)}
+                              </TableCell>
+                            )}
+                            {visibleColumns.total && (
+                              <TableCell className="text-right font-semibold text-green-600 whitespace-nowrap">
+                                $
+                                {parseFloat(transaction.Total_Amount).toFixed(
+                                  2
+                                )}
+                              </TableCell>
+                            )}
+                            {visibleColumns.payment && (
+                              <TableCell>
+                                <Badge variant="secondary">
+                                  {transaction.Payment_Method}
+                                </Badge>
+                              </TableCell>
+                            )}
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+              <div className="mt-4 flex items-center justify-between text-sm text-gray-600">
+                <span>
+                  Showing{" "}
+                  {filteredTransactions.length > 0
+                    ? (transactionCurrentPage - 1) * transactionItemsPerPage + 1
+                    : 0}
+                  -
+                  {Math.min(
+                    transactionCurrentPage * transactionItemsPerPage,
+                    filteredTransactions.length
+                  )}{" "}
+                  of {filteredTransactions.length} transaction
+                  {filteredTransactions.length !== 1 ? "s" : ""}
+                </span>
+                <span className="font-semibold">
+                  Total Revenue:{" "}
+                  <span className="text-red-600">
+                    $
+                    {filteredTransactions
+                      .reduce(
+                        (sum, t) => sum + parseFloat(t.Total_Amount || 0),
+                        0
+                      )
+                      .toLocaleString("en-US", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                  </span>
+                </span>
+              </div>
+              <PaginationControls
+                currentPage={transactionCurrentPage}
+                totalPages={transactionTotalPages}
+                onPageChange={handleTransactionPageChange}
+                paginationArray={transactionPaginationArray}
+                className="mt-4"
+              />
             </CardContent>
           </Card>
         </TabsContent>
@@ -2166,7 +3334,7 @@ export function Reports({ detailedTransactions }) {
 
               {/* KPI Cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <HoverTooltip content="Total visitors (tickets sold + unique member visits) in the selected range.">
+                <HoverTooltip content="Total visitors (attendance). Respects date, day type, time slice and visitor type.">
                   <Card
                     className="h-full"
                     style={{
@@ -2247,7 +3415,13 @@ export function Reports({ detailedTransactions }) {
                 <HoverTooltip content="Product category with the highest revenue (excluding tickets).">
                   <Card
                     className="h-full"
-                    style={{ borderLeft: "4px solid #9333ea" }}
+                    style={{
+                      borderLeft: `4px solid ${
+                        /food/i.test(behaviorKPIs.topProductCategory)
+                          ? COLORS.food
+                          : "#9333ea"
+                      }`,
+                    }}
                   >
                     <CardContent className="pt-6 h-full">
                       <div
@@ -2257,13 +3431,24 @@ export function Reports({ detailedTransactions }) {
                           gap: "0.75rem",
                         }}
                       >
-                        <Package
-                          style={{
-                            height: "2rem",
-                            width: "2rem",
-                            color: "#9333ea",
-                          }}
-                        />
+                        {behaviorKPIs.topProductCategory &&
+                        /food/i.test(behaviorKPIs.topProductCategory) ? (
+                          <Coffee
+                            style={{
+                              height: "2rem",
+                              width: "2rem",
+                              color: COLORS.food,
+                            }}
+                          />
+                        ) : (
+                          <Package
+                            style={{
+                              height: "2rem",
+                              width: "2rem",
+                              color: "#9333ea",
+                            }}
+                          />
+                        )}
                         <div>
                           <p style={{ fontSize: "0.875rem" }}>
                             Top Product Category
@@ -2272,7 +3457,11 @@ export function Reports({ detailedTransactions }) {
                             style={{
                               fontSize: "1.5rem",
                               fontWeight: 600,
-                              color: "#9333ea",
+                              color: /food/i.test(
+                                behaviorKPIs.topProductCategory
+                              )
+                                ? COLORS.food
+                                : "#9333ea",
                             }}
                           >
                             {behaviorKPIs.topProductCategory}
@@ -2342,35 +3531,45 @@ export function Reports({ detailedTransactions }) {
                   </CardTitle>
                 </CardHeader>
                 <CardContent style={{ paddingBottom: 0 }}>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <LineChart data={trafficByHour}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="hour" />
-                      <YAxis
-                        label={{
-                          value: "Transactions",
-                          angle: -90,
-                          position: "insideLeft",
-                          offset: 8,
-                        }}
-                      />
-                      <Tooltip
-                        formatter={(value, name) => {
-                          // Make tooltip labels friendly for transactions and revenue
-                          if (name === "transactions")
-                            return [value, "Transactions"];
-                          if (name === "revenue") return [value, "Revenue"];
-                          return [value, name];
-                        }}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="transactions"
-                        stroke="#3B82F6"
-                        strokeWidth={2}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
+                  {
+                    // Consider the chart empty when there are no points or all transaction counts are zero
+                    trafficByHour.length === 0 ||
+                    trafficByHour.every(
+                      (pt) => !pt || !pt.transactions || pt.transactions === 0
+                    ) ? (
+                      <EmptyState message="No traffic data available" />
+                    ) : (
+                      <ResponsiveContainer width="100%" height={300}>
+                        <LineChart data={trafficByHour}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="hour" />
+                          <YAxis
+                            label={{
+                              value: "Transactions",
+                              angle: -90,
+                              position: "insideLeft",
+                              offset: 8,
+                            }}
+                          />
+                          <Tooltip
+                            formatter={(value, name) => {
+                              // Make tooltip labels friendly for transactions and revenue
+                              if (name === "transactions")
+                                return [value, "Transactions"];
+                              if (name === "revenue") return [value, "Revenue"];
+                              return [value, name];
+                            }}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="transactions"
+                            stroke="#3B82F6"
+                            strokeWidth={2}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    )
+                  }
                 </CardContent>
               </Card>
 
@@ -2396,76 +3595,82 @@ export function Reports({ detailedTransactions }) {
                     </CardTitle>
                   </CardHeader>
                   <CardContent style={{ paddingBottom: 0 }}>
-                    {/* When there are many bars we hide X-axis labels to avoid overlap and
-                        expand the chart so bars use the extra space */}
-                    {(() => {
-                      const maxLabelsToShow = 10;
-                      const showXAxisLabels =
-                        topProducts.length <= maxLabelsToShow;
-                      const chartHeight = showXAxisLabels ? 300 : 380;
-                      const xAxisHeight = showXAxisLabels ? 80 : 6; // minimal reserved height when labels hidden
+                    {topProducts.length === 0 ? (
+                      <EmptyState message="No product sales available" />
+                    ) : (
+                      (() => {
+                        const maxLabelsToShow = 10;
+                        const showXAxisLabels =
+                          topProducts.length <= maxLabelsToShow;
+                        const chartHeight = showXAxisLabels ? 300 : 380;
+                        const xAxisHeight = showXAxisLabels ? 80 : 6; // minimal reserved height when labels hidden
 
-                      return (
-                        <ResponsiveContainer width="100%" height={chartHeight}>
-                          <BarChart data={topProducts}>
-                            <defs>
-                              <linearGradient
-                                id="prodBarGrad"
-                                x1="0"
-                                x2="0"
-                                y1="0"
-                                y2="1"
-                              >
-                                <stop
-                                  offset="0%"
-                                  stopColor="#10B981"
-                                  stopOpacity="0.95"
-                                />
-                                <stop
-                                  offset="100%"
-                                  stopColor="#10B981"
-                                  stopOpacity="0.6"
-                                />
-                              </linearGradient>
-                            </defs>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis
-                              dataKey="product"
-                              type="category"
-                              interval={0}
-                              // disable rendering ticks when there are too many bars
-                              tick={
-                                showXAxisLabels ? (
-                                  <MultiLineTick angle={-30} />
-                                ) : (
-                                  false
-                                )
-                              }
-                              height={xAxisHeight}
-                            />
-                            <YAxis
-                              type="number"
-                              tickFormatter={(val) =>
-                                `$${val.toLocaleString()}`
-                              }
-                            />
-                            <Tooltip
-                              formatter={(value) =>
-                                `$${value.toLocaleString("en-US", {
-                                  minimumFractionDigits: 2,
-                                  maximumFractionDigits: 2,
-                                })}`
-                              }
-                            />
-                            <Bar
-                              dataKey="revenue"
-                              fill="url(#prodBarGrad)"
-                              radius={[6, 6, 0, 0]}
-                            />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      );
-                    })()}
+                        return (
+                          <ResponsiveContainer
+                            width="100%"
+                            height={chartHeight}
+                          >
+                            <BarChart data={topProducts}>
+                              <defs>
+                                <linearGradient
+                                  id="prodBarGrad"
+                                  x1="0"
+                                  x2="0"
+                                  y1="0"
+                                  y2="1"
+                                >
+                                  <stop
+                                    offset="0%"
+                                    stopColor="#10B981"
+                                    stopOpacity="0.95"
+                                  />
+                                  <stop
+                                    offset="100%"
+                                    stopColor="#10B981"
+                                    stopOpacity="0.6"
+                                  />
+                                </linearGradient>
+                              </defs>
+                              <CartesianGrid strokeDasharray="3 3" />
+                              <XAxis
+                                dataKey="product"
+                                type="category"
+                                interval={0}
+                                // disable rendering ticks when there are too many bars
+                                tick={
+                                  showXAxisLabels ? (
+                                    <MultiLineTick angle={-30} />
+                                  ) : (
+                                    false
+                                  )
+                                }
+                                height={xAxisHeight}
+                              />
+                              <YAxis
+                                type="number"
+                                tickFormatter={(val) => val.toLocaleString()}
+                                label={{
+                                  value: "# Sold",
+                                  angle: -90,
+                                  position: "insideLeft",
+                                  offset: 0,
+                                }}
+                              />
+                              <Tooltip
+                                formatter={(value) =>
+                                  `${value.toLocaleString("en-US")} sold`
+                                }
+                              />
+                              <Bar
+                                dataKey="quantity"
+                                fill="url(#prodBarGrad)"
+                                radius={[6, 6, 0, 0]}
+                              />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        );
+                      })()
+                    )}
                   </CardContent>
                 </Card>
 
@@ -2489,106 +3694,115 @@ export function Reports({ detailedTransactions }) {
                     </CardTitle>
                   </CardHeader>
                   <CardContent style={{ paddingBottom: 0 }}>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <PieChart>
-                        <defs>
-                          {ticketsByType.map((entry, i) => (
-                            <linearGradient
-                              key={`tg-${i}`}
-                              id={`ticketGrad${i}`}
-                              x1="0%"
-                              x2="100%"
-                              y1="0%"
-                              y2="100%"
+                    {ticketsByType.length === 0 ? (
+                      <EmptyState message="No ticket data available" />
+                    ) : (
+                      <>
+                        <ResponsiveContainer width="100%" height={300}>
+                          <PieChart>
+                            <defs>
+                              {ticketsByType.map((entry, i) => (
+                                <linearGradient
+                                  key={`tg-${i}`}
+                                  id={`ticketGrad${i}`}
+                                  x1="0%"
+                                  x2="100%"
+                                  y1="0%"
+                                  y2="100%"
+                                >
+                                  <stop
+                                    offset="0%"
+                                    stopColor={entry.fill}
+                                    stopOpacity="1"
+                                  />
+                                  <stop
+                                    offset="100%"
+                                    stopColor={entry.fill}
+                                    stopOpacity="1"
+                                  />
+                                </linearGradient>
+                              ))}
+                            </defs>
+                            <Pie
+                              data={ticketsByType}
+                              cx="50%"
+                              cy="50%"
+                              labelLine={false}
+                              label={(entry) => `${entry.name}: ${entry.value}`}
+                              innerRadius={50}
+                              outerRadius={80}
+                              dataKey="value"
                             >
-                              <stop
-                                offset="0%"
-                                stopColor={entry.fill}
-                                stopOpacity="1"
-                              />
-                              <stop
-                                offset="100%"
-                                stopColor={entry.fill}
-                                stopOpacity="1"
-                              />
-                            </linearGradient>
-                          ))}
-                        </defs>
-                        <Pie
-                          data={ticketsByType}
-                          cx="50%"
-                          cy="50%"
-                          labelLine={false}
-                          label={(entry) => `${entry.name}: ${entry.value}`}
-                          innerRadius={50}
-                          outerRadius={80}
-                          dataKey="value"
-                        >
-                          {ticketsByType.map((entry, index) => (
-                            <Cell
-                              key={`cell-${index}`}
-                              fill={`url(#ticketGrad${index})`}
+                              {ticketsByType.map((entry, index) => (
+                                <Cell
+                                  key={`cell-${index}`}
+                                  fill={`url(#ticketGrad${index})`}
+                                />
+                              ))}
+                            </Pie>
+                            {/* Center label showing total tickets */}
+                            <text
+                              x="50%"
+                              y="50%"
+                              textAnchor="middle"
+                              dominantBaseline="middle"
+                              style={{
+                                fontSize: 16,
+                                fontWeight: 700,
+                                fill: "red",
+                              }}
+                            >
+                              {`${ticketsTotal.toLocaleString("en-US")}`}
+                            </text>
+                            <Tooltip
+                              formatter={(value) =>
+                                `${value.toLocaleString("en-US")}`
+                              }
                             />
-                          ))}
-                        </Pie>
-                        {/* Center label showing total tickets */}
-                        <text
-                          x="50%"
-                          y="50%"
-                          textAnchor="middle"
-                          dominantBaseline="middle"
-                          style={{
-                            fontSize: 16,
-                            fontWeight: 700,
-                            fill: "red",
-                          }}
-                        >
-                          {`${ticketsTotal.toLocaleString("en-US")}`}
-                        </text>
-                        <Tooltip
-                          formatter={(value) =>
-                            `${value.toLocaleString("en-US")}`
-                          }
-                        />
-                      </PieChart>
-                    </ResponsiveContainer>
+                          </PieChart>
+                        </ResponsiveContainer>
 
-                    {/* Legend below pie chart matching the Revenue by Source style */}
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "center",
-                        gap: "1.25rem",
-                        marginTop: "0.75rem",
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      {ticketsByType.map((entry, idx) => (
+                        {/* Legend below pie chart matching the Revenue by Source style */}
                         <div
-                          key={`tlegend-${idx}`}
                           style={{
                             display: "flex",
-                            alignItems: "center",
-                            gap: "0.5rem",
+                            justifyContent: "center",
+                            gap: "1.25rem",
+                            marginTop: "0.75rem",
+                            flexWrap: "wrap",
                           }}
                         >
-                          <span
-                            style={{
-                              width: 12,
-                              height: 12,
-                              borderRadius: 3,
-                              display: "inline-block",
-                              background: `linear-gradient(90deg, ${entry.fill} 0%, ${entry.fill} 100%)`,
-                            }}
-                          />
-                          <span
-                            style={{ fontSize: "0.85rem", color: "#374151" }}
-                          >
-                            {entry.name}
-                          </span>
+                          {ticketsByType.map((entry, idx) => (
+                            <div
+                              key={`tlegend-${idx}`}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "0.5rem",
+                              }}
+                            >
+                              <span
+                                style={{
+                                  width: 12,
+                                  height: 12,
+                                  borderRadius: 3,
+                                  display: "inline-block",
+                                  background: `linear-gradient(90deg, ${entry.fill} 0%, ${entry.fill} 100%)`,
+                                }}
+                              />
+                              <span
+                                style={{
+                                  fontSize: "0.85rem",
+                                  color: "#374151",
+                                }}
+                              >
+                                {entry.name}
+                              </span>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
+                      </>
+                    )}
                   </CardContent>
                 </Card>
               </div>
@@ -2619,7 +3833,7 @@ export function Reports({ detailedTransactions }) {
                       sortedProducts && sortedProducts.length
                         ? Math.max(...sortedProducts.map((p) => p.revenue || 0))
                         : 1;
-                    const ROW_LIMIT = 15;
+                    const ROW_LIMIT = 10;
                     const ROW_HEIGHT_PX = 52; // approximate height per row for scrolling math
                     const needsScroll = sortedProducts.length > ROW_LIMIT;
                     const wrapperStyle = {
@@ -2680,14 +3894,22 @@ export function Reports({ detailedTransactions }) {
                                     }));
                                   }}
                                 >
-                                  Product
-                                  {productSort.column === "product" && (
-                                    <span>
-                                      {productSort.direction === "asc"
-                                        ? "▲"
-                                        : "▼"}
-                                    </span>
-                                  )}
+                                  <HoverTooltip
+                                    content={
+                                      "Product name from catalog or transaction description"
+                                    }
+                                  >
+                                    <>
+                                      Product
+                                      {productSort.column === "product" && (
+                                        <span>
+                                          {productSort.direction === "asc"
+                                            ? "▲"
+                                            : "▼"}
+                                        </span>
+                                      )}
+                                    </>
+                                  </HoverTooltip>
                                 </div>
                               </TableHead>
                               <TableHead
@@ -2704,23 +3926,31 @@ export function Reports({ detailedTransactions }) {
                                   }}
                                   onClick={() => {
                                     setProductSort((p) => ({
-                                      column: "sales",
+                                      column: "orders",
                                       direction:
-                                        p.column === "sales" &&
+                                        p.column === "orders" &&
                                         p.direction === "asc"
                                           ? "desc"
                                           : "asc",
                                     }));
                                   }}
                                 >
-                                  Sales Count
-                                  {productSort.column === "sales" && (
-                                    <span>
-                                      {productSort.direction === "asc"
-                                        ? "▲"
-                                        : "▼"}
-                                    </span>
-                                  )}
+                                  <HoverTooltip
+                                    content={
+                                      "Number of distinct purchases containing this item (orders), not units"
+                                    }
+                                  >
+                                    <>
+                                      Orders
+                                      {productSort.column === "orders" && (
+                                        <span>
+                                          {productSort.direction === "asc"
+                                            ? "▲"
+                                            : "▼"}
+                                        </span>
+                                      )}
+                                    </>
+                                  </HoverTooltip>
                                 </div>
                               </TableHead>
                               <TableHead
@@ -2746,14 +3976,22 @@ export function Reports({ detailedTransactions }) {
                                     }));
                                   }}
                                 >
-                                  Quantity Sold
-                                  {productSort.column === "quantity" && (
-                                    <span>
-                                      {productSort.direction === "asc"
-                                        ? "▲"
-                                        : "▼"}
-                                    </span>
-                                  )}
+                                  <HoverTooltip
+                                    content={
+                                      "Total units sold (sum of Quantity across all orders)"
+                                    }
+                                  >
+                                    <>
+                                      Quantity Sold
+                                      {productSort.column === "quantity" && (
+                                        <span>
+                                          {productSort.direction === "asc"
+                                            ? "▲"
+                                            : "▼"}
+                                        </span>
+                                      )}
+                                    </>
+                                  </HoverTooltip>
                                 </div>
                               </TableHead>
                               <TableHead
@@ -2779,14 +4017,22 @@ export function Reports({ detailedTransactions }) {
                                     }));
                                   }}
                                 >
-                                  Revenue
-                                  {productSort.column === "revenue" && (
-                                    <span>
-                                      {productSort.direction === "asc"
-                                        ? "▲"
-                                        : "▼"}
-                                    </span>
-                                  )}
+                                  <HoverTooltip
+                                    content={
+                                      "Total revenue from this product (sum of Quantity * Unit_Price)"
+                                    }
+                                  >
+                                    <>
+                                      Revenue
+                                      {productSort.column === "revenue" && (
+                                        <span>
+                                          {productSort.direction === "asc"
+                                            ? "▲"
+                                            : "▼"}
+                                        </span>
+                                      )}
+                                    </>
+                                  </HoverTooltip>
                                 </div>
                               </TableHead>
                               <TableHead
@@ -2812,14 +4058,22 @@ export function Reports({ detailedTransactions }) {
                                     }));
                                   }}
                                 >
-                                  Avg Price
-                                  {productSort.column === "avgPrice" && (
-                                    <span>
-                                      {productSort.direction === "asc"
-                                        ? "▲"
-                                        : "▼"}
-                                    </span>
-                                  )}
+                                  <HoverTooltip
+                                    content={
+                                      "Average price per unit (Revenue / Quantity)"
+                                    }
+                                  >
+                                    <>
+                                      Avg Price
+                                      {productSort.column === "avgPrice" && (
+                                        <span>
+                                          {productSort.direction === "asc"
+                                            ? "▲"
+                                            : "▼"}
+                                        </span>
+                                      )}
+                                    </>
+                                  </HoverTooltip>
                                 </div>
                               </TableHead>
                             </TableRow>
@@ -2874,7 +4128,7 @@ export function Reports({ detailedTransactions }) {
                                     minWidth: 120,
                                   }}
                                 >
-                                  {product.sales}
+                                  {product.orders}
                                 </TableCell>
                                 <TableCell
                                   className="text-center text-sm"

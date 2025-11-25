@@ -242,21 +242,22 @@ export function GiftShopPortal({ user, onLogout, onNavigate }) {
   }, [purchaseItems]);
 
   // Compute Top 3 and Bottom 3 selling items from local context (purchaseItems + shopItems)
+  // Aggregate by Item_Name to handle items that were deleted and re-added
   useEffect(() => {
     try {
-      // Build counts for each item id
+      // Build counts for each item name (not ID) to persist sales across delete/re-add
       const counts = {};
       purchaseItems.forEach((pi) => {
-        const id = Number(pi.Item_ID || pi.ItemId || pi.Item_ID);
-        if (!id || id === 9000) return; // skip sentinel
+        const name = pi.Item_Name || pi.item_name || "Unknown";
+        if (!name) return;
         const qty = Number(pi.Quantity ?? pi.quantity ?? 0) || 0;
-        counts[id] = (counts[id] || 0) + qty;
+        counts[name] = (counts[name] || 0) + qty;
       });
 
       // Map shop items to include computed quantity (default 0)
       const itemsWithCounts = shopItems.map((it) => ({
         item: it,
-        quantity: counts[it.Item_ID] || counts[it.ItemId] || 0,
+        quantity: counts[it.Item_Name] || 0,
       }));
 
       // Top 3 (most sold)

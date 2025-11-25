@@ -129,6 +129,46 @@ import {
 const API_BASE_URL =
   import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
+// Empty state component for charts with no data
+function EmptyState({
+  message = "No data available for the selected filters",
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        height: 340,
+        color: "#9ca3af",
+        textAlign: "center",
+        padding: "2rem",
+      }}
+    >
+      <svg
+        style={{ width: 64, height: 64, marginBottom: 16 }}
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={1.5}
+          d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+        />
+      </svg>
+      <p style={{ fontSize: "0.95rem", fontWeight: 500, marginBottom: 8 }}>
+        {message}
+      </p>
+      <p style={{ fontSize: "0.85rem", color: "#d1d5db" }}>
+        Try adjusting the date range to see more data
+      </p>
+    </div>
+  );
+}
+
 export function AdminPortal({ user, onLogout }) {
   const {
     animals,
@@ -173,7 +213,8 @@ export function AdminPortal({ user, onLogout }) {
   const canApply = useMemo(() => {
     if (!customRange || !customRange.from || !customRange.to) return false;
     try {
-      return customRange.to.getTime() !== customRange.from.getTime();
+      // Allow single-day selections to apply (from === to)
+      return true;
     } catch (e) {
       return false;
     }
@@ -276,27 +317,6 @@ export function AdminPortal({ user, onLogout }) {
   const [animalExhibitFilter, setAnimalExhibitFilter] = useState("");
   const [animalSearch, setAnimalSearch] = useState("");
 
-  const [transactionSortState, setTransactionSortState] = useState({
-    col: null,
-    dir: null,
-  });
-
-  const [transactionSource, setTransactionSource] = useState("No Selection");
-
-  const [transactionSearch, setTransactionSearch] = useState("");
-
-  const [visibleColumns, setVisibleColumns] = useState({
-    purchaseId: true,
-    dateTime: true,
-    customer: true,
-    category: true,
-    description: true,
-    quantity: true,
-    unitPrice: true,
-    total: true,
-    payment: true,
-  });
-
   const [animalVisibleColumns, setAnimalVisibleColumns] = useState({
     animalId: true,
     name: true,
@@ -309,19 +329,6 @@ export function AdminPortal({ user, onLogout }) {
   });
 
   const [staffJobFilter, setStaffJobFilter] = useState("No Selection");
-
-  const toggleColumn = (columnKey) => {
-    if (columnKey === "all") {
-      const allChecked = Object.values(visibleColumns).every((v) => v);
-      const newState = {};
-      Object.keys(visibleColumns).forEach((key) => {
-        newState[key] = !allChecked;
-      });
-      setVisibleColumns(newState);
-    } else {
-      setVisibleColumns((prev) => ({ ...prev, [columnKey]: !prev[columnKey] }));
-    }
-  };
 
   const toggleAnimalColumn = (columnKey) => {
     if (columnKey === "all") {
@@ -336,20 +343,6 @@ export function AdminPortal({ user, onLogout }) {
         ...prev,
         [columnKey]: !prev[columnKey],
       }));
-    }
-  };
-
-  const [transactionCurrentPage, setTransactionCurrentPage] = useState(1);
-  const [transactionItemsPerPage, setTransactionItemsPerPage] = useState(15);
-
-  const handleTransactionPageChange = (page) => {
-    setTransactionCurrentPage(page);
-    const transactionsSection = document.getElementById("transactions");
-    if (transactionsSection) {
-      transactionsSection.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
     }
   };
 
@@ -372,16 +365,6 @@ export function AdminPortal({ user, onLogout }) {
     const animalTable = document.getElementById("animal-table");
     if (animalTable && typeof animalTable.scrollIntoView === "function") {
       animalTable.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-  };
-
-  const toggleTransactionSort = (col) => {
-    if (transactionSortState.col !== col) {
-      setTransactionSortState({ col, dir: "asc" });
-    } else if (transactionSortState.dir === "asc") {
-      setTransactionSortState({ col, dir: "desc" });
-    } else {
-      setTransactionSortState({ col: null, dir: null });
     }
   };
 
@@ -965,85 +948,6 @@ export function AdminPortal({ user, onLogout }) {
     });
     return grouped;
   }, [displayAnimals, allEnclosures]);
-
-  const sortedTransactions = useMemo(() => {
-    const data = Array.isArray(detailedTransactions)
-      ? [...detailedTransactions]
-      : [];
-
-    if (transactionSortState?.col) {
-      const key = transactionSortState.col;
-      const dir = transactionSortState.dir;
-      data.sort((a, b) => {
-        const A = a[key];
-        const B = b[key];
-        const numA = Number(A);
-        const numB = Number(B);
-        if (!Number.isNaN(numA) && !Number.isNaN(numB)) {
-          return dir === "asc" ? numA - numB : numB - numA;
-        } else {
-          const sa = String(A || "").toUpperCase();
-          const sb = String(B || "").toUpperCase();
-          if (sa < sb) return dir === "asc" ? -1 : 1;
-          if (sa > sb) return dir === "asc" ? 1 : -1;
-          return 0;
-        }
-      });
-    }
-    return data;
-  }, [detailedTransactions, transactionSortState]);
-
-  const transactionCategories = useMemo(() => {
-    const cats = new Set();
-    (Array.isArray(detailedTransactions) ? detailedTransactions : []).forEach(
-      (t) => cats.add(t?.Category ?? "Uncategorized")
-    );
-    return Array.from(cats);
-  }, [detailedTransactions]);
-
-  const filteredTransactions = useMemo(() => {
-    if (!Array.isArray(sortedTransactions)) return [];
-    if (transactionSource === "No Selection") return [];
-
-    let filtered = sortedTransactions;
-
-    if (transactionSource && transactionSource !== "All") {
-      filtered = filtered.filter(
-        (t) => (t?.Category ?? "Uncategorized") === transactionSource
-      );
-    }
-
-    if (transactionSearch.trim()) {
-      const searchLower = transactionSearch.toLowerCase().trim();
-      filtered = filtered.filter((t) => {
-        const customerName = (t?.Customer_Name || "").toLowerCase();
-        return customerName.includes(searchLower);
-      });
-    }
-
-    return filtered;
-  }, [sortedTransactions, transactionSource, transactionSearch]);
-
-  const displayedTransactions = useMemo(() => {
-    const startIndex = (transactionCurrentPage - 1) * transactionItemsPerPage;
-    const endIndex = startIndex + transactionItemsPerPage;
-    return filteredTransactions.slice(startIndex, endIndex);
-  }, [filteredTransactions, transactionCurrentPage, transactionItemsPerPage]);
-
-  const transactionTotalPages = useMemo(() => {
-    return Math.ceil(filteredTransactions.length / transactionItemsPerPage);
-  }, [filteredTransactions.length, transactionItemsPerPage]);
-
-  const transactionPaginationArray = useMemo(() => {
-    return generatePaginationArray(
-      transactionCurrentPage,
-      transactionTotalPages
-    );
-  }, [transactionCurrentPage, transactionTotalPages]);
-
-  useEffect(() => {
-    setTransactionCurrentPage(1);
-  }, [transactionSource, transactionSearch]);
 
   const calculateAge = (birthday) => {
     const birthDate = new Date(birthday);
@@ -2556,78 +2460,6 @@ export function AdminPortal({ user, onLogout }) {
           </section>
         )}
 
-        {/* Revenue Breakdown */}
-        {activeTab === "overview" && (
-          <section id="revenue">
-            <h2 className="text-2xl mb-6 text-gray-900 flex items-center gap-2">
-              <DollarSign className="h-6 w-6" /> Revenue Breakdown
-            </h2>
-            <Card>
-              <CardContent className="pt-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                  {revenueBreakdown.map((stat) => {
-                    const IconComponent = stat.icon;
-                    let comparisonValue = null;
-                    if (comparisonData) {
-                      switch (stat.category) {
-                        case "Tickets":
-                          comparisonValue = comparisonData.ticketRevenue;
-                          break;
-                        case "Memberships":
-                          comparisonValue = comparisonData.membershipRevenue;
-                          break;
-                        case "Gift Shop":
-                          comparisonValue = comparisonData.giftShopRevenue;
-                          break;
-                        case "Food & Beverages":
-                          comparisonValue = comparisonData.foodRevenue;
-                          break;
-                      }
-                    }
-                    return (
-                      <div
-                        key={stat.category}
-                        className="p-4 bg-gray-50 rounded-lg border border-gray-200"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-4">
-                            <div className="flex items-center justify-center mb-0">
-                              <IconComponent
-                                className={`h-10 w-10 ${stat.color.replace(
-                                  "bg-",
-                                  "text-"
-                                )}`}
-                              />
-                            </div>
-                            <div>
-                              <h3 className="font-medium mb-1">
-                                {stat.category}
-                              </h3>
-                              <p className="text-lg font-semibold text-green-600">
-                                $
-                                {stat.amount.toLocaleString("en-US", {
-                                  minimumFractionDigits: 2,
-                                  maximumFractionDigits: 2,
-                                })}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="flex-shrink-0">
-                            {renderPercentageChange(
-                              stat.amount,
-                              comparisonValue
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </CardContent>
-            </Card>
-          </section>
-        )}
-
         {/* Interactive Revenue Report Builder */}
         {activeTab === "reports" && (
           <Reports
@@ -2636,524 +2468,13 @@ export function AdminPortal({ user, onLogout }) {
                 ? allTimeTransactions
                 : detailedTransactions
             }
+            memberships={allMemberships}
+            items={items}
+            concessionItems={concessionItems}
+            revenueData={revenueData}
+            comparisonData={comparisonData}
+            renderPercentageChange={renderPercentageChange}
           />
-        )}
-
-        {/* Detailed Transactions Table (restored) */}
-        {activeTab === "overview" && (
-          <section id="transactions">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl text-gray-900 flex items-center gap-2">
-                <Activity className="h-6 w-6" /> Transaction Details
-              </h2>
-              <div className="flex items-center gap-4">
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" size="sm">
-                      <Settings className="h-4 w-4 mr-2" />
-                      All
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-64" align="end">
-                    <div className="space-y-3">
-                      <h4 className="font-medium text-sm mb-3">
-                        Toggle Columns
-                      </h4>
-                      <div className="space-y-2">
-                        <div className="flex items-center space-x-2 pb-2 border-b">
-                          <Checkbox
-                            id="col-all"
-                            checked={Object.values(visibleColumns).every(
-                              (v) => v
-                            )}
-                            onCheckedChange={() => toggleColumn("all")}
-                          />
-                          <label
-                            htmlFor="col-all"
-                            className="text-sm font-medium cursor-pointer"
-                          >
-                            All
-                          </label>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <Checkbox
-                            id="col-purchaseId"
-                            checked={visibleColumns.purchaseId}
-                            onCheckedChange={() => toggleColumn("purchaseId")}
-                          />
-                          <label
-                            htmlFor="col-purchaseId"
-                            className="text-sm cursor-pointer"
-                          >
-                            Purchase ID
-                          </label>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <Checkbox
-                            id="col-dateTime"
-                            checked={visibleColumns.dateTime}
-                            onCheckedChange={() => toggleColumn("dateTime")}
-                          />
-                          <label
-                            htmlFor="col-dateTime"
-                            className="text-sm cursor-pointer"
-                          >
-                            Date & Time
-                          </label>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <Checkbox
-                            id="col-customer"
-                            checked={visibleColumns.customer}
-                            onCheckedChange={() => toggleColumn("customer")}
-                          />
-                          <label
-                            htmlFor="col-customer"
-                            className="text-sm cursor-pointer"
-                          >
-                            Customer
-                          </label>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <Checkbox
-                            id="col-category"
-                            checked={visibleColumns.category}
-                            onCheckedChange={() => toggleColumn("category")}
-                          />
-                          <label
-                            htmlFor="col-category"
-                            className="text-sm cursor-pointer"
-                          >
-                            Category
-                          </label>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <Checkbox
-                            id="col-description"
-                            checked={visibleColumns.description}
-                            onCheckedChange={() => toggleColumn("description")}
-                          />
-                          <label
-                            htmlFor="col-description"
-                            className="text-sm cursor-pointer"
-                          >
-                            Description
-                          </label>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <Checkbox
-                            id="col-quantity"
-                            checked={visibleColumns.quantity}
-                            onCheckedChange={() => toggleColumn("quantity")}
-                          />
-                          <label
-                            htmlFor="col-quantity"
-                            className="text-sm cursor-pointer"
-                          >
-                            Quantity
-                          </label>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <Checkbox
-                            id="col-unitPrice"
-                            checked={visibleColumns.unitPrice}
-                            onCheckedChange={() => toggleColumn("unitPrice")}
-                          />
-                          <label
-                            htmlFor="col-unitPrice"
-                            className="text-sm cursor-pointer"
-                          >
-                            Unit Price
-                          </label>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <Checkbox
-                            id="col-total"
-                            checked={visibleColumns.total}
-                            onCheckedChange={() => toggleColumn("total")}
-                          />
-                          <label
-                            htmlFor="col-total"
-                            className="text-sm cursor-pointer"
-                          >
-                            Total
-                          </label>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <Checkbox
-                            id="col-payment"
-                            checked={visibleColumns.payment}
-                            onCheckedChange={() => toggleColumn("payment")}
-                          />
-                          <label
-                            htmlFor="col-payment"
-                            className="text-sm cursor-pointer"
-                          >
-                            Payment
-                          </label>
-                        </div>
-                      </div>
-                    </div>
-                  </PopoverContent>
-                </Popover>
-                <div className="flex items-center gap-3">
-                  <Label className="text-sm">Source</Label>
-                  <Select
-                    value={transactionSource}
-                    onValueChange={(value) => setTransactionSource(value)}
-                  >
-                    <SelectTrigger className="w-[220px] cursor-pointer">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="No Selection">No Selection</SelectItem>
-                      <SelectItem value="All">All</SelectItem>
-                      {transactionCategories.map((cat) => (
-                        <SelectItem key={cat} value={cat}>
-                          {cat}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="relative w-80">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                  <Input
-                    placeholder="Search by customer name..."
-                    value={transactionSearch}
-                    onChange={(e) => setTransactionSearch(e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
-              </div>
-            </div>
-            <Card>
-              <CardContent className="pt-6">
-                <div
-                  className="w-full rounded-md border"
-                  style={{
-                    overflowX: "auto",
-                    WebkitOverflowScrolling: "touch",
-                  }}
-                >
-                  <div className="min-w-0">
-                    <Table
-                      className="min-w-[900px] table-auto"
-                      style={{ minWidth: "900px", whiteSpace: "nowrap" }}
-                    >
-                      <TableHeader className="bg-gray-100">
-                        <TableRow>
-                          {visibleColumns.purchaseId && (
-                            <TableHead
-                              className="w-[100px] cursor-pointer select-none hover:bg-gray-50"
-                              onClick={() =>
-                                toggleTransactionSort("Purchase_ID")
-                              }
-                            >
-                              Purchase ID
-                              {transactionSortState.col === "Purchase_ID" && (
-                                <span className="ml-1 text-xs">
-                                  {transactionSortState.dir === "asc"
-                                    ? "▲"
-                                    : "▼"}
-                                </span>
-                              )}
-                            </TableHead>
-                          )}
-                          {visibleColumns.dateTime && (
-                            <TableHead
-                              className="cursor-pointer select-none hover:bg-gray-50"
-                              onClick={() =>
-                                toggleTransactionSort("Purchase_Date")
-                              }
-                            >
-                              Date & Time
-                              {transactionSortState.col === "Purchase_Date" && (
-                                <span className="ml-1 text-xs">
-                                  {transactionSortState.dir === "asc"
-                                    ? "▲"
-                                    : "▼"}
-                                </span>
-                              )}
-                            </TableHead>
-                          )}
-                          {visibleColumns.customer && (
-                            <TableHead
-                              className="cursor-pointer select-none hover:bg-gray-50"
-                              onClick={() =>
-                                toggleTransactionSort("Customer_Name")
-                              }
-                            >
-                              Customer
-                              {transactionSortState.col === "Customer_Name" && (
-                                <span className="ml-1 text-xs">
-                                  {transactionSortState.dir === "asc"
-                                    ? "▲"
-                                    : "▼"}
-                                </span>
-                              )}
-                            </TableHead>
-                          )}
-                          {visibleColumns.category && (
-                            <TableHead
-                              className="cursor-pointer select-none hover:bg-gray-50"
-                              onClick={() => toggleTransactionSort("Category")}
-                            >
-                              Category
-                              {transactionSortState.col === "Category" && (
-                                <span className="ml-1 text-xs">
-                                  {transactionSortState.dir === "asc"
-                                    ? "▲"
-                                    : "▼"}
-                                </span>
-                              )}
-                            </TableHead>
-                          )}
-                          {visibleColumns.description && (
-                            <TableHead
-                              className="cursor-pointer select-none hover:bg-gray-50"
-                              onClick={() =>
-                                toggleTransactionSort("Item_Description")
-                              }
-                            >
-                              Description
-                              {transactionSortState.col ===
-                                "Item_Description" && (
-                                <span className="ml-1 text-xs">
-                                  {transactionSortState.dir === "asc"
-                                    ? "▲"
-                                    : "▼"}
-                                </span>
-                              )}
-                            </TableHead>
-                          )}
-                          {visibleColumns.quantity && (
-                            <TableHead
-                              className="text-center cursor-pointer select-none hover:bg-gray-50"
-                              onClick={() => toggleTransactionSort("Quantity")}
-                            >
-                              Quantity
-                              {transactionSortState.col === "Quantity" && (
-                                <span className="ml-1 text-xs">
-                                  {transactionSortState.dir === "asc"
-                                    ? "▲"
-                                    : "▼"}
-                                </span>
-                              )}
-                            </TableHead>
-                          )}
-                          {visibleColumns.unitPrice && (
-                            <TableHead
-                              className="text-right cursor-pointer select-none hover:bg-gray-50"
-                              onClick={() =>
-                                toggleTransactionSort("Unit_Price")
-                              }
-                            >
-                              Unit Price
-                              {transactionSortState.col === "Unit_Price" && (
-                                <span className="ml-1 text-xs">
-                                  {transactionSortState.dir === "asc"
-                                    ? "▲"
-                                    : "▼"}
-                                </span>
-                              )}
-                            </TableHead>
-                          )}
-                          {visibleColumns.total && (
-                            <TableHead
-                              className="text-right cursor-pointer select-none hover:bg-gray-50"
-                              onClick={() =>
-                                toggleTransactionSort("Total_Amount")
-                              }
-                            >
-                              Total
-                              {transactionSortState.col === "Total_Amount" && (
-                                <span className="ml-1 text-xs">
-                                  {transactionSortState.dir === "asc"
-                                    ? "▲"
-                                    : "▼"}
-                                </span>
-                              )}
-                            </TableHead>
-                          )}
-                          {visibleColumns.payment && (
-                            <TableHead
-                              className="cursor-pointer select-none hover:bg-gray-50"
-                              onClick={() =>
-                                toggleTransactionSort("Payment_Method")
-                              }
-                            >
-                              Payment
-                              {transactionSortState.col ===
-                                "Payment_Method" && (
-                                <span className="ml-1 text-xs">
-                                  {transactionSortState.dir === "asc"
-                                    ? "▲"
-                                    : "▼"}
-                                </span>
-                              )}
-                            </TableHead>
-                          )}
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {displayedTransactions.length === 0 ? (
-                          <TableRow>
-                            <TableCell
-                              colSpan={
-                                Object.values(visibleColumns).filter(Boolean)
-                                  .length
-                              }
-                              className="text-center py-8 text-gray-500"
-                            >
-                              {transactionSource === "No Selection"
-                                ? "Please select a source to view transactions"
-                                : "No transactions found for the selected date range"}
-                            </TableCell>
-                          </TableRow>
-                        ) : (
-                          displayedTransactions.map((transaction, index) => (
-                            <TableRow
-                              key={`${transaction.Purchase_ID}-${index}`}
-                            >
-                              {visibleColumns.purchaseId && (
-                                <TableCell className="font-medium">
-                                  #{transaction.Purchase_ID}
-                                </TableCell>
-                              )}
-                              {visibleColumns.dateTime && (
-                                <TableCell className="whitespace-nowrap">
-                                  {new Date(
-                                    transaction.Purchase_Date
-                                  ).toLocaleString("en-US", {
-                                    month: "short",
-                                    day: "numeric",
-                                    year: "numeric",
-                                    hour: "numeric",
-                                    minute: "2-digit",
-                                  })}
-                                </TableCell>
-                              )}
-                              {visibleColumns.customer && (
-                                <TableCell className="whitespace-nowrap">
-                                  {transaction.Customer_Name}
-                                </TableCell>
-                              )}
-                              {visibleColumns.category && (
-                                <TableCell>
-                                  <Badge
-                                    variant="outline"
-                                    className={
-                                      transaction.Category === "Ticket"
-                                        ? "bg-green-50 text-green-700 border-green-200"
-                                        : transaction.Category === "Membership"
-                                        ? "bg-purple-50 text-purple-700 border-purple-200"
-                                        : transaction.Category === "Gift Shop"
-                                        ? "bg-blue-50 text-blue-700 border-blue-200"
-                                        : ""
-                                    }
-                                    style={
-                                      transaction.Category !== "Ticket" &&
-                                      transaction.Category !== "Membership" &&
-                                      transaction.Category !== "Gift Shop"
-                                        ? {
-                                            backgroundColor: "#FFF7ED",
-                                            color: "#C2410C",
-                                            border: "1px solid #FED7AA",
-                                          }
-                                        : {}
-                                    }
-                                  >
-                                    {transaction.Category}
-                                  </Badge>
-                                </TableCell>
-                              )}
-                              {visibleColumns.description && (
-                                <TableCell>
-                                  {transaction.Item_Description
-                                    ? transaction.Item_Description.replace(
-                                        /\s*\([^)]*\)\s*$/,
-                                        ""
-                                      )
-                                    : ""}
-                                </TableCell>
-                              )}
-                              {visibleColumns.quantity && (
-                                <TableCell className="text-center">
-                                  {transaction.Quantity}
-                                </TableCell>
-                              )}
-                              {visibleColumns.unitPrice && (
-                                <TableCell className="text-right whitespace-nowrap">
-                                  $
-                                  {parseFloat(transaction.Unit_Price).toFixed(
-                                    2
-                                  )}
-                                </TableCell>
-                              )}
-                              {visibleColumns.total && (
-                                <TableCell className="text-right font-semibold text-green-600 whitespace-nowrap">
-                                  $
-                                  {parseFloat(transaction.Total_Amount).toFixed(
-                                    2
-                                  )}
-                                </TableCell>
-                              )}
-                              {visibleColumns.payment && (
-                                <TableCell>
-                                  <Badge variant="secondary">
-                                    {transaction.Payment_Method}
-                                  </Badge>
-                                </TableCell>
-                              )}
-                            </TableRow>
-                          ))
-                        )}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </div>
-                <div className="mt-4 flex items-center justify-between text-sm text-gray-600">
-                  <span>
-                    Showing{" "}
-                    {filteredTransactions.length > 0
-                      ? (transactionCurrentPage - 1) * transactionItemsPerPage +
-                        1
-                      : 0}
-                    -
-                    {Math.min(
-                      transactionCurrentPage * transactionItemsPerPage,
-                      filteredTransactions.length
-                    )}{" "}
-                    of {filteredTransactions.length} transaction
-                    {filteredTransactions.length !== 1 ? "s" : ""}
-                  </span>
-                  <span className="font-semibold">
-                    Total Revenue:{" "}
-                    <span className="text-red-600">
-                      $
-                      {filteredTransactions
-                        .reduce(
-                          (sum, t) => sum + parseFloat(t.Total_Amount || 0),
-                          0
-                        )
-                        .toLocaleString("en-US", {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}
-                    </span>
-                  </span>
-                </div>
-                <PaginationControls
-                  currentPage={transactionCurrentPage}
-                  totalPages={transactionTotalPages}
-                  onPageChange={handleTransactionPageChange}
-                  paginationArray={transactionPaginationArray}
-                  className="mt-4"
-                />
-              </CardContent>
-            </Card>
-          </section>
         )}
 
         {/* Ticket Sales merged into Pricing Management below */}
@@ -3177,65 +2498,69 @@ export function AdminPortal({ user, onLogout }) {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="pt-6">
-                  <ResponsiveContainer width="100%" height={340}>
-                    <BarChart
-                      data={ticketStats}
-                      margin={{ top: 20, right: 30, left: 0, bottom: 5 }}
-                    >
-                      <defs>
-                        <linearGradient
-                          id="ticketGradient"
-                          x1="0"
-                          y1="0"
-                          x2="0"
-                          y2="1"
-                        >
-                          <stop
-                            offset="5%"
-                            stopColor="#10b981"
-                            stopOpacity={0.8}
-                          />
-                          <stop
-                            offset="95%"
-                            stopColor="#10b981"
-                            stopOpacity={0.3}
-                          />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                      <XAxis
-                        dataKey="type"
-                        stroke="#6b7280"
-                        style={{ fontSize: "0.875rem" }}
-                      />
-                      <YAxis
-                        allowDecimals={false}
-                        domain={[0, ticketMax]}
-                        stroke="#6b7280"
-                        style={{ fontSize: "0.875rem" }}
-                        label={{
-                          value: "Tickets Sold",
-                          angle: -90,
-                          position: "insideLeft",
-                          style: { fill: "#6b7280", fontSize: "0.875rem" },
-                        }}
-                      />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: "#ffffff",
-                          border: "1px solid #e5e7eb",
-                          borderRadius: "0.5rem",
-                        }}
-                        formatter={(value) => [`${value} tickets`, "Sold"]}
-                      />
-                      <Bar
-                        dataKey="sold"
-                        fill="url(#ticketGradient)"
-                        name="Tickets Sold"
-                        radius={[8, 8, 0, 0]}
-                      />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  {ticketStats.every((ticket) => ticket.sold === 0) ? (
+                    <EmptyState message="No ticket sales data available" />
+                  ) : (
+                    <ResponsiveContainer width="100%" height={340}>
+                      <BarChart
+                        data={ticketStats}
+                        margin={{ top: 20, right: 30, left: 0, bottom: 5 }}
+                      >
+                        <defs>
+                          <linearGradient
+                            id="ticketGradient"
+                            x1="0"
+                            y1="0"
+                            x2="0"
+                            y2="1"
+                          >
+                            <stop
+                              offset="5%"
+                              stopColor="#10b981"
+                              stopOpacity={0.8}
+                            />
+                            <stop
+                              offset="95%"
+                              stopColor="#10b981"
+                              stopOpacity={0.3}
+                            />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                        <XAxis
+                          dataKey="type"
+                          stroke="#6b7280"
+                          style={{ fontSize: "0.875rem" }}
+                        />
+                        <YAxis
+                          allowDecimals={false}
+                          domain={[0, ticketMax]}
+                          stroke="#6b7280"
+                          style={{ fontSize: "0.875rem" }}
+                          label={{
+                            value: "Tickets Sold",
+                            angle: -90,
+                            position: "insideLeft",
+                            style: { fill: "#6b7280", fontSize: "0.875rem" },
+                          }}
+                        />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: "#ffffff",
+                            border: "1px solid #e5e7eb",
+                            borderRadius: "0.5rem",
+                          }}
+                          formatter={(value) => [`${value} tickets`, "Sold"]}
+                        />
+                        <Bar
+                          dataKey="sold"
+                          fill="url(#ticketGradient)"
+                          name="Tickets Sold"
+                          radius={[8, 8, 0, 0]}
+                        />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
                 </CardContent>
               </Card>
 
@@ -3251,71 +2576,75 @@ export function AdminPortal({ user, onLogout }) {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="pt-6">
-                  <ResponsiveContainer width="100%" height={340}>
-                    <PieChart>
-                      <Pie
-                        data={revenueBreakdown
-                          .filter((item) => item.amount > 0)
-                          .map((item) => ({
-                            name: item.category,
-                            value: item.amount,
-                          }))}
-                        cx="50%"
-                        cy="50%"
-                        labelLine={{ stroke: "#6b7280", strokeWidth: 1 }}
-                        label={({ name, percent }) => {
-                          if (!percent || percent === 0) return null;
-                          return `${name} ${(percent * 100).toFixed(1)}%`;
-                        }}
-                        outerRadius={100}
-                        innerRadius={45}
-                        fill="#8884d8"
-                        dataKey="value"
-                        paddingAngle={2}
-                      >
-                        {revenueBreakdown
-                          .filter((item) => item.amount > 0)
-                          .map((item, index) => {
-                            const cat = (item.category || "").toLowerCase();
-                            let fill = "#6b7280";
-                            if (cat.includes("ticket"))
-                              fill = "#10b981"; // Tickets - green
-                            else if (cat.includes("gift"))
-                              fill = "#3b82f6"; // Gift Shop - blue
-                            else if (
-                              cat.includes("food") ||
-                              cat.includes("beverage")
-                            )
-                              fill = "#ea580c";
-                            // Food - orange (darker, matches bg-orange-600)
-                            else if (cat.includes("membership"))
-                              fill = "#9333ea"; // Membership - purple
+                  {revenueBreakdown.every((item) => item.amount === 0) ? (
+                    <EmptyState message="No revenue data available" />
+                  ) : (
+                    <ResponsiveContainer width="100%" height={340}>
+                      <PieChart>
+                        <Pie
+                          data={revenueBreakdown
+                            .filter((item) => item.amount > 0)
+                            .map((item) => ({
+                              name: item.category,
+                              value: item.amount,
+                            }))}
+                          cx="50%"
+                          cy="50%"
+                          labelLine={{ stroke: "#6b7280", strokeWidth: 1 }}
+                          label={({ name, percent }) => {
+                            if (!percent || percent === 0) return null;
+                            return `${name} ${(percent * 100).toFixed(1)}%`;
+                          }}
+                          outerRadius={100}
+                          innerRadius={45}
+                          fill="#8884d8"
+                          dataKey="value"
+                          paddingAngle={2}
+                        >
+                          {revenueBreakdown
+                            .filter((item) => item.amount > 0)
+                            .map((item, index) => {
+                              const cat = (item.category || "").toLowerCase();
+                              let fill = "#6b7280";
+                              if (cat.includes("ticket"))
+                                fill = "#10b981"; // Tickets - green
+                              else if (cat.includes("gift"))
+                                fill = "#3b82f6"; // Gift Shop - blue
+                              else if (
+                                cat.includes("food") ||
+                                cat.includes("beverage")
+                              )
+                                fill = "#ea580c";
+                              // Food - orange (darker, matches bg-orange-600)
+                              else if (cat.includes("membership"))
+                                fill = "#9333ea"; // Membership - purple
 
-                            return <Cell key={`cell-${index}`} fill={fill} />;
-                          })}
-                      </Pie>
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: "#ffffff",
-                          border: "1px solid #e5e7eb",
-                          borderRadius: "0.5rem",
-                        }}
-                        formatter={(value) => [
-                          `$${value.toLocaleString("en-US", {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}`,
-                          "Revenue",
-                        ]}
-                      />
-                      <Legend
-                        verticalAlign="bottom"
-                        height={36}
-                        iconType="circle"
-                        wrapperStyle={{ fontSize: "0.875rem" }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
+                              return <Cell key={`cell-${index}`} fill={fill} />;
+                            })}
+                        </Pie>
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: "#ffffff",
+                            border: "1px solid #e5e7eb",
+                            borderRadius: "0.5rem",
+                          }}
+                          formatter={(value) => [
+                            `$${value.toLocaleString("en-US", {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}`,
+                            "Revenue",
+                          ]}
+                        />
+                        <Legend
+                          verticalAlign="bottom"
+                          height={36}
+                          iconType="circle"
+                          wrapperStyle={{ fontSize: "0.875rem" }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  )}
                 </CardContent>
               </Card>
             </div>

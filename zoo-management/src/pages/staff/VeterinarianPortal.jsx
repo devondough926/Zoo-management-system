@@ -281,14 +281,27 @@ export function VeterinarianPortal(
     healthStatus: true,
   });
 
+  // When the applied filters change (after the user clicks Apply), reset
+  // the Animal Details table pagination back to page 1 so results are visible.
+  useEffect(() => {
+    setAnimalCurrentPage(1);
+  }, [
+    appliedHealthZoneFilter,
+    appliedHealthEnclosureFilter,
+    appliedGenderFilter,
+    appliedAgeFilter,
+    appliedVaccinationStatusFilter,
+    appliedWeightRangeFilter,
+    appliedSpeciesFilter,
+    appliedReportHealthStatusFilter,
+    appliedDateRangeFilter,
+  ]);
+
   // Check if date range can be applied (different from current)
   const canApplyDate = useMemo(() => {
     if (!tempDateRange || !tempDateRange.from || !tempDateRange.to)
       return false;
-    // Must be a true range with different start and end
-    if (tempDateRange.to.getTime() === tempDateRange.from.getTime()) {
-      return false;
-    }
+    // Allow single-day selections (start === end) as valid ranges
     // Check if different from current dateRangeFilter
     if (!dateRangeFilter.from || !dateRangeFilter.to) return true;
     return (
@@ -554,22 +567,27 @@ export function VeterinarianPortal(
       const vaccinationRecordsLocal = vaccinationLogs.map(
         (log /** @type {any} */) => {
           const ts = log.Log_Date;
+          const parsedTs = parseServerDate(ts);
+          // store normalized ISO for last-vaccination comparisons
+          const tsIso = parsedTs ? parsedTs.toISOString() : ts;
           if (
             !lastVaccinationByAnimal[log.Animal_ID] ||
-            new Date(ts) > new Date(lastVaccinationByAnimal[log.Animal_ID])
+            (parsedTs &&
+              new Date(tsIso).getTime() >
+                new Date(lastVaccinationByAnimal[log.Animal_ID]).getTime())
           ) {
-            lastVaccinationByAnimal[log.Animal_ID] = ts;
+            lastVaccinationByAnimal[log.Animal_ID] = tsIso;
           }
-          const nextDue = new Date(
-            new Date(ts).getTime() + 365 * 86400000
-          ).toISOString();
+          const nextDue = parsedTs
+            ? new Date(parsedTs.getTime() + 365 * 86400000).toISOString()
+            : undefined;
           return {
             Vaccine_ID: `VACC-${log.Log_ID}`,
             Animal_ID: log.Animal_ID,
             Animal_Name: log.Animal_Name,
             Vaccine_Type:
               log.Activity.replace(/^Vaccination:\s*/i, "") || "Vaccination",
-            Date_Administered: ts,
+            Date_Administered: tsIso,
             Next_Due_Date: nextDue,
             Administered_By: log.Employee_ID || 0,
             Notes: log.Notes || undefined,
@@ -581,21 +599,29 @@ export function VeterinarianPortal(
       const lastCheckupByAnimal = {};
       medicalLogs.forEach((log /** @type {any} */) => {
         const ts = log.Log_Date;
+        const parsedTs = parseServerDate(ts);
+        const tsIso = parsedTs ? parsedTs.toISOString() : ts;
         if (
           !lastCheckupByAnimal[log.Animal_ID] ||
-          new Date(ts) > new Date(lastCheckupByAnimal[log.Animal_ID])
+          (parsedTs &&
+            new Date(tsIso).getTime() >
+              new Date(lastCheckupByAnimal[log.Animal_ID]).getTime())
         ) {
-          lastCheckupByAnimal[log.Animal_ID] = ts;
+          lastCheckupByAnimal[log.Animal_ID] = tsIso;
         }
       });
       visits.forEach((v /** @type {any} */) => {
         if (v.Diagnosis) {
           const ts = v.Visit_Date;
+          const parsedTs = parseServerDate(ts);
+          const tsIso = parsedTs ? parsedTs.toISOString() : ts;
           if (
             !lastCheckupByAnimal[v.Animal_ID] ||
-            new Date(ts) > new Date(lastCheckupByAnimal[v.Animal_ID])
+            (parsedTs &&
+              new Date(tsIso).getTime() >
+                new Date(lastCheckupByAnimal[v.Animal_ID]).getTime())
           ) {
-            lastCheckupByAnimal[v.Animal_ID] = ts;
+            lastCheckupByAnimal[v.Animal_ID] = tsIso;
           }
         }
       });
@@ -617,29 +643,55 @@ export function VeterinarianPortal(
       // Build medical log from Animal_Care_Log (medical) + vet visit records
       const medicalLogLocal = [];
 
+      // First pass: identify all trigger-generated health status updates (with arrows)
+      // These are authoritative and should suppress app-generated "update" entries
+      const triggerHealthUpdates = new Map(); // key: animal_name-minute, value: log
+      medicalLogs.forEach((log /** @type {any} */) => {
+        const activity = (log.Activity || "").toString();
+        const logTypeRaw = (log.Log_Type || log.LogType || "").toString();
+
+        // Trigger entries have Log_Type='update' and contain an arrow
+        if (logTypeRaw.toLowerCase() === "update" && /\u2192/.test(activity)) {
+          const parsed = parseServerDate(log.Log_Date);
+          if (parsed) {
+            const key = `${log.Animal_Name}-${Math.floor(
+              parsed.getTime() / 60000
+            )}`;
+            triggerHealthUpdates.set(key, log);
+          }
+        }
+      });
+
       // Add entries from medical/animal care logs.
       medicalLogs.forEach((log /** @type {any} */) => {
         const activity = (log.Activity || "").toString();
         const logTypeRaw = (log.Log_Type || log.LogType || "").toString();
 
         // Prefer the backend Log_Type if provided — normalize to our UI types.
-        let type = "care"; // default fallback
+        // IMPORTANT: We only use `type` values that actually exist in UI filters/rendering.
+        // Supported UI types: "medical", "health_update", "treatment", "checkup",
+        // "vaccination", "feeding", "maintenance".
+        let type = "medical"; // sensible default for vet portal
         const lt = logTypeRaw.toLowerCase();
         if (lt) {
           if (lt === "medical") type = "medical";
-          else if (lt === "fed" || lt === "fed" || lt === "feeding")
-            type = "feeding";
+          else if (lt === "fed" || lt === "feeding") type = "feeding";
           else if (lt === "vaccinated" || lt === "vaccination")
             type = "vaccination";
           else if (lt === "maintenance") type = "maintenance";
-          else if (lt === "update" || lt === "new") {
-            type = "care";
+          else if (lt === "update") {
+            // Check if it's a health status update
+            if (/health\s+status/i.test(activity)) {
+              type = "health_update";
+            }
           }
         }
 
         // If backend Log_Type is absent or ambiguous, fall back to keyword heuristics
         if (!lt) {
-          if (/vaccin/i.test(activity)) {
+          if (/health\s+status\s+(update|change)/i.test(activity)) {
+            type = "health_update";
+          } else if (/vaccin/i.test(activity)) {
             type = "vaccination";
           } else if (/feed|fed|feeding/i.test(activity)) {
             type = "feeding";
@@ -656,65 +708,276 @@ export function VeterinarianPortal(
           }
         }
 
-        medicalLogLocal.push({
-          id: `MED-${log.Log_ID}`,
-          type,
-          timestamp: log.Log_Date,
-          animal_name: log.Animal_Name,
-          details: activity || "Care note",
-          Notes: log.Notes || log.Notes || undefined,
-          veterinarian_name: log.First_Name
+        // Skip app-generated "health status update" entries if a trigger entry exists
+        // for the same animal at the same time (the trigger entry has the arrow format)
+        if (lt === "medical" && /health\s+status\s+update/i.test(activity)) {
+          const parsed = parseServerDate(log.Log_Date);
+          if (parsed) {
+            const key = `${log.Animal_Name}-${Math.floor(
+              parsed.getTime() / 60000
+            )}`;
+            if (triggerHealthUpdates.has(key)) {
+              return; // Skip this entry - the trigger version is more informative
+            }
+          }
+        }
+
+        {
+          const parsed = parseServerDate(log.Log_Date);
+
+          // Extract the *updated* health status from activity text so the badge
+          // always reflects the status after the arrow transition.
+          let healthStatus = undefined;
+          if (type === "health_update") {
+            const arrowMatch = activity.match(/\u2192\s*([^,]+)/); // "Good  Excellent"
+            if (arrowMatch && arrowMatch[1]) {
+              healthStatus = backendToUIHealth(arrowMatch[1].trim());
+            } else {
+              const statusMatch = activity.match(
+                /health\s+status\s+(?:update|changed?):\s*(\w+)/i
+              );
+              if (statusMatch && statusMatch[1]) {
+                healthStatus = backendToUIHealth(statusMatch[1]);
+              }
+            }
+          }
+
+          // Prefer actual employee name when available; otherwise fall back
+          // to a generic staff label with the ID.
+          const vetName = log.First_Name
             ? `${log.First_Name} ${log.Last_Name || ""}`.trim()
-            : "Vet Staff",
-          health_status: undefined,
-        });
+            : log.Employee_ID
+            ? `Staff ${log.Employee_ID}`
+            : "Vet Staff";
+
+          medicalLogLocal.push({
+            id: `MED-${log.Log_ID}`,
+            type,
+            timestamp: parsed ? parsed.toISOString() : log.Log_Date,
+            animal_name: log.Animal_Name,
+            details: activity || "Care note",
+            Notes: log.Notes || log.Notes || undefined,
+            veterinarian_name: vetName,
+            health_status: healthStatus,
+          });
+        }
       });
 
       // Add entries from vet visit records
+      // Skip vet visits that are health status updates if a trigger-generated
+      // log already exists (to avoid duplicates from app-initiated updates)
       visits.forEach((v /** @type {any} */) => {
         let type = "treatment";
         if (v.Diagnosis && /checkup|exam|routine/i.test(v.Diagnosis))
           type = "checkup";
         else if (v.Diagnosis && /status|update/i.test(v.Diagnosis))
           type = "health_update";
-        medicalLogLocal.push({
-          id: `VISIT-${v.Visit_ID}`,
-          type,
-          timestamp: v.Visit_Date,
-          animal_name: v.Animal_Name,
-          details: v.Diagnosis || v.Treatment || "Vet visit",
-          Notes: v.Notes || v.Treatment || undefined,
-          veterinarian_name: v.First_Name
-            ? `${v.First_Name} ${v.Last_Name || ""}`.trim()
-            : "Vet Staff",
-          health_status: undefined,
-        });
+
+        // Skip health_update visits if we already have a trigger log for the same event
+        if (type === "health_update") {
+          const parsed = parseServerDate(v.Visit_Date);
+          if (parsed) {
+            const key = `${v.Animal_Name}-${Math.floor(
+              parsed.getTime() / 60000
+            )}`;
+            if (triggerHealthUpdates.has(key)) {
+              return; // Skip this visit - already logged by trigger with arrow format
+            }
+          }
+        }
+
+        {
+          const parsed = parseServerDate(v.Visit_Date);
+          medicalLogLocal.push({
+            id: `VISIT-${v.Visit_ID}`,
+            type,
+            timestamp: parsed ? parsed.toISOString() : v.Visit_Date,
+            animal_name: v.Animal_Name,
+            details: v.Diagnosis || v.Treatment || "Vet visit",
+            Notes: v.Notes || v.Treatment || undefined,
+            veterinarian_name: v.First_Name
+              ? `${v.First_Name} ${v.Last_Name || ""}`.trim()
+              : "Vet Staff",
+            health_status: undefined,
+          });
+        }
       });
 
       // Add vaccination logs to medical log as well
       vaccinationLogs.forEach((log /** @type {any} */) => {
-        medicalLogLocal.push({
-          id: `VACCLOG-${log.Log_ID}`,
-          type: "vaccination",
-          timestamp: log.Log_Date,
-          animal_name: log.Animal_Name,
-          details: log.Activity || "Vaccination",
-          Notes: log.Notes || undefined,
-          veterinarian_name: log.First_Name
-            ? `${log.First_Name} ${log.Last_Name || ""}`.trim()
-            : "Vet Staff",
-          health_status: undefined,
-        });
+        {
+          const parsed = parseServerDate(log.Log_Date);
+          medicalLogLocal.push({
+            id: `VACCLOG-${log.Log_ID}`,
+            type: "vaccination",
+            timestamp: parsed ? parsed.toISOString() : log.Log_Date,
+            animal_name: log.Animal_Name,
+            details: log.Activity || "Vaccination",
+            Notes: log.Notes || undefined,
+            veterinarian_name: log.First_Name
+              ? `${log.First_Name} ${log.Last_Name || ""}`.trim()
+              : "Vet Staff",
+            health_status: undefined,
+          });
+        }
       });
 
-      medicalLogLocal.sort(
-        (a, b) =>
-          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-      );
+      // Collapse paired update/medical rows into a single entry.
+      // We group by animal, sort by Log ID descending, and merge adjacent
+      // "medical" (app) and "health_update" (trigger) logs.
+      // This handles multiple updates per day correctly.
+      const mergedLog = [];
+
+      // Helper to extract numeric ID from "MED-123"
+      const getLogId = (idStr) => {
+        if (typeof idStr === "string" && idStr.startsWith("MED-")) {
+          return parseInt(idStr.replace("MED-", ""), 10);
+        }
+        return 0;
+      };
+
+      // Deduplicate entries by their unique ID first
+      const seenIds = new Set();
+      const deduplicatedLogs = medicalLogLocal.filter((entry) => {
+        if (seenIds.has(entry.id)) {
+          return false; // Skip duplicate
+        }
+        seenIds.add(entry.id);
+        return true;
+      });
+
+      // Additional deduplication: For health_update entries with the same animal name
+      // and exact timestamp, keep only ONE (prefer the one with arrow)
+      const finalDeduplicated = [];
+      const seenHealthUpdates = new Set(); // key: "animal_name-timestamp"
+
+      // Sort entries: prioritize trigger entries (with arrows) over vet visit entries
+      const sortedLogs = [...deduplicatedLogs].sort((a, b) => {
+        // First sort by timestamp (newest first)
+        const ta = parseServerDate(a.timestamp);
+        const tb = parseServerDate(b.timestamp);
+        const timeDiff = (tb ? tb.getTime() : 0) - (ta ? ta.getTime() : 0);
+        if (timeDiff !== 0) return timeDiff;
+
+        // For same timestamp, prioritize entries with arrows (trigger entries)
+        if (a.type === "health_update" && b.type === "health_update") {
+          const aHasArrow = /\u2192/.test(a.details);
+          const bHasArrow = /\u2192/.test(b.details);
+          if (aHasArrow && !bHasArrow) return -1;
+          if (!aHasArrow && bHasArrow) return 1;
+        }
+        return 0;
+      });
+
+      sortedLogs.forEach((entry) => {
+        // For health_update entries, create a unique key from animal name + timestamp
+        if (entry.type === "health_update") {
+          const key = `${entry.animal_name}-${entry.timestamp}`;
+
+          if (seenHealthUpdates.has(key)) {
+            // Skip this duplicate - already have a health update for this exact animal + time
+            return;
+          }
+
+          // Mark this combination as seen
+          seenHealthUpdates.add(key);
+        }
+
+        finalDeduplicated.push(entry);
+      });
+
+      // Group by animal name
+      const logsByAnimal = {};
+      finalDeduplicated.forEach((entry) => {
+        if (!logsByAnimal[entry.animal_name]) {
+          logsByAnimal[entry.animal_name] = [];
+        }
+        logsByAnimal[entry.animal_name].push(entry);
+      });
+
+      // Process each animal's logs
+      Object.values(logsByAnimal).forEach((animalLogs) => {
+        // Sort by Log ID descending (newest first)
+        // For non-MED logs (VISIT, VACCLOG), we use timestamp as fallback or keep them separate?
+        // Actually, let's sort by timestamp first, then ID to be safe,
+        // but for the specific merge case, ID is the strongest signal of "same event".
+        animalLogs.sort((a, b) => {
+          const idA = getLogId(a.id);
+          const idB = getLogId(b.id);
+          if (idA > 0 && idB > 0) {
+            return idB - idA; // Descending ID
+          }
+          // Fallback to timestamp
+          const tb = parseServerDate(b.timestamp);
+          const ta = parseServerDate(a.timestamp);
+          return (tb ? tb.getTime() : 0) - (ta ? ta.getTime() : 0);
+        });
+
+        const processedIndices = new Set();
+
+        for (let i = 0; i < animalLogs.length; i++) {
+          if (processedIndices.has(i)) continue;
+
+          const current = animalLogs[i];
+          let merged = current;
+
+          // Try to find a partner to merge with
+          // We look at the next item (i+1)
+          if (i + 1 < animalLogs.length) {
+            const next = animalLogs[i + 1];
+
+            // Check if they are a pair of (medical + health_update)
+            // They should be close in ID (e.g. within 5) and same animal (already grouped)
+            const idCurr = getLogId(current.id);
+            const idNext = getLogId(next.id);
+
+            const isPair =
+              idCurr > 0 &&
+              idNext > 0 &&
+              Math.abs(idCurr - idNext) <= 5 && // Close IDs
+              ((current.type === "medical" && next.type === "health_update") ||
+                (current.type === "health_update" && next.type === "medical"));
+
+            if (isPair) {
+              // Merge them
+              const medicalRow = current.type === "medical" ? current : next;
+              const updateRow =
+                current.type === "health_update" ? current : next;
+
+              // Prefer updateRow details (arrow text)
+              // Prefer medicalRow timestamp and vet (local time, real user)
+              // Prefer updateRow health status if it has the arrow target, else medicalRow status
+
+              // Check for arrow in updateRow details
+              const hasArrow = /\u2192/.test(updateRow.details || "");
+              const details = hasArrow ? updateRow.details : medicalRow.details;
+
+              merged = {
+                ...medicalRow, // Base on medical row for timestamp/vet
+                details: details,
+                health_status:
+                  updateRow.health_status || medicalRow.health_status,
+              };
+
+              processedIndices.add(i + 1); // Skip next
+            }
+          }
+
+          mergedLog.push(merged);
+        }
+      });
+
+      mergedLog.sort((a, b) => {
+        const tb = parseServerDate(b.timestamp);
+        const ta = parseServerDate(a.timestamp);
+        const tbms = tb ? tb.getTime() : 0;
+        const tams = ta ? ta.getTime() : 0;
+        return tbms - tams;
+      });
 
       setHealthRecords(enrichedRecords);
       setVaccinationRecords(vaccinationRecordsLocal);
-      setMedicalLog(medicalLogLocal);
+      setMedicalLog(mergedLog);
 
       // Load employees and filter veterinarians for the vaccination dialog
       try {
@@ -829,7 +1092,7 @@ export function VeterinarianPortal(
       case "checkup":
         return "bg-blue-100 text-blue-800";
       case "vaccination":
-        return "bg-green-100 text-green-800";
+        return "bg-emerald-100 text-emerald-800";
       case "health_update":
         return "bg-orange-100 text-orange-800";
       case "treatment":
@@ -841,8 +1104,9 @@ export function VeterinarianPortal(
 
   const isSameLocalDay = (a, b) => {
     try {
-      const da = new Date(a);
-      const db = new Date(b);
+      const da = parseServerDate(a);
+      const db = parseServerDate(b instanceof Date ? b.toISOString() : b);
+      if (!da || !db) return false;
       return (
         da.getFullYear() === db.getFullYear() &&
         da.getMonth() === db.getMonth() &&
@@ -856,12 +1120,20 @@ export function VeterinarianPortal(
   // Today's medical logs memoized and responsive container height
   const todaysMedicalLogs = useMemo(() => {
     try {
+      // Include medical, health_update, treatment, checkup, and vaccination types
+      const medicalTypes = [
+        "medical",
+        "health_update",
+        "treatment",
+        "checkup",
+        "vaccination",
+      ];
       return (medicalLog || []).filter(
         (log) =>
           log &&
           log.timestamp &&
           isSameLocalDay(log.timestamp, new Date()) &&
-          log.type === "medical"
+          medicalTypes.includes(log.type)
       );
     } catch (e) {
       return [];
@@ -961,8 +1233,9 @@ export function VeterinarianPortal(
     // Expect backendStatus to be one of BACKEND_HEALTH_STATUSES
     switch (backendStatus) {
       case "Excellent":
+        return "bg-emerald-50 text-emerald-700 border-emerald-200";
       case "Good":
-        return "bg-green-100 text-green-800 border-green-200";
+        return "bg-green-50 text-green-700 border-green-200";
       case "Fair":
         return "bg-yellow-100 text-yellow-800 border-yellow-200";
       case "Needs Attention":
@@ -973,8 +1246,9 @@ export function VeterinarianPortal(
         const mapped = uiToBackendHealth(backendStatus);
         switch (mapped) {
           case "Excellent":
+            return "bg-emerald-50 text-emerald-700 border-emerald-200";
           case "Good":
-            return "bg-green-100 text-green-800 border-green-200";
+            return "bg-green-50 text-green-700 border-green-200";
           case "Fair":
             return "bg-yellow-100 text-yellow-800 border-yellow-200";
           case "Needs Attention":
@@ -1015,6 +1289,15 @@ export function VeterinarianPortal(
     setVaccinationDialogOpen(true);
   };
 
+  const formatLocalTimestamp = (date = new Date()) => {
+    const pad = (val) => String(val).padStart(2, "0");
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(
+      date.getDate()
+    )} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(
+      date.getSeconds()
+    )}`;
+  };
+
   const confirmHealthUpdate = async () => {
     if (!selectedAnimal || !selectedHealthStatus) return;
     if (!selectedVetId) {
@@ -1023,14 +1306,12 @@ export function VeterinarianPortal(
     }
     try {
       const backendStatus = uiToBackendHealth(selectedHealthStatus);
+      // Update animal health - the database trigger will automatically create
+      // the medical log entry, so we don't need to call createVetVisit
       await veterinarianAPI.updateAnimalHealthInfo(selectedAnimal.Animal_ID, {
         healthStatus: backendStatus,
-      });
-      await veterinarianAPI.createVetVisit({
-        animalId: selectedAnimal.Animal_ID,
         employeeId: selectedVetId,
-        diagnosis: `Health status update: ${selectedHealthStatus}`,
-        treatment: healthNotes || null,
+        notes: healthNotes || null,
       });
 
       setHealthRecords((prev) =>
@@ -1051,19 +1332,9 @@ export function VeterinarianPortal(
         (vets.find((v) => v.id === selectedVetId) || {}).name ||
         `Staff ${selectedVetId}`;
 
-      setMedicalLog((prev) => [
-        {
-          id: `LOCAL-${Date.now()}`,
-          type: "health_update",
-          timestamp: new Date().toISOString(),
-          animal_name: selectedAnimal.Animal_Name,
-          details:
-            healthNotes || `Health status updated to ${selectedHealthStatus}`,
-          veterinarian_name: vetName,
-          health_status: selectedHealthStatus,
-        },
-        ...prev,
-      ]);
+      // Do not optimistically add a separate local log entry; rely on the
+      // database-triggered entries and reload from the backend so each
+      // health update appears exactly once.
       toast.success(`Health status updated for ${selectedAnimal.Animal_Name}`, {
         description: `Status: ${selectedHealthStatus}`,
       });
@@ -1141,9 +1412,36 @@ export function VeterinarianPortal(
 
   const formatDate = (dateString) => {
     if (!dateString) return "N/A";
-    const date = new Date(dateString);
+    const date = parseServerDate(dateString);
+    if (!date) return "N/A";
     return date.toLocaleDateString();
   };
+
+  function parseServerDate(input) {
+    if (!input) return null;
+    if (input instanceof Date) return input;
+    if (typeof input !== "string") return new Date(input);
+
+    // If string ends with Z or has an explicit offset, let Date parse it
+    // and convert to the user's local time zone.
+    if (/Z$/.test(input) || /[+-]\d{2}:?\d{2}$/.test(input)) {
+      const d = new Date(input);
+      return isNaN(d.getTime()) ? null : d;
+    }
+
+    // Detect MySQL DATETIME like '2025-11-24 20:41:16' or '2025-11-24T20:41:16'
+    // and treat it as a local time (no timezone shift).
+    const m = input.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2})?)$/);
+    if (m) {
+      const isoLocal = `${m[1]}T${m[2]}`; // interpreted as local time
+      const d = new Date(isoLocal);
+      return isNaN(d.getTime()) ? null : d;
+    }
+
+    // Fallback to default parsing
+    const d = new Date(input);
+    return isNaN(d.getTime()) ? null : d;
+  }
 
   const confirmVaccination = async () => {
     if (!selectedAnimal || !selectedVetId) return;
@@ -1164,14 +1462,17 @@ export function VeterinarianPortal(
         logDate: now.toISOString(),
       });
 
-      // Prefer the backend-returned Log_Date (formatted as 'YYYY-MM-DD HH:mm:ss').
+      // Prefer the backend-returned Log_Date (ISO-8601 UTC string). Convert
+      // it to an ISO string for consistent client-side usage. If the backend
+      // doesn't return it for some reason, fall back to our local now.
       // Convert it to an ISO string for consistent client-side usage. If the
       // backend doesn't return it for some reason, fall back to our local now.
       const savedLogDateRaw = response?.log?.Log_Date;
       const savedLogDate = savedLogDateRaw
-        ? new Date(savedLogDateRaw).toISOString()
+        ? (
+            parseServerDate(savedLogDateRaw) || new Date(savedLogDateRaw)
+          ).toISOString()
         : now.toISOString();
-      F;
 
       const newVaccination = {
         Vaccine_ID: `VAC-${response.log.Log_ID}`,
@@ -1570,17 +1871,58 @@ export function VeterinarianPortal(
                                 </p>
                               </div>
                             </div>
-                            <Badge
-                              className={`${getHealthBadgeColor(
+                            {(() => {
+                              const mapped =
                                 record.Backend_Health_Status ||
-                                  uiToBackendHealth(record.Health_Status)
-                              )} w-full justify-center`}
-                            >
-                              {backendToDisplayLabel(
-                                record.Backend_Health_Status ||
-                                  uiToBackendHealth(record.Health_Status)
-                              )}
-                            </Badge>
+                                uiToBackendHealth(record.Health_Status);
+                              if (mapped === "Excellent") {
+                                return (
+                                  <Badge
+                                    style={{
+                                      display: "block",
+                                      width: "100%",
+                                      textAlign: "center",
+                                      backgroundColor: "#ecfdf5", // emerald-50
+                                      color: "#065f46", // emerald-700
+                                      border: "1px solid #bbf7d0", // emerald-200
+                                      borderRadius: "0.375rem",
+                                      padding: "0.25rem 0",
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    {backendToDisplayLabel(mapped)}
+                                  </Badge>
+                                );
+                              }
+                              if (mapped === "Good") {
+                                return (
+                                  <Badge
+                                    style={{
+                                      display: "block",
+                                      width: "100%",
+                                      textAlign: "center",
+                                      backgroundColor: "#f0fdf4", // green-50
+                                      color: "#166534", // green-800
+                                      border: "1px solid #bbf7d0",
+                                      borderRadius: "0.375rem",
+                                      padding: "0.25rem 0",
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    {backendToDisplayLabel(mapped)}
+                                  </Badge>
+                                );
+                              }
+                              return (
+                                <Badge
+                                  className={`${getHealthBadgeColor(
+                                    mapped
+                                  )} w-full justify-center`}
+                                >
+                                  {backendToDisplayLabel(mapped)}
+                                </Badge>
+                              );
+                            })()}
                           </div>
                         </div>
 
@@ -1602,17 +1944,56 @@ export function VeterinarianPortal(
                               </p>
                             </div>
                             <div className="self-start">
-                              <Badge
-                                className={`${getHealthBadgeColor(
+                              {(() => {
+                                const mapped =
                                   record.Backend_Health_Status ||
-                                    uiToBackendHealth(record.Health_Status)
-                                )} px-3 py-1 rounded-full`}
-                              >
-                                {backendToDisplayLabel(
-                                  record.Backend_Health_Status ||
-                                    uiToBackendHealth(record.Health_Status)
-                                )}
-                              </Badge>
+                                  uiToBackendHealth(record.Health_Status);
+                                if (mapped === "Excellent") {
+                                  return (
+                                    <Badge
+                                      style={{
+                                        display: "inline-block",
+                                        backgroundColor: "#ecfdf5", // emerald-50
+                                        color: "#065f46", // emerald-700
+                                        border: "1px solid #bbf7d0",
+                                        padding: "0.25rem 0.75rem",
+                                        borderRadius: "9999px",
+                                        fontWeight: 600,
+                                        fontSize: "0.875rem",
+                                      }}
+                                    >
+                                      {backendToDisplayLabel(mapped)}
+                                    </Badge>
+                                  );
+                                }
+                                if (mapped === "Good") {
+                                  return (
+                                    <Badge
+                                      style={{
+                                        display: "inline-block",
+                                        backgroundColor: "#f0fdf4", // green-50
+                                        color: "#166534", // green-800
+                                        border: "1px solid #bbf7d0",
+                                        padding: "0.25rem 0.75rem",
+                                        borderRadius: "9999px",
+                                        fontWeight: 600,
+                                        fontSize: "0.875rem",
+                                      }}
+                                    >
+                                      {backendToDisplayLabel(mapped)}
+                                    </Badge>
+                                  );
+                                }
+                                return (
+                                  <Badge
+                                    className={`${getHealthBadgeColor(
+                                      mapped
+                                    )} px-3 py-1 rounded-full`}
+                                  >
+                                    {backendToDisplayLabel(mapped)}
+                                  </Badge>
+                                );
+                              })()}
                             </div>
                           </div>
 
@@ -1767,7 +2148,7 @@ export function VeterinarianPortal(
                               ).name || `Staff ${record.Administered_By}`}
                             </p>
                           </div>
-                          <Badge className="bg-green-100 text-green-800 border-green-200">
+                          <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200">
                             Administered
                           </Badge>
                         </div>
@@ -1817,67 +2198,77 @@ export function VeterinarianPortal(
               </CardHeader>
               <CardContent>
                 <ScrollArea
+                  height={
+                    todaysMedicalLogs.length > 6
+                      ? MEDICAL_LIST_MAX_HEIGHT
+                      : undefined
+                  }
                   style={{
-                    maxHeight: `${MEDICAL_LIST_MAX_HEIGHT}px`,
+                    maxHeight: MEDICAL_LIST_MAX_HEIGHT,
+                    overflowY: "auto",
                   }}
                 >
                   <div className="space-y-3">
-                    {todaysMedicalLogs.map((log) => (
-                      <div
-                        key={log.id}
-                        style={{
-                          padding: "1rem",
-                          borderRadius: "0.5rem",
-                          background:
-                            "linear-gradient(to right, #eff6ff, #ecfeff)",
-                          transition: "all 0.2s ease",
-                          border: "1px solid #e5e7eb",
-                          boxShadow: "none",
-                        }}
-                      >
-                        <div className="flex items-start gap-3">
-                          <div className="mt-1">{getLogTypeIcon(log.type)}</div>
-                          <div className="flex-1">
-                            <div className="flex items-start justify-between mb-2">
-                              <div>
-                                <p className="font-medium text-gray-900">
-                                  {log.animal_name}
-                                </p>
-                                <p className="text-sm text-gray-700">
-                                  {log.details}
-                                </p>
-                                {log.Notes && (
-                                  <p className="text-sm text-gray-700 mt-3 pt-2 border-t border-transparent">
-                                    {log.Notes}
-                                  </p>
-                                )}
-                              </div>
-                              {/* datetime shown at far right */}
-                              <div className="text-xs text-gray-500 whitespace-nowrap ml-4">
-                                {new Date(log.timestamp).toLocaleString()}
-                              </div>
+                    {todaysMedicalLogs.length === 0 ? (
+                      <div className="text-center py-12 text-gray-500">
+                        <ClipboardCheck className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                        <p className="text-sm">
+                          No medical logs recorded today.
+                        </p>
+                        <p className="text-xs mt-1">
+                          Health updates will appear here.
+                        </p>
+                      </div>
+                    ) : (
+                      todaysMedicalLogs.map((log) => (
+                        <div
+                          key={log.id}
+                          style={{
+                            padding: "1rem",
+                            borderRadius: "0.5rem",
+                            background:
+                              "linear-gradient(to right, #f0fdfa, #ecfeff)",
+                            transition: "all 0.2s ease",
+                            border: "1px solid #e5e7eb",
+                            boxShadow: "none",
+                          }}
+                        >
+                          <div className="flex items-start justify-between mb-2">
+                            <div className="flex-1">
+                              <p className="font-medium text-gray-900">
+                                {log.animal_name}
+                              </p>
+                              <p className="text-sm text-gray-700">
+                                {log.details}
+                              </p>
                             </div>
-                            <div className="flex items-center gap-4 text-xs text-gray-500 mt-2">
-                              <span>By: {log.veterinarian_name}</span>
-                              {log.health_status && (
-                                <>
-                                  <span>•</span>
-                                  <Badge
-                                    className={getHealthBadgeColor(
-                                      uiToBackendHealth(log.health_status || "")
-                                    )}
-                                  >
-                                    {backendToDisplayLabel(
-                                      uiToBackendHealth(log.health_status || "")
-                                    )}
-                                  </Badge>
-                                </>
-                              )}
+                            <div className="text-xs text-gray-600 text-right ml-4 whitespace-nowrap">
+                              {(() => {
+                                const d = parseServerDate(log.timestamp);
+                                return d ? d.toLocaleString() : "N/A";
+                              })()}
                             </div>
                           </div>
+                          <div className="flex items-center gap-4 text-xs text-gray-500 mt-2">
+                            <span>By: {log.veterinarian_name}</span>
+                            {log.health_status && (
+                              <>
+                                <span>•</span>
+                                <Badge
+                                  className={getHealthBadgeColor(
+                                    uiToBackendHealth(log.health_status || "")
+                                  )}
+                                >
+                                  {backendToDisplayLabel(
+                                    uiToBackendHealth(log.health_status || "")
+                                  )}
+                                </Badge>
+                              </>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      ))
+                    )}
                   </div>
                 </ScrollArea>
               </CardContent>
@@ -2352,15 +2743,25 @@ export function VeterinarianPortal(
                       >
                         <SelectValue />
                       </SelectTrigger>
-                      <SelectContent className="max-h-60">
-                        <SelectItem value="All">All Species</SelectItem>
-                        {Array.from(new Set(allAnimalsDB.map((a) => a.Species)))
-                          .sort()
-                          .map((species) => (
-                            <SelectItem key={species} value={species}>
-                              {species}
-                            </SelectItem>
-                          ))}
+                      <SelectContent>
+                        <div
+                          style={{
+                            maxHeight: 260,
+                            overflowY: "auto",
+                            paddingRight: 6,
+                          }}
+                        >
+                          <SelectItem value="All">All Species</SelectItem>
+                          {Array.from(
+                            new Set(allAnimalsDB.map((a) => a.Species))
+                          )
+                            .sort()
+                            .map((species) => (
+                              <SelectItem key={species} value={species}>
+                                {species}
+                              </SelectItem>
+                            ))}
+                        </div>
                       </SelectContent>
                     </Select>
                   </div>
@@ -2993,6 +3394,7 @@ export function VeterinarianPortal(
                               value={animalSearch}
                               onChange={(e) => setAnimalSearch(e.target.value)}
                               className="pl-10"
+                              style={{ background: "white" }}
                             />
                           </div>
                         </div>

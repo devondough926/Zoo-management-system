@@ -175,25 +175,19 @@ export function ConcessionPortal({ user, onLogout }) {
         return sum + (Number(rec.Quantity ?? rec.quantity ?? 0) || 0);
       }, 0);
 
-      // Top selling item today
+      // Top selling item today - aggregate by Item_Name to handle deleted/re-added items
       const counts = {};
       todaysConcessionItems.forEach((rec) => {
-        const id =
-          rec.Concession_Item_ID ?? rec.concession_item_id ?? rec.Item_ID;
+        const name = rec.Item_Name || "Unknown";
         const qty = Number(rec.Quantity ?? rec.quantity ?? 0) || 0;
-        if (!id) return;
-        counts[id] = (counts[id] || 0) + qty;
+        if (!name) return;
+        counts[name] = (counts[name] || 0) + qty;
       });
 
       const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
       const topItemToday = top
         ? {
-            Item_Name:
-              (
-                menuItems.find(
-                  (m) => String(m.Concession_Item_ID) === String(top[0])
-                ) || {}
-              ).Item_Name || `Item ${top[0]}`,
+            Item_Name: top[0],
             Quantity: Number(top[1]),
           }
         : null;
@@ -221,53 +215,27 @@ export function ConcessionPortal({ user, onLogout }) {
     }
   }, [purchaseConcessionItems, menuItems, purchases]);
 
-  // Fetch purchase concession items from backend and compute top/bottom sellers
-  const [purchaseConcessionData, setPurchaseConcessionData] = useState([]);
-
-  useEffect(() => {
-    let mounted = true;
-    const fetchPurchaseConcessions = async () => {
-      try {
-        const res = await fetch(`${API_BASE}/admin/purchase-concession-items`);
-        if (!res.ok)
-          throw new Error("Failed to fetch purchase concession items");
-        const data = await res.json();
-        if (mounted) setPurchaseConcessionData(data);
-      } catch (err) {
-        console.error("❌ Failed to load purchase concession items:", err);
-        // don't spam the user with toasts here; stats already surface errors
-      }
-    };
-    fetchPurchaseConcessions();
-
-    // refresh periodically (30s) to keep dashboard up-to-date
-    const interval = setInterval(fetchPurchaseConcessions, 30000);
-    return () => {
-      mounted = false;
-      clearInterval(interval);
-    };
-  }, []);
-
-  // Build sales totals by Concession_Item_ID
-  const salesByItemId = useMemo(() => {
+  // Build sales totals by Item_Name (not by ID) to handle items that were deleted and re-added
+  // This ensures we aggregate all sales for items with the same name, regardless of ID changes
+  const salesByItemName = useMemo(() => {
     const map = {};
-    purchaseConcessionData.forEach((rec) => {
-      const id =
-        rec.Concession_Item_ID ?? rec.concession_item_id ?? rec.Item_ID;
+    purchaseConcessionItems.forEach((rec) => {
+      const name = rec.Item_Name || "Unknown";
       const qty = Number(rec.Quantity ?? rec.quantity ?? 0);
-      if (!id) return;
-      map[id] = (map[id] || 0) + (isNaN(qty) ? 0 : qty);
+      if (!name) return;
+      map[name] = (map[name] || 0) + (isNaN(qty) ? 0 : qty);
     });
     return map;
-  }, [purchaseConcessionData]);
+  }, [purchaseConcessionItems]);
 
   // Combine menu items with their total sold counts (default 0 for unsold items)
+  // Map by Item_Name to get cumulative sales across all versions of the item
   const itemsWithSales = useMemo(() => {
     return menuItems.map((it) => ({
       item: it,
-      quantity: salesByItemId[it.Concession_Item_ID] || 0,
+      quantity: salesByItemName[it.Item_Name] || 0,
     }));
-  }, [menuItems, salesByItemId]);
+  }, [menuItems, salesByItemName]);
 
   // Top 3 sellers (highest quantity)
   const topItems = useMemo(() => {

@@ -808,10 +808,10 @@ export function ZookeeperPortal({ user, onLogout }) {
       return isNaN(d.getTime()) ? null : d;
     }
 
-    // Detect MySQL DATETIME like '2025-11-15 12:35:46' and convert to UTC
+    // Detect MySQL DATETIME like '2025-11-15 12:35:46' and treat as local time
     const m = input.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2})?)$/);
     if (m) {
-      const iso = `${m[1]}T${m[2]}Z`;
+      const iso = `${m[1]}T${m[2]}`;
       const d = new Date(iso);
       return isNaN(d.getTime()) ? null : d;
     }

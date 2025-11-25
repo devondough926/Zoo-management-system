@@ -1089,6 +1089,8 @@ export const getPurchaseItems = async (req, res) => {
 
 export const getPurchaseConcessionItems = async (req, res) => {
   try {
+    // Join with concession_item without filtering by is_active
+    // This allows sales data to persist even when items are soft-deleted and re-added
     const [items] = await db.query(`
       SELECT 
         pci.*,

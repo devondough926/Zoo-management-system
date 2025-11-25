@@ -132,7 +132,6 @@ export function Navigation({ onLogout, cartCount = 0 }) {
                       ["Exhibits", "exhibits"],
                       ["Membership", "membership"],
                       ["Today's Activities", "todays-activities"],
-                      ["Weather Conditions", "weather-conditions"],
                       ["Our Map", "our-map"],
                     ].map(([label, id], idx) => (
                       <button

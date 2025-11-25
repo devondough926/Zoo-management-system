@@ -213,7 +213,7 @@ export const createCareLog = async (req, res) => {
 
     const [result] = await db.query(
       `INSERT INTO Animal_Care_Log (Animal_ID, Employee_ID, Log_Date, Activity, Log_Type, Notes)
-       VALUES (?, ?, COALESCE(CONVERT_TZ(NOW(), '+00:00', 'America/Chicago'), NOW()), ?, ?, ?)`,
+       VALUES (?, ?, NOW(), ?, ?, ?)`,
       [animalId, employeeId, activity, logTypeValue, notes || null]
     );
 
@@ -223,7 +223,7 @@ export const createCareLog = async (req, res) => {
         acl.Log_ID,
         acl.Animal_ID,
         acl.Employee_ID,
-          DATE_FORMAT(COALESCE(CONVERT_TZ(acl.Log_Date, 'America/Chicago', '+00:00'), acl.Log_Date), '%Y-%m-%dT%H:%i:%sZ') as Log_Date,
+        DATE_FORMAT(acl.Log_Date, '%Y-%m-%d %H:%i:%s') as Log_Date,
         acl.Activity,
         acl.Notes,
         e.First_Name,
@@ -545,12 +545,12 @@ export const getFeedingTasks = async (req, res) => {
       ORDER BY acl.Log_Date DESC
     `);
 
+    // Get "today" from MySQL session timezone (matches the timezone set in database.js)
+    // This ensures consistency between server timezone and DB timezone
+    const [[{ today }]] = await db.query(
+      `SELECT DATE_FORMAT(NOW(), '%Y-%m-%d') as today`
+    );
     const now = new Date();
-    // Use server-local YYYY-MM-DD date to match MySQL DATETIME date part
-    const pad = (n) => String(n).padStart(2, "0");
-    const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(
-      now.getDate()
-    )}`;
 
     // Build feeding tasks with status
     const feedingTasks = animals.map((animal) => {
@@ -880,7 +880,7 @@ export const markHabitatCleaned = async (req, res) => {
     // Insert maintenance log into Animal_Care_Log (Animal_ID must be NULL for maintenance logs per trigger)
     await db.query(
       `INSERT INTO Animal_Care_Log (Animal_ID, Employee_ID, Log_Date, Activity, Log_Type, Notes)
-       VALUES (NULL, ?, COALESCE(CONVERT_TZ(NOW(), '+00:00', 'America/Chicago'), NOW()), ?, 'maintenance', ?)`,
+       VALUES (NULL, ?, NOW(), ?, 'maintenance', ?)`,
       [
         employeeId || null,
         `Habitat cleaned: ${exhibitName}`,

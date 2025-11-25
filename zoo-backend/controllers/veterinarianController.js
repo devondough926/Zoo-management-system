@@ -1,4 +1,63 @@
 import db from "../config/database.js";
+import { DateTime } from "luxon";
+
+const DEFAULT_DB_TIMEZONE = process.env.DB_LOCAL_TZ || "America/Chicago";
+const TZ_OFFSET_REGEX = /(Z|[+-]\d{2}:?\d{2})$/;
+
+const parseDateTime = (input) => {
+  if (input === null || input === undefined) return null;
+  if (input instanceof Date) {
+    return DateTime.fromJSDate(input);
+  }
+  if (typeof input === "number") {
+    return DateTime.fromMillis(input);
+  }
+  if (typeof input === "string") {
+    if (TZ_OFFSET_REGEX.test(input)) {
+      const dtWithOffset = DateTime.fromISO(input);
+      if (dtWithOffset.isValid) return dtWithOffset;
+    }
+
+    let dt = DateTime.fromISO(input, { zone: DEFAULT_DB_TIMEZONE });
+    if (dt.isValid) return dt;
+
+    dt = DateTime.fromSQL(input, { zone: DEFAULT_DB_TIMEZONE });
+    if (dt.isValid) return dt;
+
+    dt = DateTime.fromFormat(input, "yyyy-MM-dd HH:mm:ss", {
+      zone: DEFAULT_DB_TIMEZONE,
+    });
+    if (dt.isValid) return dt;
+  }
+  return null;
+};
+
+// Store and return timestamps in the database's local time zone, with no
+// timezone shifting. Formatting helpers simply normalize to MySQL DATETIME
+// strings while preserving local wall-clock time.
+
+const toMysqlLocalDatetime = (input) => {
+  const dt = parseDateTime(input) ?? DateTime.now();
+  // Convert to the database timezone before formatting
+  const localDt = dt.setZone(DEFAULT_DB_TIMEZONE);
+  return localDt.toFormat("yyyy-LL-dd HH:mm:ss");
+};
+
+const applyLocalConversion = (rows, fields) =>
+  rows.map((row) => {
+    const next = { ...row };
+    fields.forEach((field) => {
+      if (field in next && next[field] != null) {
+        const dt = parseDateTime(next[field]);
+        if (dt && dt.isValid) {
+          // Ensure the datetime is in the database's local timezone
+          const localDt = dt.setZone(DEFAULT_DB_TIMEZONE);
+          next[field] = localDt.toFormat("yyyy-LL-dd HH:mm:ss");
+        }
+      }
+    });
+    return next;
+  });
 
 // ============================================
 // VETERINARIAN DASHBOARD STATS
@@ -122,7 +181,8 @@ export const getAnimalVetHistory = async (req, res) => {
         acl.Log_ID as Visit_ID,
         acl.Animal_ID,
         acl.Employee_ID,
-        DATE_FORMAT(acl.Log_Date, '%Y-%m-%d %H:%i:%s') as Visit_Date,
+        acl.Log_Date as Visit_Date,
+        acl.Log_Date as Visit_Date,
         acl.Activity as Diagnosis,
         acl.Notes as Treatment,
         e.First_Name,
@@ -137,7 +197,7 @@ export const getAnimalVetHistory = async (req, res) => {
       params
     );
 
-    res.json(visits);
+    res.json(applyLocalConversion(visits, ["Visit_Date"]));
   } catch (error) {
     console.error("Error fetching vet history:", error);
     res.status(500).json({ error: "Failed to fetch vet history" });
@@ -151,7 +211,8 @@ export const getAllVetVisits = async (req, res) => {
         acl.Log_ID as Visit_ID,
         acl.Animal_ID,
         acl.Employee_ID,
-        DATE_FORMAT(acl.Log_Date, '%Y-%m-%d %H:%i:%s') as Visit_Date,
+        acl.Log_Date as Visit_Date,
+        acl.Log_Date as Visit_Date,
         acl.Activity as Diagnosis,
         acl.Notes as Treatment,
         e.First_Name,
@@ -166,7 +227,7 @@ export const getAllVetVisits = async (req, res) => {
       LIMIT 50`
     );
 
-    res.json(visits);
+    res.json(applyLocalConversion(visits, ["Visit_Date"]));
   } catch (error) {
     console.error("Error fetching vet visits:", error);
     res.status(500).json({ error: "Failed to fetch vet visits" });
@@ -185,10 +246,7 @@ export const createVetVisit = async (req, res) => {
       employeeId !== undefined && employeeId !== null ? employeeId : null;
 
     const rawVisitDate = visitDate || new Date();
-    const parsedDate = new Date(rawVisitDate);
-    const visitDateValue = isNaN(parsedDate.getTime())
-      ? new Date()
-      : parsedDate;
+    const visitTimestamp = toMysqlLocalDatetime(rawVisitDate);
 
     // Use Animal_Care_Log to store medical/vet visits
     const activity = diagnosis || "Vet visit";
@@ -196,7 +254,7 @@ export const createVetVisit = async (req, res) => {
     const [result] = await db.query(
       `INSERT INTO Animal_Care_Log (Animal_ID, Employee_ID, Log_Date, Activity, Log_Type, Notes)
        VALUES (?, ?, ?, ?, 'medical', ?)`,
-      [animalId, employeeIdValue, visitDateValue, activity, treatment || null]
+      [animalId, employeeIdValue, visitTimestamp, activity, treatment || null]
     );
 
     const [newLog] = await db.query(
@@ -204,7 +262,7 @@ export const createVetVisit = async (req, res) => {
         acl.Log_ID as Visit_ID,
         acl.Animal_ID,
         acl.Employee_ID,
-        DATE_FORMAT(acl.Log_Date, '%Y-%m-%d %H:%i:%s') as Visit_Date,
+        acl.Log_Date as Visit_Date,
         acl.Activity as Diagnosis,
         acl.Notes as Treatment,
         e.First_Name,
@@ -220,7 +278,7 @@ export const createVetVisit = async (req, res) => {
 
     res.status(201).json({
       message: "Vet visit created successfully",
-      visit: newLog[0],
+      visit: applyLocalConversion(newLog, ["Visit_Date"])[0],
     });
   } catch (error) {
     console.error("Error creating vet visit:", error);
@@ -235,7 +293,15 @@ export const createVetVisit = async (req, res) => {
 export const updateAnimalHealthInfo = async (req, res) => {
   try {
     const { animalId } = req.params;
-    const { healthStatus, isVaccinated, weight } = req.body;
+    const { healthStatus, isVaccinated, weight, employeeId, notes } = req.body;
+
+    // Set session variables for the trigger to use
+    if (employeeId !== undefined) {
+      await db.query("SET @update_employee_id = ?", [employeeId]);
+    }
+    if (notes !== undefined) {
+      await db.query("SET @update_notes = ?", [notes]);
+    }
 
     // Build dynamic UPDATE query with only provided fields
     const updates = [];
@@ -262,6 +328,9 @@ export const updateAnimalHealthInfo = async (req, res) => {
         values
       );
     }
+
+    // Clear session variables
+    await db.query("SET @update_employee_id = NULL, @update_notes = NULL");
 
     // Fetch updated animal
     const [updatedAnimal] = await db.query(
@@ -315,7 +384,8 @@ export const getMedicalLogs = async (req, res) => {
         acl.Log_ID,
         acl.Animal_ID,
         acl.Employee_ID,
-        DATE_FORMAT(acl.Log_Date, '%Y-%m-%d %H:%i:%s') as Log_Date,
+        acl.Log_Date as Log_Date,
+        acl.Log_Date as Log_Date,
         acl.Activity,
         acl.Log_Type,
         acl.Notes,
@@ -331,7 +401,7 @@ export const getMedicalLogs = async (req, res) => {
       params
     );
 
-    res.json(logs);
+    res.json(applyLocalConversion(logs, ["Log_Date"]));
   } catch (error) {
     console.error("Error fetching medical logs:", error);
     res.status(500).json({ error: "Failed to fetch medical logs" });
@@ -354,7 +424,8 @@ export const getVaccinationLogs = async (req, res) => {
         acl.Log_ID,
         acl.Animal_ID,
         acl.Employee_ID,
-        DATE_FORMAT(acl.Log_Date, '%Y-%m-%d %H:%i:%s') as Log_Date,
+        acl.Log_Date as Log_Date,
+        acl.Log_Date as Log_Date,
         acl.Activity,
         acl.Log_Type,
         acl.Notes,
@@ -370,7 +441,7 @@ export const getVaccinationLogs = async (req, res) => {
       params
     );
 
-    res.json(logs);
+    res.json(applyLocalConversion(logs, ["Log_Date"]));
   } catch (error) {
     console.error("Error fetching vaccination logs:", error);
     res.status(500).json({ error: "Failed to fetch vaccination logs" });
@@ -382,22 +453,21 @@ export const createMedicalLog = async (req, res) => {
     const { animalId, employeeId, notes, activity, logDate } = req.body;
     if (!animalId) return res.status(400).json({ error: "Animal ID required" });
 
-    const logDateValue = logDate ? new Date(logDate) : new Date();
-
+    const timestampToStore = toMysqlLocalDatetime(logDate || new Date());
     const [result] = await db.query(
       `INSERT INTO Animal_Care_Log (Animal_ID, Employee_ID, Log_Date, Activity, Log_Type, Notes)
        VALUES (?, ?, ?, ?, 'medical', ?)`,
       [
         animalId,
         employeeId || null,
-        logDateValue,
+        timestampToStore,
         activity || "Medical note",
         notes || null,
       ]
     );
 
     const [newLog] = await db.query(
-      `SELECT acl.Log_ID, acl.Animal_ID, acl.Employee_ID, DATE_FORMAT(acl.Log_Date, '%Y-%m-%d %H:%i:%s') as Log_Date, acl.Activity, acl.Log_Type, acl.Notes, e.First_Name, e.Last_Name, a.Animal_Name, a.Species
+      `SELECT acl.Log_ID, acl.Animal_ID, acl.Employee_ID, acl.Log_Date as Log_Date, acl.Activity, acl.Log_Type, acl.Notes, e.First_Name, e.Last_Name, a.Animal_Name, a.Species
        FROM Animal_Care_Log acl
        LEFT JOIN Employee e ON acl.Employee_ID = e.Employee_ID
        LEFT JOIN Animal a ON acl.Animal_ID = a.Animal_ID
@@ -405,7 +475,10 @@ export const createMedicalLog = async (req, res) => {
       [result.insertId]
     );
 
-    res.status(201).json({ message: "Medical log created", log: newLog[0] });
+    res.status(201).json({
+      message: "Medical log created",
+      log: applyLocalConversion(newLog, ["Log_Date"])[0],
+    });
   } catch (error) {
     console.error("Error creating medical log:", error);
     res.status(500).json({ error: "Failed to create medical log" });
@@ -425,12 +498,11 @@ export const createVaccinationLog = async (req, res) => {
     if (!animalId) return res.status(400).json({ error: "Animal ID required" });
 
     const activity = vaccine ? `Vaccination: ${vaccine}` : "Vaccination";
-    const logDateValue = logDate ? new Date(logDate) : new Date();
-
+    const timestampToStore = toMysqlLocalDatetime(logDate || new Date());
     const [result] = await db.query(
       `INSERT INTO Animal_Care_Log (Animal_ID, Employee_ID, Log_Date, Activity, Log_Type, Notes)
        VALUES (?, ?, ?, ?, 'vaccinated', ?)`,
-      [animalId, employeeId || null, logDateValue, activity, notes || null]
+      [animalId, employeeId || null, timestampToStore, activity, notes || null]
     );
 
     // Optionally mark the animal as vaccinated in Animal table
@@ -442,7 +514,7 @@ export const createVaccinationLog = async (req, res) => {
     }
 
     const [newLog] = await db.query(
-      `SELECT acl.Log_ID, acl.Animal_ID, acl.Employee_ID, DATE_FORMAT(acl.Log_Date, '%Y-%m-%d %H:%i:%s') as Log_Date, acl.Activity, acl.Log_Type, acl.Notes, e.First_Name, e.Last_Name, a.Animal_Name, a.Species
+      `SELECT acl.Log_ID, acl.Animal_ID, acl.Employee_ID, acl.Log_Date as Log_Date, acl.Activity, acl.Log_Type, acl.Notes, e.First_Name, e.Last_Name, a.Animal_Name, a.Species
        FROM Animal_Care_Log acl
        LEFT JOIN Employee e ON acl.Employee_ID = e.Employee_ID
        LEFT JOIN Animal a ON acl.Animal_ID = a.Animal_ID
@@ -450,9 +522,10 @@ export const createVaccinationLog = async (req, res) => {
       [result.insertId]
     );
 
-    res
-      .status(201)
-      .json({ message: "Vaccination log created", log: newLog[0] });
+    res.status(201).json({
+      message: "Vaccination log created",
+      log: applyLocalConversion(newLog, ["Log_Date"])[0],
+    });
   } catch (error) {
     console.error("Error creating vaccination log:", error);
     res.status(500).json({ error: "Failed to create vaccination log" });
